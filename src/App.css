@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* An instrument panel, not a consumer app. Dark so a bright preview reads
+   clearly in a dimmed room, high contrast so an RA can see recording state from
+   across the room, and one saturated red reserved exclusively for "recording" —
+   nothing else in the interface is allowed to use it. */
+@theme {
+  --color-panel: #0f1115;
+  --color-panel-raised: #171a21;
+  --color-panel-edge: #262b36;
+  --color-ink: #e8eaf0;
+  --color-ink-dim: #99a1b3;
+  --color-ink-faint: #646d80;
+  --color-record: #e01b24;
+  --color-record-deep: #a4161a;
+  --color-good: #2ea043;
+  --color-warn: #d29922;
+  --color-bad: #f85149;
+  --color-badger: #c5050c;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-panel);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* Participant-facing machine: a stray text selection during a session is
+     noise, and nothing here is meant to be copied except explicit fields. */
+  user-select: none;
+}
+
+input,
+textarea,
+select {
+  user-select: text;
+}
+
+@layer components {
+  .card {
+    background: var(--color-panel-raised);
+    border: 1px solid var(--color-panel-edge);
+    border-radius: 0.75rem;
+  }
+
+  .field-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+    margin-bottom: 0.375rem;
+  }
+
+  .control {
+    width: 100%;
+    background: var(--color-panel);
+    border: 1px solid var(--color-panel-edge);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    color: var(--color-ink);
+    font-size: 0.9375rem;
+  }
+
+  .control:focus {
+    outline: 2px solid var(--color-badger);
+    outline-offset: 1px;
+  }
+
+  .control:disabled {
+    opacity: 0.45;
+  }
+}
+
+/* The recording pulse. Slow and shallow on purpose: enough to catch the eye of
+   someone looking for it, not enough to distract someone sitting near it. */
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.rec-pulse {
+  animation: rec-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-pulse {
+    animation: none;
+  }
+}

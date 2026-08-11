@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the macOS bundle by Tauri.
+
+  Without these two keys macOS never shows a permission prompt and the camera
+  simply returns nothing — no error, no dialog, just an empty capture. The
+  strings are what the participant-facing prompt displays, so they say what the
+  app is for rather than "this app would like to access the camera".
+-->
+<plist version="1.0">
+  <dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Lab Recorder records conversation video for Niedenthal Emotions Lab studies under IRB protocol 2020-1657.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Lab Recorder records conversation audio for Niedenthal Emotions Lab studies under IRB protocol 2020-1657.</string>
+  </dict>
+</plist>
