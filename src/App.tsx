@@ -472,6 +472,7 @@ export default function App() {
           profileHash,
           recorderVersion: "",
           cfr: finalized.verification.cfr,
+          bytes: finalized.sizeBytes,
         },
       });
       setArchiveReport(report);

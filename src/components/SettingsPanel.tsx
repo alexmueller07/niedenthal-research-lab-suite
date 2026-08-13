@@ -49,7 +49,7 @@ export default function SettingsPanel(props: Props) {
             className="control"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://roundrobin.example.edu"
+            placeholder="https://sc.psych.wisc.edu"
             spellCheck={false}
           />
 

@@ -226,6 +226,8 @@ export interface ClosePayload {
   profileHash: string;
   recorderVersion: string;
   cfr: boolean;
+  /** Size of the verified MP4, for servers that cannot see the drive share. */
+  bytes: number;
 }
 
 export interface ArchiveOutcome {

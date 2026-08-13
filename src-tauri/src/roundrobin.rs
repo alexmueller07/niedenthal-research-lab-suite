@@ -64,6 +64,13 @@ pub struct ClosePayload {
     pub profile_hash: String,
     pub recorder_version: String,
     pub cfr: bool,
+    /// Size of the verified MP4. Round Robin needs it told when it runs on a
+    /// host that cannot see the Research Drive share (DoIT shared hosting) —
+    /// there the sha256 in this payload is what marks the take stored, and
+    /// this is the size it records. Defaulted so queue entries written before
+    /// the field existed still deserialize.
+    #[serde(default)]
+    pub bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -370,6 +377,7 @@ mod tests {
             "profileHash",
             "recorderVersion",
             "cfr",
+            "bytes",
         ] {
             assert!(json.get(key).is_some(), "missing {key} in close payload");
         }
@@ -390,6 +398,7 @@ mod tests {
                 profile_hash: "9f2c00112233".into(),
                 recorder_version: "0.1.0".into(),
                 cfr: true,
+                bytes: 850_000_000,
             },
             attempts: 0,
             last_error: None,
