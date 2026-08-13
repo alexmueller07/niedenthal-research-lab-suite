@@ -145,7 +145,35 @@ camera's own hardware activity LED, the macOS green camera indicator, and the
 Windows "camera in use" indicator. All are enforced below the application layer.
 
 Discreet mode forces a maximum duration, so a recording nobody can see cannot run
-indefinitely. Controls return with `Ctrl + Shift + R`.
+indefinitely. Controls return with `Ctrl + Shift + R` (`Cmd` on macOS); a button
+on the recording screen puts the cover back up. There is deliberately no mouse
+gesture that unlocks it — a participant nudging the mouse must not reveal the
+controls mid-conversation.
+
+---
+
+## Surviving a webview reload
+
+Two facts collide: WebView2 ships with browser accelerator keys enabled
+(`Ctrl+R`, `Ctrl+Shift+R`, `F5` all reload the webview, and JavaScript cannot
+`preventDefault` them), and `Ctrl+Shift+R` is the discreet-mode unlock chord.
+Unlocking the participant screen therefore reloaded the app: every piece of
+React state evaporated, the UI landed back on the setup screen, and FFmpeg kept
+recording with no reachable Stop button — while the close button was correctly
+refusing to kill a live take.
+
+Two independent fixes, both kept:
+
+1. **The accelerator keys are switched off** at startup via the raw WebView2
+   settings object (`ICoreWebView2Settings3::AreBrowserAcceleratorKeysEnabled`,
+   `lib.rs` setup hook). Tauri does not expose the setting; the `webview2-com`
+   version is pinned to the one wry itself uses, so nothing new compiles.
+2. **A reload is survivable anyway** (renderer crash, dev-tools refresh):
+   `start_recording` stashes the frontend's session context in Rust, and the
+   app asks `active_recording` at mount. A live take rebuilds the recording
+   screen — including the discreet cover, since participants may still be in
+   the room — with Rust's copy of the settings treated as authoritative over
+   whatever the rebuilt camera state defaulted to.
 
 ---
 

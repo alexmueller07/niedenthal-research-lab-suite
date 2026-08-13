@@ -13,34 +13,102 @@ every frame onto an exact beat and then checks its own work afterwards.
 
 ---
 
-## Before you start
+## How the recording pipeline works
 
-- A **USB webcam** plugged in. A laptop's built-in camera often will not work —
-  Windows deliberately hides some of them from recording software. The app will
-  tell you if that's what it's looking at.
-- A **microphone**. The webcam's built-in one is fine.
-- Somewhere to save. A **local drive** — not a network folder. The app copies to
-  the Research Drive afterwards on its own.
-- About **1 GB of free space per 10-minute recording** at the default quality.
+You press Record and later Stop. Everything else is automatic:
+
+1. **While recording**, the video is written to this computer's local drive —
+   never straight to the network, so a network hiccup can't cost frames.
+2. **When you press Stop**, the app converts the file to MP4, checks every
+   frame's timing, and computes a checksum — a fingerprint of the exact bytes.
+3. **Then it files the recording**: it copies the video to the Research Drive,
+   proves the copy is byte-for-byte identical, and tells the Round Robin
+   website which session, room, and pair of participants it belongs to.
+4. **The PPS rating app finds it by itself.** When the participants sit down at
+   the rating stations and sign in, the PPS app asks Round Robin for their
+   conversation, pulls it off the Research Drive, re-checks the fingerprint,
+   and plays it. Nobody browses for files.
+
+If the network or the Research Drive is down at step 3, nothing is lost: the
+app saves everything locally and files it automatically the next time it can.
+**Never delay or cancel a session over a network problem.**
+
+For all of this to work, each recording computer needs three things set once in
+the app's Settings panel: the **Round Robin address**, the **shared secret**
+(get it from Alex or Randy), and the **Research Drive folder**. Section
+"First run" below walks through it.
+
+---
+
+## Getting the app onto a computer
+
+Two ways. If someone has already given you a file ending in `-setup.exe` (or a
+`.dmg` on a Mac), skip to **Install** below.
+
+### Option A — download the ready-made installer (no tools needed)
+
+The project's GitHub page builds an installer automatically every time the code
+changes.
+
+1. Open https://github.com/alexmueller07/niedenthal-video-stream in a browser
+   and sign in to GitHub.
+2. Click the **Actions** tab near the top of the page.
+3. In the left sidebar click **Build Windows app** (or **Build macOS app** for
+   the lab Mac).
+4. Click the newest run in the list — the one at the top with a green ✓.
+5. Scroll down to the **Artifacts** box and click the artifact to download a
+   `.zip`. Inside it is the installer.
+6. Continue with **Install on Windows** or **Install on macOS** below.
+
+### Option B — build it from this repo (about 30 minutes, one-time setup)
+
+Do this only if there is no green ✓ run to download from, or you were asked to.
+You do not need to understand any of these tools — you only install them and
+type two commands.
+
+1. **Install Node.js.** Go to https://nodejs.org, download the **LTS**
+   version, run the installer, and accept every default.
+2. **Install Rust.** Go to https://rustup.rs, download `rustup-init.exe`, run
+   it, and press Enter to accept the default. On Windows it may first ask to
+   install "Visual Studio C++ build tools" — say yes and let it finish.
+3. **Close and reopen** any terminal windows so the new tools are picked up.
+4. **Open a terminal in this repo's folder.** In Windows Explorer, open the
+   `lab-recorder` folder, click the address bar at the top, type `cmd`, and
+   press Enter. A black window opens, already in the right folder.
+5. Type this and press Enter (it downloads everything the app needs, including
+   the exact FFmpeg encoder every lab machine must share — 5–10 minutes):
+
+   ```
+   npm install
+   ```
+
+6. Then this (the first build takes 10–20 minutes; later ones are fast):
+
+   ```
+   npm run tauri build
+   ```
+
+7. When it finishes, the installer is at
+   `src-tauri\target\release\bundle\nsis\Lab Recorder_0.1.0_x64-setup.exe`.
+   Double-click it and continue with **Install on Windows** below.
+
+To try the app without installing it, `npm run tauri dev` opens it directly.
 
 ---
 
 ## Install on Windows
 
-1. Download `Lab Recorder_x.y.z_x64-setup.exe`.
-2. Double-click it. Windows may show a blue **"Windows protected your PC"** box —
-   this is expected, the app isn't signed with a paid certificate. Click **More
-   info**, then **Run anyway**.
-3. Accept the defaults. It installs to `C:\Program Files\Lab Recorder`.
-4. Launch **Lab Recorder** from the Start menu.
+1. Double-click `Lab Recorder_x.y.z_x64-setup.exe`. Windows may show a blue
+   **"Windows protected your PC"** box — this is expected, the app isn't signed
+   with a paid certificate. Click **More info**, then **Run anyway**.
+2. Accept the defaults. It installs to `C:\Program Files\Lab Recorder`.
+3. Launch **Lab Recorder** from the Start menu.
 
 The first time you record, Windows may ask for camera and microphone access.
 Say yes — the app cannot record without it.
 
 > Installing on several machines? Run `Lab Recorder_x.y.z_x64-setup.exe /S` from
 > a terminal to install silently with no prompts.
-
----
 
 ## Install on macOS
 
@@ -72,6 +140,10 @@ at all, tell Alex — the app needs re-signing.
 
 ## First run: set it up
 
+You need: a **USB webcam** (laptop built-in cameras often won't work — the app
+will tell you), a **microphone** (the webcam's own is fine), and about **1 GB
+of free local disk space per 10-minute recording**.
+
 The setup screen has the live camera view on the left and the settings on the
 right. Work down the right-hand column.
 
@@ -85,11 +157,17 @@ right. Work down the right-hand column.
    otherwise. Each option shows exactly how much space it will use.
 4. **Resolution and frame rate** — leave these alone. They're filled in from what
    your camera actually reported it can do.
-5. **Save folder** — choose a folder on the local drive.
+5. **Save folder** — choose a folder on the local drive (not a network folder —
+   the app copies to the Research Drive afterwards on its own).
 6. **Session code** — a dyad or session code. **Never a participant's name,
    email, or NetID.** The app will warn you if it spots one.
 7. **Planned length** — how long the conversation will be. This is only used to
    predict file size and to set the safety stop.
+8. **Settings panel (once per machine)** — enter the **Round Robin address**,
+   the **shared secret**, and pick the **Research Drive folder** (the lab's
+   recordings share, as mounted on this machine). This is what makes filing
+   and the PPS handoff automatic. Without it the app still records; it just
+   keeps everything local.
 
 Settings are remembered, so you only do this once per machine.
 
@@ -138,18 +216,30 @@ Leave it there; it travels with the video.
 ## Running a real session
 
 Same as the test, plus one step: before recording, pick the **session** and
-**room** in the Round Robin box. That links the recording to the right pair of
-participants and files it to the Research Drive automatically when you stop.
+**room** in the Round Robin box. That stamps the recording with the right pair
+of participants **at the moment of capture**, files it to the Research Drive
+when you stop, and is what lets the PPS rating stations find the video on
+their own.
 
 If Round Robin can't be reached, **record anyway**. The app says so, saves
 locally, and files it automatically next time it can reach the server. Never
 delay a session over this.
 
+After you press Stop, the finish screen tells you three separate things: the
+recording verified, it was copied to the Research Drive, and it was registered
+with Round Robin. Green on all three means the rating stations are ready for
+these participants — you're done.
+
 ### Discreet mode
 
-Tick **Discreet mode** if the study calls for it. While recording, the screen
-shows a plain neutral message with no timer and no red indicator. Press
-`Ctrl+Shift+R` to bring the controls back.
+Tick **Discreet mode** if the study calls for it. While recording, participants
+see only a plain **"Please wait for the researcher."** screen — no timer, no
+counter, no red anything. The screen cannot be dismissed with the mouse; only
+the keyboard chord brings the controls back:
+
+- **`Ctrl+Shift+R`** (`Cmd+Shift+R` on the Mac) — show the recording controls.
+- **"Hide the screen again"** button — put the cover back up before you leave
+  the room.
 
 Be clear on what this does and does not do. It hides *the app's* indicators. It
 **cannot** turn off the webcam's own light, the green dot on a Mac, or the
@@ -157,7 +247,19 @@ Windows "camera in use" indicator — no application can. Participants must stil
 have consented to being recorded under IRB 2020-1657.
 
 Discreet mode also stops itself automatically 5 minutes after your planned
-length, so a recording nobody can see can't be left running.
+length, so a recording nobody can see can't be left running. The tick is
+remembered on this machine — if the screen goes to "Please wait for the
+researcher." the moment you press Record and you didn't want that, untick
+**Discreet mode** on the setup screen.
+
+### If the screen ever resets mid-recording
+
+If the app's window ever comes back looking wrong mid-take (after a crash or a
+stray shortcut), don't panic and **don't close the window**: the recording
+itself runs outside the screen you look at, and the app now rebuilds its
+recording screen around the running take when it reopens — still hidden, in
+discreet mode. You lose nothing; press Stop normally when the conversation is
+over.
 
 ---
 
@@ -173,8 +275,10 @@ length, so a recording nobody can see can't be left running.
 | **"This camera cannot record at these settings"** | The camera doesn't support that combination. Pick a different resolution or frame rate from the dropdowns — they only list what it does support. |
 | **Frames being dropped during recording** | The machine can't keep up. Stop, close other applications, and switch to the **Space Saver** preset. |
 | **"Not enough free space"** | Free up disk space or pick a smaller preset. It won't let you start a recording it can't finish. |
+| **Screen says "Please wait for the researcher."** | That's discreet mode, working as intended. Press `Ctrl+Shift+R` to get the controls back. |
 | **Recording saved "with problems"** | Read the message. The file exists, but something is off. Ask Randy before using it. |
 | **"N recordings waiting to be filed"** | Round Robin or the Research Drive was unreachable. Click **Retry now**, or leave it — it retries automatically. Nothing is lost. |
+| **The PPS station can't find the video** | Check the finish screen said "registered with Round Robin" — if it was queued, click **Retry now** in the Round Robin box. Also check the rating station has the Research Drive mounted. |
 
 **If a session goes wrong technically:** note it in the session log and email
 Randy (randy.lee@wisc.edu). Include the session code and what the finish screen
@@ -182,7 +286,7 @@ said.
 
 ---
 
-## Building from source (developers only)
+## For developers
 
 ```bash
 npm install          # also downloads + checksum-verifies the FFmpeg binaries
@@ -199,6 +303,10 @@ Windows, `dmg/` on macOS. macOS builds are produced by GitHub Actions (see
 If the FFmpeg download fails, `npm run ffmpeg -- --use-system` copies whatever is
 on your `PATH`. Development only — it prints a warning, because an unpinned build
 breaks the guarantee that all three lab machines encode identically.
+
+Engineering rationale — including why WebView2's browser accelerator keys are
+disabled and how a mid-take webview reload is recovered — is in
+[docs/DESIGN.md](docs/DESIGN.md).
 
 ---
 
