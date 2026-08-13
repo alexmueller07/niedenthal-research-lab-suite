@@ -14,6 +14,7 @@ import type {
   CameraCapabilities,
   CapturePlan,
   DeviceList,
+  DeviceRecord,
   DiskInfo,
   FinalizeResult,
   OpenedRecording,
@@ -86,6 +87,17 @@ export default function App() {
   const [stopping, setStopping] = useState(false);
   const [outcome, setOutcome] = useState<StopOutcome | null>(null);
   const [result, setResult] = useState<FinalizeResult | null>(null);
+
+  /**
+   * Set when the webview reloaded while a take was running. Rust's copy of the
+   * settings and device is authoritative from then on — the rebuilt camera
+   * state may have defaulted to a different device than the one recording.
+   */
+  const [recovered, setRecovered] = useState<{
+    settings: RecordSettings;
+    device: DeviceRecord;
+  } | null>(null);
+  const recoveredDiscreet = useRef(false);
 
   const camera = deviceList?.devices.find(
     (d) => d.kind === "video" && d.fingerprint === videoFingerprint
@@ -165,7 +177,7 @@ export default function App() {
         if (s.outputDir) setOutputDir(s.outputDir);
         if (s.presetId) setPresetId(s.presetId);
         if (s.sessionMinutes) setSessionMinutes(s.sessionMinutes);
-        setDiscreet(s.discreet);
+        if (!recoveredDiscreet.current) setDiscreet(s.discreet);
         settingsLoaded.current = true;
         // Only reach for the network once there is something to reach with.
         if (s.roundRobinUrl && s.roundRobinSecretConfigured) refreshSessions();
@@ -175,6 +187,46 @@ export default function App() {
       });
     refreshPending();
   }, [refreshDevices, refreshSessions, refreshPending]);
+
+  // If the webview reloaded mid-take — a crash, a stray browser shortcut on a
+  // build without the WebView2 fix — the take is still running in Rust. Rebuild
+  // the recording screen around it instead of stranding it behind a fresh setup
+  // screen with a Stop button nobody can reach.
+  useEffect(() => {
+    void api
+      .activeRecording()
+      .then((info) => {
+        if (!info) return;
+        const ctx = info.context;
+        setRecovered({
+          settings: info.settings,
+          device: ctx?.device ?? {
+            name: "unknown",
+            fingerprint: "",
+            vendorId: null,
+            productId: null,
+            profile: null,
+          },
+        });
+        setOutputPath(info.capturePath);
+        setStartedAtMs(Date.now() - info.elapsedMs);
+        setElapsedMs(info.elapsedMs);
+        if (ctx) {
+          setSessionCode(ctx.sessionCode);
+          setPresetId(ctx.presetId);
+          setProfileHash(ctx.profileHash);
+          setOpened(ctx.opened);
+          recoveredDiscreet.current = true;
+          setDiscreet(ctx.discreet);
+          // Participants may still be in the room: come back hidden, exactly
+          // as the screen was before the reload.
+          setDiscreetActive(ctx.discreet);
+        }
+        setPhase("recording");
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Remember the operator's choices between sessions. Debounced so typing in
   // the length field does not write the file on every keystroke, and gated on
@@ -373,6 +425,17 @@ export default function App() {
 
   const handleStop = useCallback(async () => {
     if (phase !== "recording" || stopping) return;
+    // After a mid-take reload, Rust's copy of the settings and device is the
+    // truth — the rebuilt camera state may point at a different device.
+    const liveSettings = recovered?.settings ?? settings;
+    if (!liveSettings) return;
+    const liveDevice: DeviceRecord = recovered?.device ?? {
+      name: camera?.name ?? "unknown",
+      fingerprint: camera?.fingerprint ?? "",
+      vendorId: camera?.vendorId ?? null,
+      productId: camera?.productId ?? null,
+      profile: camera?.profile ?? null,
+    };
     setStopping(true);
     setDiscreetActive(false);
     try {
@@ -383,14 +446,8 @@ export default function App() {
 
       const finalized = await api.finalizeRecording({
         outcome: stopped,
-        settings: settings!,
-        device: {
-          name: camera?.name ?? "unknown",
-          fingerprint: camera?.fingerprint ?? "",
-          vendorId: camera?.vendorId ?? null,
-          productId: camera?.productId ?? null,
-          profile: camera?.profile ?? null,
-        },
+        settings: liveSettings,
+        device: liveDevice,
         sessionCode: sessionCode || null,
         notes: null,
         discreetMode: discreet,
@@ -408,7 +465,7 @@ export default function App() {
         storageKey: opened?.storageKey ?? null,
         payload: {
           durationMs: stopped.wallDurationMs,
-          captureFps: settings!.fps,
+          captureFps: liveSettings.fps,
           framesDropped: stopped.progress.droppedFrames,
           framesDuplicated: stopped.progress.duplicatedFrames,
           sha256: finalized.sha256,
@@ -419,6 +476,7 @@ export default function App() {
       });
       setArchiveReport(report);
       setOpened(null);
+      setRecovered(null);
       refreshPending();
     } catch (e) {
       setError(String(e));
@@ -430,6 +488,7 @@ export default function App() {
     phase,
     stopping,
     settings,
+    recovered,
     camera,
     sessionCode,
     discreet,
@@ -487,7 +546,23 @@ export default function App() {
       const path = await api.startRecording(
         settings,
         outputDir,
-        fileStem(sessionCode, new Date())
+        fileStem(sessionCode, new Date()),
+        // Held by Rust for the length of the take, so a webview reload can
+        // rebuild this screen exactly as it was.
+        {
+          sessionCode,
+          discreet,
+          presetId,
+          profileHash,
+          opened: linked,
+          device: {
+            name: camera?.name ?? "unknown",
+            fingerprint: camera?.fingerprint ?? "",
+            vendorId: camera?.vendorId ?? null,
+            productId: camera?.productId ?? null,
+            profile: camera?.profile ?? null,
+          },
+        }
       );
       setOutputPath(path);
       setProgress(null);
@@ -501,7 +576,19 @@ export default function App() {
     } catch (e) {
       setError(String(e));
     }
-  }, [settings, outputDir, sessionCode, discreet, phase, slotId, roomIndex, opened]);
+  }, [
+    settings,
+    outputDir,
+    sessionCode,
+    discreet,
+    phase,
+    slotId,
+    roomIndex,
+    opened,
+    presetId,
+    profileHash,
+    camera,
+  ]);
 
   // ---- discreet mode auto-stop -------------------------------------------
 
@@ -522,17 +609,19 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "r") {
+      // metaKey so the chords work on the lab Mac too (Cmd instead of Ctrl).
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.shiftKey && e.key.toLowerCase() === "r") {
         e.preventDefault();
         setDiscreetActive(false);
         return;
       }
       if (discreetActive) return; // nothing else is reachable while hidden
-      if (e.ctrlKey && e.key.toLowerCase() === "r" && phase === "setup") {
+      if (mod && e.key.toLowerCase() === "r" && phase === "setup") {
         e.preventDefault();
         void handleRecord();
       }
-      if (e.ctrlKey && e.key.toLowerCase() === "s" && phase === "recording") {
+      if (mod && e.key.toLowerCase() === "s" && phase === "recording") {
         e.preventDefault();
         void handleStop();
       }
@@ -562,18 +651,14 @@ export default function App() {
   // ---- render -------------------------------------------------------------
 
   if (discreetActive && phase === "recording") {
-    return (
-      <DiscreetOverlay
-        message="Please wait for the researcher."
-        onUnlock={() => setDiscreetActive(false)}
-      />
-    );
+    return <DiscreetOverlay message="Please wait for the researcher." />;
   }
 
-  if (phase === "recording" && settings) {
+  const recordingSettings = recovered?.settings ?? settings;
+  if (phase === "recording" && recordingSettings) {
     return (
       <RecordScreen
-        settings={settings}
+        settings={recordingSettings}
         progress={progress}
         audioLevel={audioLevel}
         elapsedMs={elapsedMs}
@@ -582,6 +667,7 @@ export default function App() {
         stopping={stopping}
         autoStopMinutes={autoStopMinutes}
         onStop={handleStop}
+        onHide={discreet ? () => setDiscreetActive(true) : undefined}
       />
     );
   }
@@ -606,6 +692,7 @@ export default function App() {
           setArchiveReport(null);
           setError(null);
           setProgress(null);
+          setRecovered(null);
         }}
       />
     );

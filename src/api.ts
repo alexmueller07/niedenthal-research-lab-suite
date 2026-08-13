@@ -6,6 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  ActiveRecordingInfo,
   ArchiveReport,
   CameraCapabilities,
   CapturePlan,
@@ -19,6 +20,7 @@ import type {
   PendingRegistration,
   PreflightReport,
   PublicSettings,
+  RecordContext,
   RecordSettings,
   ResolutionOption,
   SessionSummary,
@@ -78,12 +80,24 @@ export const previewFrame = () => invoke<ArrayBuffer>("preview_frame");
 export const startRecording = (
   settings: RecordSettings,
   outputDir: string,
-  fileStem: string
-) => invoke<string>("start_recording", { request: { settings, outputDir, fileStem } });
+  fileStem: string,
+  context: RecordContext
+) =>
+  invoke<string>("start_recording", {
+    request: { settings, outputDir, fileStem, context },
+  });
 
 export const stopRecording = () => invoke<StopOutcome>("stop_recording");
 
 export const isRecording = () => invoke<boolean>("is_recording");
+
+/**
+ * The take that is still running in Rust after the webview lost its state to a
+ * reload, or null when nothing is being recorded. Checked once at mount so a
+ * reload can never strand a live recording behind a fresh setup screen.
+ */
+export const activeRecording = () =>
+  invoke<ActiveRecordingInfo | null>("active_recording");
 
 /**
  * Records five seconds with the real settings and measures the result.

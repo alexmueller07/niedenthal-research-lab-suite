@@ -14,6 +14,8 @@ interface Props {
   stopping: boolean;
   autoStopMinutes: number | null;
   onStop: () => void;
+  /** Present only in discreet mode: puts the participant-facing cover back up. */
+  onHide?: () => void;
 }
 
 export default function RecordScreen(props: Props) {
@@ -59,6 +61,22 @@ export default function RecordScreen(props: Props) {
           {remainingMs !== null && (
             <p className="text-xs text-[--color-ink-dim]">
               Stops automatically in {humanDuration(remainingMs)}
+            </p>
+          )}
+          {props.onHide && (
+            <button
+              type="button"
+              onClick={props.onHide}
+              className="rounded-lg border border-[--color-panel-edge] px-4 py-2 text-sm text-[--color-ink-dim] hover:border-[--color-ink-faint]"
+            >
+              Hide the screen again
+            </button>
+          )}
+          {props.onHide && (
+            <p className="text-center text-xs text-[--color-ink-faint]">
+              Discreet mode — participants see a neutral message.
+              <br />
+              Ctrl + Shift + R brings this screen back.
             </p>
           )}
         </div>

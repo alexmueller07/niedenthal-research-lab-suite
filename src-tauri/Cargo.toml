@@ -39,3 +39,12 @@ sysinfo = "0.33"
 # three lab machines do not depend on a platform certificate store being set up
 # the same way on each.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# WebView2 keeps browser accelerator keys (Ctrl+R, Ctrl+Shift+R, F5) enabled by
+# default, and they reload the webview — which wipes the recording UI mid-take
+# while FFmpeg keeps running. Tauri does not expose the setting, so it is set
+# directly on the WebView2 settings object at startup. Versions match what wry
+# itself uses, so nothing new actually compiles.
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"

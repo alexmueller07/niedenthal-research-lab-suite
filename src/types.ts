@@ -266,3 +266,25 @@ export interface DeviceRecord {
   productId: string | null;
   profile: string | null;
 }
+
+/**
+ * Everything the frontend needs to rebuild its recording screen if the webview
+ * reloads mid-take. Sent to Rust at record start, held for the length of the
+ * take, and handed back by `active_recording`. Rust never reads it.
+ */
+export interface RecordContext {
+  sessionCode: string;
+  discreet: boolean;
+  presetId: string;
+  profileHash: string;
+  opened: OpenedRecording | null;
+  device: DeviceRecord;
+}
+
+export interface ActiveRecordingInfo {
+  capturePath: string;
+  startedAt: string;
+  elapsedMs: number;
+  settings: RecordSettings;
+  context: RecordContext | null;
+}

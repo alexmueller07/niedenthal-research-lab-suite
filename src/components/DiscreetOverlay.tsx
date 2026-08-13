@@ -1,6 +1,5 @@
 interface Props {
   message: string;
-  onUnlock: () => void;
 }
 
 /**
@@ -16,16 +15,14 @@ interface Props {
  * use" indicator are all enforced below the application layer. None of them can
  * be switched off by any app, and no attempt is made to.
  *
- * The unlock is a keyboard chord rather than a button so that a participant
- * cannot end a session by touching the keyboard, and so nothing on screen
- * invites them to try.
+ * The only way out is the keyboard chord. There is deliberately no button and
+ * no mouse gesture — a participant nudging the mouse or double-clicking out of
+ * habit must not be able to reveal the recording controls mid-conversation.
+ * The chord is handled by the App-level key listener, not here.
  */
-export default function DiscreetOverlay({ message, onUnlock }: Props) {
+export default function DiscreetOverlay({ message }: Props) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex cursor-default select-none items-center justify-center bg-[--color-panel]"
-      onDoubleClick={onUnlock}
-    >
+    <div className="fixed inset-0 z-50 flex cursor-default select-none items-center justify-center bg-[--color-panel]">
       <p className="px-10 text-center text-2xl font-light text-[--color-ink-dim]">
         {message}
       </p>

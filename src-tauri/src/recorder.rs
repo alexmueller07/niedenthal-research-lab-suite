@@ -110,6 +110,9 @@ pub struct ActiveSession {
 #[derive(Default)]
 pub struct RecorderState {
     pub active: Mutex<Option<ActiveSession>>,
+    /// Whatever the frontend needs to rebuild its recording screen after the
+    /// webview reloads mid-take. Opaque JSON — Rust never reads it.
+    pub record_context: Mutex<Option<serde_json::Value>>,
 }
 
 // ---------------------------------------------------------------------------

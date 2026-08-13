@@ -226,6 +226,10 @@ pub struct StartRequest {
     pub output_dir: String,
     /// Filename without extension. Codes only — never a name or an email.
     pub file_stem: String,
+    /// Opaque frontend state, held for the length of the take and handed back
+    /// by `active_recording` if the webview reloads. Rust never reads it.
+    #[serde(default)]
+    pub context: Option<serde_json::Value>,
 }
 
 #[tauri::command]
@@ -256,13 +260,51 @@ async fn start_recording(app: tauri::AppHandle, request: StartRequest) -> Result
 
     let settings = request.settings;
     let path_for_task = capture_path.clone();
+    let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        recorder::start_recording(&app, settings, path_for_task)
+        recorder::start_recording(&handle, settings, path_for_task)
     })
     .await
     .map_err(|e| format!("record task failed: {e}"))??;
 
+    if let Ok(mut slot) = app.state::<RecorderState>().record_context.lock() {
+        *slot = request.context;
+    }
+
     Ok(capture_path.to_string_lossy().to_string())
+}
+
+/// What the frontend needs to rebuild its recording screen after a webview
+/// reload: the take is still running in this process even though every piece of
+/// React state just evaporated. Returns None when nothing is being recorded.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveRecordingInfo {
+    pub capture_path: String,
+    pub started_at: String,
+    pub elapsed_ms: u64,
+    pub settings: RecordSettings,
+    pub context: Option<serde_json::Value>,
+}
+
+#[tauri::command]
+fn active_recording(state: tauri::State<'_, RecorderState>) -> Option<ActiveRecordingInfo> {
+    let active = state.active.lock().ok()?;
+    let session = active.as_ref()?;
+    if session.kind != SessionKind::Record {
+        return None;
+    }
+    Some(ActiveRecordingInfo {
+        capture_path: session
+            .capture_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        started_at: session.started_at.to_rfc3339(),
+        elapsed_ms: session.started_instant.elapsed().as_millis() as u64,
+        settings: session.settings.clone(),
+        context: state.record_context.lock().ok().and_then(|c| c.clone()),
+    })
 }
 
 #[tauri::command]
@@ -849,6 +891,28 @@ pub fn run() {
 
         .manage(RecorderState::default())
         .setup(|app| {
+            // WebView2 ships with browser accelerator keys enabled: Ctrl+R,
+            // Ctrl+Shift+R, and F5 all reload the webview, and JavaScript
+            // cannot preventDefault them. A reload mid-take resets every piece
+            // of frontend state while FFmpeg keeps recording — and Ctrl+Shift+R
+            // is this app's own discreet-mode unlock chord. Off, always.
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.with_webview(|webview| unsafe {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                    use windows_core::Interface;
+                    let settings = webview
+                        .controller()
+                        .CoreWebView2()
+                        .and_then(|core| core.Settings());
+                    if let Ok(settings) = settings {
+                        if let Ok(settings) = settings.cast::<ICoreWebView2Settings3>() {
+                            let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
+                        }
+                    }
+                });
+            }
+
             // Anything left queued by a previous session — a network drop, a
             // Research Drive that was not mounted — gets another attempt as soon
             // as the app opens, without anyone having to remember.
@@ -894,6 +958,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             is_recording,
+            active_recording,
             preflight,
             finalize_recording,
             find_orphaned_captures,
