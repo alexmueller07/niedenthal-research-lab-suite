@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for the main window.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:allow-open",
+    "dialog:default"
+  ],
+  "_comment": [
+    "No shell permission on purpose. FFmpeg is spawned from Rust only, where the",
+    "argument list is built by us and the webview cannot influence it. Granting",
+    "shell:allow-execute here would let anything running in the webview start",
+    "arbitrary processes on a machine that handles participant video."
+  ]
+}

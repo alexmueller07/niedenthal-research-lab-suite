@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "Pinned FFmpeg builds, one per Tauri target triple.",
+    "",
+    "Pinning is not bureaucracy here: three lab machines must encode identically,",
+    "and two different FFmpeg builds can differ in default x264 tuning, in which",
+    "input pixel formats they negotiate, and in how -fps_mode cfr rounds. The",
+    "version string below is written into every recording manifest, so 'were these",
+    "two sessions produced the same way?' is answerable after the fact.",
+    "",
+    "sha256 starts as null. Run `npm run ffmpeg -- --pin` once per target to",
+    "download, print, and write the real checksum back into this file. After that",
+    "every fetch verifies against it and a silently-rotated upstream build fails",
+    "loudly instead of drifting into the data.",
+    "",
+    "macOS entries have not been exercised on real hardware yet — the lab Mac is",
+    "flagged as unverified across the repo's notes. Expect to adjust these URLs on",
+    "the first macOS build (Alexander, 2026-08-11)."
+  ],
+  "ffmpegVersion": "9.0",
+  "targets": {
+    "x86_64-pc-windows-msvc": {
+      "_note": "gyan.dev keeps no stable per-version URL, so this points at the rolling release build. That is exactly why the checksum pin matters: when gyan rotates the build the fetch fails loudly and someone re-pins on purpose, rather than a lab machine quietly acquiring a different encoder.",
+      "url": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+      "archive": "zip",
+      "sha256": "e6b54767a6065919048f1a098eb27211ca4e12b4348a05d88777a5855d0b6e71",
+      "binaries": {
+        "ffmpeg": "ffmpeg.exe",
+        "ffprobe": "ffprobe.exe"
+      }
+    },
+    "x86_64-apple-darwin": {
+      "url": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",
+      "companion": "https://evermeet.cx/ffmpeg/ffprobe-7.1.zip",
+      "archive": "zip",
+      "sha256": null,
+      "binaries": {
+        "ffmpeg": "ffmpeg",
+        "ffprobe": "ffprobe"
+      }
+    },
+    "aarch64-apple-darwin": {
+      "url": "https://www.osxexperts.net/ffmpeg711arm.zip",
+      "companion": "https://www.osxexperts.net/ffprobe711arm.zip",
+      "archive": "zip",
+      "sha256": null,
+      "binaries": {
+        "ffmpeg": "ffmpeg",
+        "ffprobe": "ffprobe"
+      }
+    }
+  }
+}
