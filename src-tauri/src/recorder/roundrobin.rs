@@ -254,7 +254,7 @@ pub async fn flush(app: &AppHandle, base_url: &str, secret: &str) -> Result<Flus
     let mut errors: Vec<String> = Vec::new();
     let mut succeeded = 0usize;
 
-    let drive_root = crate::recorder::settings::load(app).research_drive_root;
+    let drive_root = crate::machine::drive_root(app);
 
     for mut entry in queue {
         // The copy may be the step that failed last time, so retry it first.

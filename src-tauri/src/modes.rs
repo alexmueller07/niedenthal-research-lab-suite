@@ -18,6 +18,10 @@ pub const STATION_LABEL: &str = "station";
 pub const LAUNCHER_LABEL: &str = "launcher";
 
 pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
+    // The machine-setup chord exists in every role. On a Control machine the
+    // window is a remote page with no IPC, so this OS-level chord is
+    // deliberately the only way to reconfigure it.
+    register_reconfigure_chord(app);
     match role {
         Role::Record => {
             let window = WebviewWindowBuilder::new(
@@ -72,23 +76,50 @@ pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
             }
             register_station_shortcuts(app);
         }
-        // Phases 3-4 implement Control and the Setup wizard. Until then the
-        // remaining roles land on the placeholder launcher page, which says
-        // exactly that.
+        // Phase 4 implements Control; until then it lands on the wizard,
+        // which explains itself.
         Role::Control | Role::Setup => {
-            let window = WebviewWindowBuilder::new(
-                app,
-                LAUNCHER_LABEL,
-                WebviewUrl::App("index.html".into()),
-            )
-            .title("Niedenthal Lab Suite")
-            .inner_size(900.0, 700.0)
-            .center()
-            .build()?;
-            disable_browser_accelerator_keys(&window);
+            open_setup_window(app);
         }
     }
     Ok(())
+}
+
+/// Opens (or focuses) the setup/launcher window. Called at boot for an
+/// unconfigured machine and from the Ctrl+Alt+Shift+L chord in every role.
+pub fn open_setup_window(app: &AppHandle) {
+    if let Some(existing) = app.get_webview_window(LAUNCHER_LABEL) {
+        let _ = existing.set_focus();
+        return;
+    }
+    let built = WebviewWindowBuilder::new(
+        app,
+        LAUNCHER_LABEL,
+        WebviewUrl::App("index.html".into()),
+    )
+    .title("Niedenthal Lab Suite — Machine Setup")
+    .inner_size(980.0, 820.0)
+    .center()
+    .build();
+    match built {
+        Ok(window) => disable_browser_accelerator_keys(&window),
+        Err(e) => eprintln!("could not open the setup window: {e}"),
+    }
+}
+
+/// Ctrl+Alt+Shift+L — chosen to collide with neither of the modes' existing
+/// chords (station Ctrl+Shift+Q save-and-quit, recorder Ctrl+Shift+R discreet
+/// unlock). Registration failure is logged, not fatal: the wizard still opens
+/// on the next boot of an unconfigured machine.
+fn register_reconfigure_chord(app: &AppHandle) {
+    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+    let chord = Shortcut::new(
+        Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT),
+        Code::KeyL,
+    );
+    if let Err(e) = app.global_shortcut().register(chord) {
+        eprintln!("machine-setup chord registration failed: {e}");
+    }
 }
 
 /// Builder-level window-event hook, label-aware.

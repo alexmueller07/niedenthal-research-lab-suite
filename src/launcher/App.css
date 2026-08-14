@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* The wizard shares the recorder's visual vocabulary without importing its
+   whole theme: dark panel, red accent reserved for warnings. */
+@theme {
+  --color-panel: #16181d;
+  --color-panel-edge: #2a2e37;
+  --color-ink: #e8eaf0;
+  --color-ink-dim: #9aa1af;
+  --color-badger: #c5050c;
+  --color-good: #3fbf6f;
+  --color-bad: #e05252;
+}
+
+html,
+body {
+  height: 100%;
+  background: #0e1013;
+  color: var(--color-ink);
+}

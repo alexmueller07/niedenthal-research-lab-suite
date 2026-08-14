@@ -29,9 +29,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        // The handler is app-wide, but the chord below is only *registered*
-        // when Station mode boots (modes.rs) — a recorder machine never has
-        // an OS-global Ctrl+Shift+Q pointed at it.
+        // The handler is app-wide; which chords are *registered* depends on
+        // the role (modes.rs). Ctrl+Shift+Q (researcher save-and-quit) exists
+        // only in Station mode — a recorder machine never has an OS-global
+        // quit chord pointed at it. Ctrl+Alt+Shift+L (machine setup) exists
+        // in every role: on a Control machine, whose window is a remote page
+        // with no IPC, it is deliberately the only way to reconfigure.
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -43,11 +46,21 @@ pub fn run() {
                     {
                         let _ = app.emit("admin-quit", ());
                     }
+                    if shortcut.matches(
+                        Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT,
+                        Code::KeyL,
+                    ) {
+                        modes::open_setup_window(app);
+                    }
                 })
                 .build(),
         )
         .manage(recorder::capture::RecorderState::default())
         .setup(|app| {
+            // Seed machine.json + recorder/station files from the standalone
+            // apps' app-data the first time the suite runs on a lab machine.
+            // Read-only toward the old apps: they stay working as fallback.
+            machine::migrate_if_fresh(app.handle());
             let role = machine::current_role(app.handle());
             modes::open_for_role(app.handle(), role)?;
             Ok(())
@@ -95,6 +108,10 @@ pub fn run() {
             station::remote::list_conversation_clips,
             station::remote::report_study_progress,
             station::remote::prepare_conversation_video,
+            machine::machine_status,
+            machine::machine_configure,
+            machine::machine_test,
+            machine::machine_finish_setup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Niedenthal Lab Suite");

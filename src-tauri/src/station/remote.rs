@@ -87,47 +87,17 @@ pub struct RemoteUpdate {
     pub research_drive_root: Option<String>,
 }
 
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("remote.json"))
-}
+// In the suite, remote.json is retired: the URL / secret / drive root live in
+// the machine-wide store (machine.rs), entered once and consumed by every
+// mode. These functions keep their signatures and wire shapes — the station
+// frontend calls them unchanged — and map to that store.
 
 pub fn load_config(app: &AppHandle) -> RemoteSettings {
-    // Missing or corrupt config must not stop the app; defaults mean "not
-    // configured", which the frontend treats as "use the manual picker".
-    config_path(app)
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
-}
-
-fn save_config(app: &AppHandle, settings: &RemoteSettings) -> Result<(), String> {
-    let path = config_path(app)?;
-    let text = serde_json::to_string_pretty(settings)
-        .map_err(|e| format!("could not serialise remote settings: {e}"))?;
-    std::fs::write(&path, text).map_err(|e| format!("could not write {}: {e}", path.display()))
-}
-
-/// The frontend never receives the secret, so it cannot echo it back; without
-/// this merge, saving any other field would erase it.
-pub fn merge_update(existing: &RemoteSettings, update: RemoteUpdate) -> RemoteSettings {
+    let m = crate::machine::load(app);
     RemoteSettings {
-        round_robin_url: update
-            .round_robin_url
-            .or_else(|| existing.round_robin_url.clone()),
-        research_drive_root: update
-            .research_drive_root
-            .or_else(|| existing.research_drive_root.clone()),
-        round_robin_secret: match update.round_robin_secret {
-            Some(s) if s.trim().is_empty() => None,
-            Some(s) => Some(s),
-            None => existing.round_robin_secret.clone(),
-        },
+        round_robin_url: m.round_robin_url,
+        round_robin_secret: m.round_robin_secret,
+        research_drive_root: m.research_drive_root,
     }
 }
 
@@ -138,9 +108,14 @@ pub fn remote_status(app: AppHandle) -> RemotePublic {
 
 #[tauri::command]
 pub fn remote_configure(app: AppHandle, update: RemoteUpdate) -> Result<RemotePublic, String> {
-    let merged = merge_update(&load_config(&app), update);
-    save_config(&app, &merged)?;
-    Ok(RemotePublic::from(&merged))
+    let machine_update = crate::machine::MachineUpdate {
+        round_robin_url: update.round_robin_url,
+        round_robin_secret: update.round_robin_secret,
+        research_drive_root: update.research_drive_root,
+    };
+    let merged = crate::machine::merge_update(&crate::machine::load(&app), machine_update);
+    crate::machine::save(&app, &merged)?;
+    Ok(RemotePublic::from(&load_config(&app)))
 }
 
 // ---------------------------------------------------------------------------
@@ -148,16 +123,7 @@ pub fn remote_configure(app: AppHandle, update: RemoteUpdate) -> Result<RemotePu
 // ---------------------------------------------------------------------------
 
 fn credentials(app: &AppHandle) -> Result<(String, String), String> {
-    let s = load_config(app);
-    let url = s
-        .round_robin_url
-        .filter(|u| !u.trim().is_empty())
-        .ok_or("No Round Robin address is configured on the dashboard.")?;
-    let secret = s
-        .round_robin_secret
-        .filter(|v| !v.trim().is_empty())
-        .ok_or("No Round Robin shared secret is configured on the dashboard.")?;
-    Ok((url, secret))
+    crate::machine::credentials(app)
 }
 
 fn client() -> Result<reqwest::Client, String> {
@@ -618,39 +584,9 @@ mod tests {
         assert!(!is_safe_id(""));
     }
 
-    #[test]
-    fn saving_another_field_does_not_erase_the_secret() {
-        let existing = RemoteSettings {
-            round_robin_url: Some("https://rr.example".into()),
-            round_robin_secret: Some("s3cret".into()),
-            research_drive_root: Some("Z:/recordings".into()),
-        };
-        let updated = merge_update(
-            &existing,
-            RemoteUpdate {
-                research_drive_root: Some("Y:/other".into()),
-                ..Default::default()
-            },
-        );
-        assert_eq!(updated.round_robin_secret.as_deref(), Some("s3cret"));
-        assert_eq!(updated.research_drive_root.as_deref(), Some("Y:/other"));
-    }
-
-    #[test]
-    fn an_empty_secret_clears_it_deliberately() {
-        let existing = RemoteSettings {
-            round_robin_secret: Some("s3cret".into()),
-            ..Default::default()
-        };
-        let updated = merge_update(
-            &existing,
-            RemoteUpdate {
-                round_robin_secret: Some("".into()),
-                ..Default::default()
-            },
-        );
-        assert!(updated.round_robin_secret.is_none());
-    }
+    // The secret-merge semantics (empty clears, absent preserves) are owned
+    // and tested by machine.rs now — remote_configure maps onto that single
+    // implementation.
 
     #[test]
     fn the_secret_never_reaches_the_frontend() {

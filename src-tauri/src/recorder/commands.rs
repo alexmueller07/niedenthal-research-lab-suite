@@ -655,7 +655,7 @@ pub fn find_orphaned_captures(dir: String) -> Vec<String> {
 
 #[tauri::command]
 pub fn recorder_load_settings(app: tauri::AppHandle) -> settings::PublicSettings {
-    settings::PublicSettings::from(&settings::load(&app))
+    settings::compose_public(&settings::load(&app), &crate::machine::load(&app))
 }
 
 #[tauri::command]
@@ -663,23 +663,28 @@ pub fn recorder_save_settings(
     app: tauri::AppHandle,
     update: settings::SettingsUpdate,
 ) -> Result<settings::PublicSettings, String> {
-    let merged = settings::merge_update(&settings::load(&app), update);
+    // The wire format still carries the shared trio (URL / secret / drive
+    // root) so the recorder settings panel keeps working unchanged — but
+    // those fields are machine-wide and write through to machine.json, the
+    // one store every mode reads.
+    if update.touches_machine() {
+        let machine_update = crate::machine::MachineUpdate {
+            round_robin_url: update.round_robin_url.clone(),
+            round_robin_secret: update.round_robin_secret.clone(),
+            research_drive_root: update.research_drive_root.clone(),
+        };
+        let merged = crate::machine::merge_update(&crate::machine::load(&app), machine_update);
+        crate::machine::save(&app, &merged)?;
+    }
+    let merged = settings::merge_update(&settings::load(&app), &update);
     settings::save(&app, &merged)?;
-    Ok(settings::PublicSettings::from(&merged))
+    Ok(settings::compose_public(&merged, &crate::machine::load(&app)))
 }
 
-/// Base URL plus secret, or a message explaining what is missing.
+/// Base URL plus secret, or a message explaining what is missing. Reads the
+/// machine-wide store — the same credentials every mode uses.
 pub fn round_robin_credentials(app: &tauri::AppHandle) -> Result<(String, String), String> {
-    let s = settings::load(app);
-    let url = s
-        .round_robin_url
-        .filter(|u| !u.trim().is_empty())
-        .ok_or("No Round Robin address is configured in Settings.")?;
-    let secret = s
-        .round_robin_secret
-        .filter(|v| !v.trim().is_empty())
-        .ok_or("No Round Robin shared secret is configured in Settings.")?;
-    Ok((url, secret))
+    crate::machine::credentials(app)
 }
 
 #[tauri::command]
@@ -771,9 +776,7 @@ pub async fn archive_recording(
         queued_at: chrono::Utc::now().to_rfc3339(),
     };
 
-    let drive_root = settings::load(&app)
-        .research_drive_root
-        .filter(|r| !r.trim().is_empty());
+    let drive_root = crate::machine::drive_root(&app);
     let Some(drive_root) = drive_root else {
         let message =
             "No Research Drive folder is configured, so the recording stays on this computer."
