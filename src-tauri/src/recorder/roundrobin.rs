@@ -96,8 +96,9 @@ fn client() -> Result<reqwest::Client, String> {
 }
 
 /// Joins a path onto a configured base URL, tolerating a trailing slash.
+/// One implementation for both modes — see shared/http.rs.
 pub fn endpoint(base_url: &str, path: &str) -> String {
-    format!("{}/{}", base_url.trim_end_matches('/'), path.trim_start_matches('/'))
+    crate::shared::http::endpoint(base_url, path)
 }
 
 /// Turns a failed response into something an RA can act on.

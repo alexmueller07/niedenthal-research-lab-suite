@@ -16,6 +16,7 @@ use crate::recorder::{commands, roundrobin};
 pub const RECORDER_LABEL: &str = "recorder";
 pub const STATION_LABEL: &str = "station";
 pub const LAUNCHER_LABEL: &str = "launcher";
+pub const CONTROL_LABEL: &str = "control";
 
 pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
     // The machine-setup chord exists in every role. On a Control machine the
@@ -76,9 +77,29 @@ pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
             }
             register_station_shortcuts(app);
         }
-        // Phase 4 implements Control; until then it lands on the wizard,
-        // which explains itself.
-        Role::Control | Role::Setup => {
+        Role::Control => {
+            // A plain browsing window on the Round Robin site. Deliberately
+            // no capability targets this label and no capability lists a
+            // remote origin, so the page gets zero IPC — it is exactly the
+            // website, framed. Accelerator keys stay enabled here: F5 on a
+            // website is normal life, and there is no app state to lose.
+            let Some(url) = crate::machine::load(app)
+                .round_robin_url
+                .filter(|u| !u.trim().is_empty())
+                .and_then(|u| tauri::Url::parse(&u).ok())
+            else {
+                // No usable server address: fall back to setup, which says
+                // what is missing.
+                open_setup_window(app);
+                return Ok(());
+            };
+            WebviewWindowBuilder::new(app, CONTROL_LABEL, WebviewUrl::External(url))
+                .title("Round Robin — Control Center")
+                .inner_size(1440.0, 900.0)
+                .maximized(true)
+                .build()?;
+        }
+        Role::Setup => {
             open_setup_window(app);
         }
     }

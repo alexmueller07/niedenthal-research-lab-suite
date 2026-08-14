@@ -134,12 +134,9 @@ fn client() -> Result<reqwest::Client, String> {
 }
 
 /// Joins a path onto a configured base URL, tolerating a trailing slash.
+/// One implementation for both modes — see shared/http.rs.
 fn endpoint(base_url: &str, path: &str) -> String {
-    format!(
-        "{}/{}",
-        base_url.trim_end_matches('/'),
-        path.trim_start_matches('/')
-    )
+    crate::shared::http::endpoint(base_url, path)
 }
 
 async fn describe_failure(response: reqwest::Response) -> String {
@@ -338,21 +335,10 @@ fn is_safe_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
+/// One hash implementation for both ends of the checksum chain — see
+/// shared/hashing.rs. The recorder computed the checksum this verifies.
 fn file_sha256(path: &Path) -> Result<String, String> {
-    let mut file = std::fs::File::open(path)
-        .map_err(|e| format!("could not open {}: {e}", path.display()))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; COPY_CHUNK_BYTES];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+    crate::shared::hashing::file_sha256(path)
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -9,7 +9,6 @@
 // Nothing in here identifies a participant. Session and dyad codes only, per
 // the lab's CLAUDE.md rule about identifiers in filenames and artefacts.
 
-use std::io::Read;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -114,23 +113,11 @@ pub fn profile_hash(settings: &RecordSettings) -> String {
 
 /// SHA-256 of a file, read in chunks so a multi-gigabyte recording does not
 /// have to fit in memory. This is what makes the Research Drive copy verifiable
-/// rather than merely attempted.
+/// rather than merely attempted. One implementation for both ends of the
+/// checksum chain (shared/hashing.rs): the station re-verifies this exact
+/// value after fetching a take back off the drive.
 pub fn file_sha256(path: &Path) -> Result<String, String> {
-    let file = std::fs::File::open(path)
-        .map_err(|e| format!("could not open {} for checksumming: {e}", path.display()))?;
-    let mut reader = std::io::BufReader::new(file);
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; 1024 * 1024];
-    loop {
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+    crate::shared::hashing::file_sha256(path)
 }
 
 /// Frames actually written divided by wall time. Diverging from the requested

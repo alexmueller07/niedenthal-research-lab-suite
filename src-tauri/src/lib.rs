@@ -18,6 +18,7 @@
 mod machine;
 mod modes;
 mod recorder;
+mod shared;
 mod station;
 
 pub fn run() {
