@@ -46,10 +46,36 @@ pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
                 }
             });
         }
-        // Phases 2-4 implement Station, Control, and the Setup wizard. Until
-        // then every other role lands on the placeholder launcher page, which
-        // says exactly that.
-        Role::Station | Role::Control | Role::Setup => {
+        Role::Station => {
+            let window = WebviewWindowBuilder::new(
+                app,
+                STATION_LABEL,
+                WebviewUrl::App("station.html".into()),
+            )
+            .title("PPS Study")
+            .inner_size(1440.0, 900.0)
+            .maximized(true)
+            .build()?;
+            disable_browser_accelerator_keys(&window);
+
+            // Exactly the surface the standalone PPS app set up, applied only
+            // when this machine is a rating station:
+            // - the app-global fs scope its asset/file handling relies on
+            //   (the real gate is the capability — only station.json grants
+            //   fs:default — this is defense in depth);
+            // - the OS-level researcher save-and-quit chord. Global shortcuts
+            //   fire regardless of focus, which is why the in-page keydown
+            //   fallback alone was not enough in the standalone app.
+            {
+                use tauri_plugin_fs::FsExt;
+                let _ = app.fs_scope().allow_directory("/", false);
+            }
+            register_station_shortcuts(app);
+        }
+        // Phases 3-4 implement Control and the Setup wizard. Until then the
+        // remaining roles land on the placeholder launcher page, which says
+        // exactly that.
+        Role::Control | Role::Setup => {
             let window = WebviewWindowBuilder::new(
                 app,
                 LAUNCHER_LABEL,
@@ -98,6 +124,30 @@ pub fn handle_window_event<R: tauri::Runtime>(
             let _ = window.emit("admin-quit", ());
         }
         _ => {}
+    }
+}
+
+/// Ctrl+Shift+Q (and Cmd+Shift+Q on the lab Mac): the researcher save-and-quit
+/// gate. Registered only in Station mode — on a recorder machine the chord
+/// would emit an admin-quit nothing listens for.
+fn register_station_shortcuts(app: &AppHandle) {
+    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+    // `mut` is only used on macOS, which adds the Cmd variant.
+    #[allow(unused_mut)]
+    let mut wanted = vec![(
+        "ctrl+shift+q",
+        Modifiers::CONTROL | Modifiers::SHIFT,
+        Code::KeyQ,
+    )];
+    #[cfg(target_os = "macos")]
+    wanted.push(("cmd+shift+q", Modifiers::SUPER | Modifiers::SHIFT, Code::KeyQ));
+    for (name, modifiers, code) in wanted {
+        let shortcut = Shortcut::new(Some(modifiers), code);
+        if let Err(e) = app.global_shortcut().register(shortcut) {
+            // Non-fatal: the station frontend keeps its in-page keydown
+            // fallback for exactly this case.
+            eprintln!("global shortcut ({name}) registration failed: {e}");
+        }
     }
 }
 

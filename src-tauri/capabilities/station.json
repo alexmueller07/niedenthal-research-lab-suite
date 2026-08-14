@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "station",
+  "description": "Capabilities for the station window (PPS study, Station mode). Exactly the grants the standalone PPS app's webview had — including fs:default, which the recorder window deliberately does not get.",
+  "windows": ["station"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "fs:default",
+    "dialog:allow-open",
+    "dialog:default"
+  ]
+}

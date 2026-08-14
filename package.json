@@ -10,6 +10,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "ffmpeg": "node scripts/fetch-ffmpeg.mjs",
+    "stimuli": "node scripts/copy-stimuli.mjs",
+    "parity": "node scripts/verify-station-parity.mjs",
     "postinstall": "node scripts/fetch-ffmpeg.mjs"
   },
   "dependencies": {

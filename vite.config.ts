@@ -27,6 +27,7 @@ export default defineConfig({
       input: {
         launcher: resolve(__dirname, "index.html"),
         recorder: resolve(__dirname, "recorder.html"),
+        station: resolve(__dirname, "station.html"),
       },
     },
   },
