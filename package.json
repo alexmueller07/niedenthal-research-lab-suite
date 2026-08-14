@@ -12,6 +12,7 @@
     "ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "stimuli": "node scripts/copy-stimuli.mjs",
     "parity": "node scripts/verify-station-parity.mjs",
+    "golden": "node scripts/golden-compare.mjs",
     "postinstall": "node scripts/fetch-ffmpeg.mjs"
   },
   "dependencies": {

@@ -1,0 +1,62 @@
+name: Checks
+
+# Every push and PR: types, tests, the station-parity freeze, and the two
+# dist assertions that protect the participant installer (demo clips present,
+# the dev-only preview panel absent).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Install dependencies (fetches pinned FFmpeg sidecars)
+        run: npm ci
+
+      - name: Station parity — the frozen PPS frontend is untouched
+        run: node scripts/verify-station-parity.mjs
+
+      - name: Frontend tests
+        run: npm test
+
+      - name: Type-check and build
+        run: npm run build
+
+      - name: Dist assertions
+        shell: bash
+        run: |
+          test -f dist/videos/0014.mp4 || { echo "demo clips missing from dist"; exit 1; }
+          test ! -f dist/preview.html || { echo "dev-only preview panel leaked into dist"; exit 1; }
+          test -f dist/recorder.html && test -f dist/station.html && test -f dist/index.html
+
+      - name: Rust tests
+        run: cargo test --lib --manifest-path src-tauri/Cargo.toml

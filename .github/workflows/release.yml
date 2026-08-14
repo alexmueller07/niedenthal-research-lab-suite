@@ -1,0 +1,119 @@
+name: Build installers
+
+# Produces the one installer every lab machine gets. Windows NSIS/MSI on each
+# main push; macOS universal DMG the same way (Tauri cannot cross-compile it
+# from Windows).
+#
+# The FFmpeg fetch runs before the build and verifies the pinned checksums in
+# scripts/ffmpeg-manifest.json — the thing that keeps every lab machine on one
+# encoder. If upstream rotates the build, this job fails rather than quietly
+# shipping a different one.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Install dependencies (fetches pinned FFmpeg sidecars)
+        run: npm ci
+
+      - name: Build Windows installers
+        run: npm run tauri build
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: niedenthal-lab-suite-windows
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 30
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust (both Apple targets for a universal build)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A universal bundle needs an FFmpeg for each architecture; Tauri lipos
+      # the two sidecars together at bundle time.
+      - name: Fetch FFmpeg for both Apple architectures
+        run: |
+          node scripts/fetch-ffmpeg.mjs --target x86_64-apple-darwin
+          node scripts/fetch-ffmpeg.mjs --target aarch64-apple-darwin
+
+      # Ad-hoc signing is not cosmetic on macOS: TCC attributes camera access
+      # to the responsible process, and an unsigned bundle can leave the FFmpeg
+      # sidecar treated as its own responsible process — camera denied with no
+      # prompt, black frames recorded. Signing during the build keeps the
+      # helper attributed to the app.
+      - name: Build macOS app (universal, ad-hoc signed)
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: npm run tauri build -- --target universal-apple-darwin
+
+      - name: Confirm the sidecars are signed and inside the bundle
+        run: |
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Niedenthal Lab Suite.app"
+          codesign --verify --verbose=2 "$APP"
+          ls -l "$APP/Contents/MacOS/"
+
+      - name: Upload dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: niedenthal-lab-suite-macos
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30
