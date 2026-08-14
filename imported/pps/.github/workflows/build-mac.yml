@@ -1,0 +1,66 @@
+name: Build macOS app
+
+# Builds a universal (Intel + Apple Silicon) macOS bundle of the PPS Study app
+# on a GitHub-hosted macOS runner, so it can be built without owning a Mac
+# (Tauri cannot cross-compile macOS from Windows).
+#
+# The build is UNSIGNED (no Apple Developer cert). On first launch the tester
+# must right-click the app -> Open, because macOS Gatekeeper blocks unsigned
+# apps opened by double-click. If macOS claims the app "is damaged", clear the
+# quarantine flag:  xattr -dr com.apple.quarantine "/Applications/PPS Study.app"
+
+on:
+  workflow_dispatch: # lets you trigger a build manually from the Actions tab
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust (both Apple targets for a universal build)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail fast: a broken unit test should stop the build before the (much
+      # slower) Rust compile spends runner minutes on it.
+      - name: Run tests
+        run: npm test
+
+      - name: Build macOS app (universal)
+        run: npm run tauri build -- --target universal-apple-darwin
+
+      - name: Upload macOS build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pps-study-macos
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30

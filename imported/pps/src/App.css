@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* Lock the window itself (no rubber-band drag revealing white past the black,
+   no element drag-select) while still allowing content to scroll inside #root. */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #000;
+  overflow: hidden;
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* #root holds the app and is the scroll container when a screen is taller
+   than the viewport (e.g. the scenario task). */
+#root {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* Keep text fields editable/selectable. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Custom slider thumb styling for MatrixSlider */
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+input[type="range"].slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  border: none;
+}
+
+/* A row that has not been committed yet shows a dimmed handle, so a handle
+   resting at the default position is visibly "no answer yet" rather than a
+   recorded rating — see MatrixSlider.tsx. */
+input[type="range"].slider.slider-untouched::-webkit-slider-thumb {
+  background: #6b7280;
+}
+
+input[type="range"].slider.slider-untouched::-moz-range-thumb {
+  background: #6b7280;
+}

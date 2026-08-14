@@ -1,0 +1,18 @@
+node_modules
+dist
+src-tauri/target
+
+# Participant / test study output — never commit (IRB)
+ratings.csv
+transitions.csv
+123_123_123_123/
+
+# The full stimulus library (2000+ clips, ~1.7 GB). Never committed — the app
+# reads it from a folder chosen on the dashboard. The eight proof-of-concept
+# clips in public/videos ARE committed, so a fresh clone and the CI installers
+# work with no setup; `npm run stimuli` repopulates them from this folder.
+mp4_noname/
+
+# Randy's round-robin design PDF lives in the repo folder for reference but is
+# not part of the app — keep `git add -A` from ever committing it.
+/Round Robin Idea 7.7.2026.pdf
