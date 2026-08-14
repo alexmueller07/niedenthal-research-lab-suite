@@ -15,9 +15,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::ffmpeg::{RateControl, RecordSettings};
-use crate::probe::Verification;
-use crate::recorder::ProgressSnapshot;
+use crate::recorder::ffmpeg::{RateControl, RecordSettings};
+use crate::recorder::probe::Verification;
+use crate::recorder::capture::ProgressSnapshot;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -186,7 +186,7 @@ pub fn quality_summary(progress: &ProgressSnapshot, fps: u32, verification: &Ver
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ffmpeg::{AudioSettings, ContainerStrategy};
+    use crate::recorder::ffmpeg::{AudioSettings, ContainerStrategy};
 
     fn settings() -> RecordSettings {
         RecordSettings {

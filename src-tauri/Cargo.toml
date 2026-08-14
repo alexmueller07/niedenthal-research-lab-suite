@@ -1,0 +1,54 @@
+[package]
+name = "lab-suite"
+version = "0.1.0"
+description = "Niedenthal Lab Suite — Niedenthal Emotions Lab, UW-Madison"
+authors = ["UW-Madison Psychology, Niedenthal Emotions Lab"]
+edition = "2021"
+
+[lib]
+name = "lab_suite_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# protocol-asset serves two modes: the recorder's live preview JPEGs, and the
+# station's stimulus clips + fetched conversation video.
+tauri = { version = "2", features = ["protocol-asset"] }
+
+# The capture engine (Record mode). Everything media-related is a sidecar
+# subprocess driven from Rust — no webview ever gets shell access (see
+# capabilities/recorder.json).
+tauri-plugin-shell = "2"
+
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+
+# Station mode (PPS): the fs plugin its capability grants, and the researcher
+# save-and-quit chord. Both are activated only when the station role runs.
+tauri-plugin-fs = "2"
+tauri-plugin-global-shortcut = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Recording integrity + conversation-video verification: checksums both when
+# the recorder files a take and when the station fetches one back.
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.33"
+
+# Talking to Round Robin from both modes. rustls rather than native-tls so the
+# lab machines do not depend on a platform certificate store being set up the
+# same way on each.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# WebView2 keeps browser accelerator keys (Ctrl+R, Ctrl+Shift+R, F5) enabled
+# by default, and they reload the webview — which wipes recording or study UI
+# state mid-session. Tauri does not expose the setting, so it is set directly
+# on the WebView2 settings object per window (modes.rs). Versions match what
+# wry itself uses, so nothing new actually compiles.
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"

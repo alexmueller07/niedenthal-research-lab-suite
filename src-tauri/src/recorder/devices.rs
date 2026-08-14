@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-use crate::ffmpeg::{run_tool, CaptureBackend};
+use crate::recorder::ffmpeg::{run_tool, CaptureBackend};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

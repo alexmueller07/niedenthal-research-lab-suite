@@ -69,7 +69,10 @@ pub fn settings_path(app: &AppHandle) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| std::env::temp_dir());
     let _ = std::fs::create_dir_all(&dir);
-    dir.join("settings.json")
+    // recorder-settings.json, not settings.json: in the suite the PPS station
+    // owns the plain settings.json name (byte-compatible with its standalone
+    // install), and the two must never compete for one file again.
+    dir.join("recorder-settings.json")
 }
 
 pub fn load(app: &AppHandle) -> AppSettings {

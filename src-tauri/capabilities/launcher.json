@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "launcher",
+  "description": "Capabilities for the setup/launcher window. The dialog grant is for the wizard's folder pickers (Research Drive root).",
+  "windows": ["launcher"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:default"
+  ]
+}

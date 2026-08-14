@@ -24,7 +24,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-use crate::ffmpeg::{
+use crate::recorder::ffmpeg::{
     build_preview_args, build_record_args, CaptureBackend, ContainerStrategy, OutputPaths,
     RecordSettings,
 };

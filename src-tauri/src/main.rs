@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lab_recorder_lib::run()
+    lab_suite_lib::run()
 }

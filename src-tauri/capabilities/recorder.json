@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capabilities for the main window.",
-  "windows": ["main"],
+  "identifier": "recorder",
+  "description": "Capabilities for the recorder window (Record mode).",
+  "windows": ["recorder"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -13,6 +13,9 @@
     "No shell permission on purpose. FFmpeg is spawned from Rust only, where the",
     "argument list is built by us and the webview cannot influence it. Granting",
     "shell:allow-execute here would let anything running in the webview start",
-    "arbitrary processes on a machine that handles participant video."
+    "arbitrary processes on a machine that handles participant video.",
+    "No fs permission either: that grant belongs to the station window's",
+    "capability alone (capabilities/station.json) — the recorder webview never",
+    "asked for filesystem access and must not inherit it in the merge."
   ]
 }

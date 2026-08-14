@@ -1,4 +1,4 @@
-// Lab Recorder — Niedenthal Emotions Lab, UW-Madison.
+// The Lab Recorder command surface — every #[tauri::command] of Record mode.
 //
 // Frame-rate-exact webcam capture for dyadic conversation studies. The reason
 // this exists rather than the Windows Camera app is written up in the lab's own
@@ -7,30 +7,28 @@
 // accuracy score aligns a 100 ms slider trace against video time. Uneven frame
 // timing puts a slow drift straight into the dependent variable, invisibly.
 //
-// The Rust side owns every media operation. The webview has no shell access
-// (see capabilities/default.json) — it sends settings and receives events.
-
-mod archive;
-mod devices;
-mod disk;
-mod ffmpeg;
-mod manifest;
-mod probe;
-mod recorder;
-mod roundrobin;
-mod settings;
+// The Rust side owns every media operation. The recorder webview has no shell
+// and no fs access (see capabilities/recorder.json) — it sends settings and
+// receives events.
+//
+// This file was the standalone Lab Recorder's lib.rs. The builder moved to the
+// suite's lib.rs/modes.rs; the modules moved to siblings in this directory.
+// Two commands carry a recorder_ prefix because the PPS station owns commands
+// of the same name with different signatures, and the station's names are
+// frozen — its frontend must stay byte-identical with the standalone PPS app.
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
-use devices::{CameraCapabilities, Device};
-use disk::{DiskInfo, SpaceEstimate};
-use ffmpeg::RecordSettings;
-use manifest::{DeviceRecord, RecordingManifest};
-use probe::Verification;
-use recorder::{RecorderState, SessionKind, StopOutcome};
+use super::capture::{RecorderState, SessionKind, StopOutcome};
+use super::devices::{CameraCapabilities, Device};
+use super::disk::{DiskInfo, SpaceEstimate};
+use super::ffmpeg::RecordSettings;
+use super::manifest::{DeviceRecord, RecordingManifest};
+use super::probe::Verification;
+use super::{archive, capture, devices, disk, ffmpeg, manifest, probe, roundrobin, settings};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,7 +59,7 @@ pub struct FinalizeResult {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-async fn list_devices(app: tauri::AppHandle) -> Result<DeviceList, String> {
+pub async fn list_devices(app: tauri::AppHandle) -> Result<DeviceList, String> {
     let found = devices::list_devices(&app).await?;
     let unreachable = devices::os_camera_gap(&found);
     Ok(DeviceList {
@@ -72,12 +70,12 @@ async fn list_devices(app: tauri::AppHandle) -> Result<DeviceList, String> {
 }
 
 #[tauri::command]
-async fn probe_camera(app: tauri::AppHandle, token: String) -> Result<CameraCapabilities, String> {
+pub async fn probe_camera(app: tauri::AppHandle, token: String) -> Result<CameraCapabilities, String> {
     devices::probe_camera(&app, &token).await
 }
 
 #[tauri::command]
-async fn ffmpeg_info(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn ffmpeg_info(app: tauri::AppHandle) -> Result<String, String> {
     ffmpeg::ffmpeg_version(&app).await
 }
 
@@ -119,7 +117,7 @@ pub struct PlanRequest {
 /// implementation of the ranking rule — the rule that keeps a webcam off its
 /// 5 fps uncompressed mode is not something to maintain in two languages.
 #[tauri::command]
-fn plan_capture(request: PlanRequest) -> CapturePlan {
+pub fn plan_capture(request: PlanRequest) -> CapturePlan {
     let profile = devices::match_profile(
         &request.device_name,
         request.vendor_id.as_deref(),
@@ -175,7 +173,7 @@ fn plan_capture(request: PlanRequest) -> CapturePlan {
 
 /// The mode this camera should default to, with no preset applied.
 #[tauri::command]
-fn recommend_mode(request: PlanRequest) -> Option<ResolutionOption> {
+pub fn recommend_mode(request: PlanRequest) -> Option<ResolutionOption> {
     let profile = devices::match_profile(
         &request.device_name,
         request.vendor_id.as_deref(),
@@ -195,15 +193,15 @@ fn recommend_mode(request: PlanRequest) -> Option<ResolutionOption> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-async fn start_preview(app: tauri::AppHandle, settings: RecordSettings) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || recorder::start_preview(&app, settings))
+pub async fn start_preview(app: tauri::AppHandle, settings: RecordSettings) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || capture::start_preview(&app, settings))
         .await
         .map_err(|e| format!("preview task failed: {e}"))?
 }
 
 #[tauri::command]
-async fn stop_preview(app: tauri::AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || recorder::stop_any(&app))
+pub async fn stop_preview(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || capture::stop_any(&app))
         .await
         .map_err(|e| format!("stop task failed: {e}"))?
 }
@@ -214,8 +212,8 @@ async fn stop_preview(app: tauri::AppHandle) -> Result<(), String> {
 /// pure waste, and torn frames are filtered in Rust so the webview never has to
 /// deal with a half-written image.
 #[tauri::command]
-fn preview_frame(app: tauri::AppHandle) -> tauri::ipc::Response {
-    tauri::ipc::Response::new(recorder::read_preview_frame(&app).unwrap_or_default())
+pub fn preview_frame(app: tauri::AppHandle) -> tauri::ipc::Response {
+    tauri::ipc::Response::new(capture::read_preview_frame(&app).unwrap_or_default())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -233,7 +231,7 @@ pub struct StartRequest {
 }
 
 #[tauri::command]
-async fn start_recording(app: tauri::AppHandle, request: StartRequest) -> Result<String, String> {
+pub async fn start_recording(app: tauri::AppHandle, request: StartRequest) -> Result<String, String> {
     let dir = PathBuf::from(&request.output_dir);
     if !dir.is_dir() {
         return Err(format!(
@@ -262,7 +260,7 @@ async fn start_recording(app: tauri::AppHandle, request: StartRequest) -> Result
     let path_for_task = capture_path.clone();
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        recorder::start_recording(&handle, settings, path_for_task)
+        capture::start_recording(&handle, settings, path_for_task)
     })
     .await
     .map_err(|e| format!("record task failed: {e}"))??;
@@ -288,7 +286,7 @@ pub struct ActiveRecordingInfo {
 }
 
 #[tauri::command]
-fn active_recording(state: tauri::State<'_, RecorderState>) -> Option<ActiveRecordingInfo> {
+pub fn active_recording(state: tauri::State<'_, RecorderState>) -> Option<ActiveRecordingInfo> {
     let active = state.active.lock().ok()?;
     let session = active.as_ref()?;
     if session.kind != SessionKind::Record {
@@ -308,14 +306,14 @@ fn active_recording(state: tauri::State<'_, RecorderState>) -> Option<ActiveReco
 }
 
 #[tauri::command]
-async fn stop_recording(app: tauri::AppHandle) -> Result<StopOutcome, String> {
-    tauri::async_runtime::spawn_blocking(move || recorder::stop_recording(&app))
+pub async fn stop_recording(app: tauri::AppHandle) -> Result<StopOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || capture::stop_recording(&app))
         .await
         .map_err(|e| format!("stop task failed: {e}"))?
 }
 
 #[tauri::command]
-fn is_recording(state: tauri::State<'_, RecorderState>) -> bool {
+pub fn is_recording(state: tauri::State<'_, RecorderState>) -> bool {
     state
         .active
         .lock()
@@ -353,7 +351,7 @@ pub struct PreflightReport {
 /// is muted. Everything it reports is measured from an actual capture — none of
 /// it is inferred from the settings.
 #[tauri::command]
-async fn preflight(
+pub async fn preflight(
     app: tauri::AppHandle,
     settings: RecordSettings,
     duration_seconds: u64,
@@ -362,7 +360,7 @@ async fn preflight(
     {
         // The preview holds the camera; on Windows that alone would make this fail.
         let handle = app.clone();
-        tauri::async_runtime::spawn_blocking(move || recorder::stop_any(&handle))
+        tauri::async_runtime::spawn_blocking(move || capture::stop_any(&handle))
             .await
             .map_err(|e| format!("could not stop the preview: {e}"))??;
     }
@@ -384,8 +382,8 @@ async fn preflight(
     let (stdout, stderr) = ffmpeg::run_tool(&app, "ffmpeg", args).await?;
 
     // Replay the -progress stream to recover the final counters.
-    let mut accumulator = recorder::ProgressAccumulator::default();
-    let mut last = recorder::ProgressSnapshot::default();
+    let mut accumulator = capture::ProgressAccumulator::default();
+    let mut last = capture::ProgressSnapshot::default();
     for line in stdout.lines() {
         if let Some(snapshot) = accumulator.push(line) {
             last = snapshot;
@@ -402,7 +400,7 @@ async fn preflight(
         } else {
             let tail: Vec<&str> = stderr
                 .lines()
-                .filter(|l| recorder::is_noteworthy(l))
+                .filter(|l| capture::is_noteworthy(l))
                 .rev()
                 .take(2)
                 .collect();
@@ -513,7 +511,7 @@ pub struct FinalizeRequest {
 }
 
 #[tauri::command]
-async fn finalize_recording(
+pub async fn finalize_recording(
     app: tauri::AppHandle,
     request: FinalizeRequest,
 ) -> Result<FinalizeResult, String> {
@@ -638,7 +636,7 @@ async fn finalize_recording(
 
 /// Captures left behind by a crash: an .mkv with no matching .mp4 beside it.
 #[tauri::command]
-fn find_orphaned_captures(dir: String) -> Vec<String> {
+pub fn find_orphaned_captures(dir: String) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Vec::new();
     };
@@ -656,12 +654,12 @@ fn find_orphaned_captures(dir: String) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn load_settings(app: tauri::AppHandle) -> settings::PublicSettings {
+pub fn recorder_load_settings(app: tauri::AppHandle) -> settings::PublicSettings {
     settings::PublicSettings::from(&settings::load(&app))
 }
 
 #[tauri::command]
-fn save_settings(
+pub fn recorder_save_settings(
     app: tauri::AppHandle,
     update: settings::SettingsUpdate,
 ) -> Result<settings::PublicSettings, String> {
@@ -671,7 +669,7 @@ fn save_settings(
 }
 
 /// Base URL plus secret, or a message explaining what is missing.
-fn round_robin_credentials(app: &tauri::AppHandle) -> Result<(String, String), String> {
+pub fn round_robin_credentials(app: &tauri::AppHandle) -> Result<(String, String), String> {
     let s = settings::load(app);
     let url = s
         .round_robin_url
@@ -685,13 +683,13 @@ fn round_robin_credentials(app: &tauri::AppHandle) -> Result<(String, String), S
 }
 
 #[tauri::command]
-async fn rr_sessions(app: tauri::AppHandle) -> Result<Vec<roundrobin::SessionSummary>, String> {
+pub async fn rr_sessions(app: tauri::AppHandle) -> Result<Vec<roundrobin::SessionSummary>, String> {
     let (url, secret) = round_robin_credentials(&app)?;
     roundrobin::list_sessions(&url, &secret).await
 }
 
 #[tauri::command]
-async fn rr_open(
+pub async fn rr_open(
     app: tauri::AppHandle,
     slot_id: String,
     room_index: i32,
@@ -703,12 +701,12 @@ async fn rr_open(
 }
 
 #[tauri::command]
-fn rr_pending(app: tauri::AppHandle) -> Vec<roundrobin::PendingRegistration> {
+pub fn rr_pending(app: tauri::AppHandle) -> Vec<roundrobin::PendingRegistration> {
     roundrobin::load_queue(&app)
 }
 
 #[tauri::command]
-async fn rr_flush(app: tauri::AppHandle) -> Result<roundrobin::FlushReport, String> {
+pub async fn rr_flush(app: tauri::AppHandle) -> Result<roundrobin::FlushReport, String> {
     let (url, secret) = round_robin_credentials(&app)?;
     roundrobin::flush(&app, &url, &secret).await
 }
@@ -741,7 +739,7 @@ pub struct ArchiveReport {
 /// after a conversation has been recorded is an inconvenience; it must never
 /// become a lost recording.
 #[tauri::command]
-async fn archive_recording(
+pub async fn archive_recording(
     app: tauri::AppHandle,
     request: ArchiveRequest,
 ) -> Result<ArchiveReport, String> {
@@ -851,7 +849,7 @@ async fn archive_recording(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn disk_space(path: String) -> Option<DiskInfo> {
+pub fn disk_space(path: String) -> Option<DiskInfo> {
     disk::disk_for_path(Path::new(&path))
 }
 
@@ -864,7 +862,7 @@ pub struct EstimateRequest {
 }
 
 #[tauri::command]
-fn estimate_space(request: EstimateRequest) -> SpaceEstimate {
+pub fn estimate_space(request: EstimateRequest) -> SpaceEstimate {
     let available = disk::disk_for_path(Path::new(&request.path))
         .map(|d| d.available_bytes)
         .unwrap_or(0);
@@ -876,103 +874,7 @@ fn estimate_space(request: EstimateRequest) -> SpaceEstimate {
 }
 
 #[tauri::command]
-fn profile_hash(settings: RecordSettings) -> String {
+pub fn profile_hash(settings: RecordSettings) -> String {
     manifest::profile_hash(&settings)
 }
 
-// ---------------------------------------------------------------------------
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-
-        .manage(RecorderState::default())
-        .setup(|app| {
-            // WebView2 ships with browser accelerator keys enabled: Ctrl+R,
-            // Ctrl+Shift+R, and F5 all reload the webview, and JavaScript
-            // cannot preventDefault them. A reload mid-take resets every piece
-            // of frontend state while FFmpeg keeps recording — and Ctrl+Shift+R
-            // is this app's own discreet-mode unlock chord. Off, always.
-            #[cfg(target_os = "windows")]
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.with_webview(|webview| unsafe {
-                    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
-                    use windows_core::Interface;
-                    let settings = webview
-                        .controller()
-                        .CoreWebView2()
-                        .and_then(|core| core.Settings());
-                    if let Ok(settings) = settings {
-                        if let Ok(settings) = settings.cast::<ICoreWebView2Settings3>() {
-                            let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
-                        }
-                    }
-                });
-            }
-
-            // Anything left queued by a previous session — a network drop, a
-            // Research Drive that was not mounted — gets another attempt as soon
-            // as the app opens, without anyone having to remember.
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Ok((url, secret)) = round_robin_credentials(&handle) {
-                    if let Ok(report) = roundrobin::flush(&handle, &url, &secret).await {
-                        if report.attempted > 0 {
-                            let _ = handle.emit("registrations-flushed", &report);
-                        }
-                    }
-                }
-            });
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            // Closing the window mid-take would kill FFmpeg without letting it
-            // finalize the container — a lost session for the price of a stray
-            // click. Same guard pps-app uses for unflushed slider samples.
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let recording = window
-                    .app_handle()
-                    .state::<RecorderState>()
-                    .active
-                    .lock()
-                    .map(|slot| matches!(slot.as_ref().map(|s| s.kind), Some(SessionKind::Record)))
-                    .unwrap_or(false);
-                if recording {
-                    api.prevent_close();
-                    let _ = window.emit("close-blocked", ());
-                }
-            }
-        })
-        .invoke_handler(tauri::generate_handler![
-            list_devices,
-            probe_camera,
-            plan_capture,
-            recommend_mode,
-            ffmpeg_info,
-            start_preview,
-            stop_preview,
-            preview_frame,
-            start_recording,
-            stop_recording,
-            is_recording,
-            active_recording,
-            preflight,
-            finalize_recording,
-            find_orphaned_captures,
-            disk_space,
-            estimate_space,
-            profile_hash,
-            load_settings,
-            save_settings,
-            rr_sessions,
-            rr_open,
-            rr_pending,
-            rr_flush,
-            archive_recording,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running Lab Recorder");
-}

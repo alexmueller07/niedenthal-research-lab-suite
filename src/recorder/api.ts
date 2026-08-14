@@ -138,10 +138,14 @@ export const profileHash = (settings: RecordSettings) =>
 
 // --- settings, Research Drive, Round Robin ---------------------------------
 
-export const loadSettings = () => invoke<PublicSettings>("load_settings");
+// recorder_-prefixed on the Rust side: the PPS station owns the bare
+// load_settings/save_settings names (frozen — its frontend ships
+// byte-identical with the standalone app), and these two have different
+// signatures anyway.
+export const loadSettings = () => invoke<PublicSettings>("recorder_load_settings");
 
 export const saveSettings = (update: SettingsUpdate) =>
-  invoke<PublicSettings>("save_settings", { update });
+  invoke<PublicSettings>("recorder_save_settings", { update });
 
 export const rrSessions = () => invoke<SessionSummary[]>("rr_sessions");
 

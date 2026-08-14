@@ -254,19 +254,19 @@ pub async fn flush(app: &AppHandle, base_url: &str, secret: &str) -> Result<Flus
     let mut errors: Vec<String> = Vec::new();
     let mut succeeded = 0usize;
 
-    let drive_root = crate::settings::load(app).research_drive_root;
+    let drive_root = crate::recorder::settings::load(app).research_drive_root;
 
     for mut entry in queue {
         // The copy may be the step that failed last time, so retry it first.
         if !entry.archived {
             match drive_root.as_deref() {
                 Some(root) => {
-                    let target = crate::archive::resolve_storage_path(
+                    let target = crate::recorder::archive::resolve_storage_path(
                         std::path::Path::new(root),
                         &entry.storage_key,
                     )
                     .and_then(|dest| {
-                        crate::archive::copy_verified(
+                        crate::recorder::archive::copy_verified(
                             std::path::Path::new(&entry.local_path),
                             &dest,
                             &entry.payload.sha256,

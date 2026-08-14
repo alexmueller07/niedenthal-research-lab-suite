@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-use crate::ffmpeg::run_tool;
+use crate::recorder::ffmpeg::run_tool;
 
 /// Presentation timestamps are stored as integers over a container timescale,
 /// so exact equality is the wrong test. A frame more than this far from its
