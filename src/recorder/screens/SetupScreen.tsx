@@ -34,7 +34,6 @@ interface Props {
   outputDir: string;
   sessionCode: string;
   sessionMinutes: number;
-  discreet: boolean;
   estimate: SpaceEstimate | null;
   disk: DiskInfo | null;
   audioLevel: AudioLevel | null;
@@ -85,7 +84,8 @@ interface Props {
   onPickFolder: () => void;
   onSessionCode: (code: string) => void;
   onSessionMinutes: (minutes: number) => void;
-  onToggleDiscreet: (on: boolean) => void;
+  /** Reports whether the preview is genuinely delivering frames. */
+  onCameraSignal: (delivering: boolean) => void;
   onRefreshDevices: () => void;
   onRecord: () => void;
 }
@@ -106,7 +106,7 @@ export default function SetupScreen(props: Props) {
     <div className="mx-auto grid max-w-7xl gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_420px]">
       {/* ---------------- left: what the camera sees ---------------- */}
       <div className="flex flex-col gap-4">
-        <PreviewPane active={props.previewLive} />
+        <PreviewPane active={props.previewLive} onSignal={props.onCameraSignal} />
 
         <div className="card p-4">
           <AudioMeter
@@ -375,27 +375,20 @@ export default function SetupScreen(props: Props) {
         />
 
         <section className="card p-4">
-          <label className="flex cursor-pointer items-start gap-2.5">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={props.discreet}
-              onChange={(e) => props.onToggleDiscreet(e.target.checked)}
-              disabled={props.busy}
-            />
-            <span>
-              <span className="text-sm font-semibold">Discreet mode</span>
-              <span className="mt-1 block text-xs leading-relaxed text-[--color-ink-dim]">
-                While recording, the screen shows a plain neutral message and no timer,
-                counter, or red indicator. Press Ctrl + Shift + R to bring the controls back.
-              </span>
-              <span className="mt-1.5 block text-xs leading-relaxed text-[--color-warn]">
-                The camera's own indicator light stays on, and so does the macOS green camera
-                dot. Neither can be switched off by any application. Participants must still
-                have consented to recording under IRB 2020-1657.
-              </span>
-            </span>
-          </label>
+          <span className="text-sm font-semibold">What happens when you press Record</span>
+          <p className="mt-1 text-xs leading-relaxed text-[--color-ink-dim]">
+            The screen immediately shows only &ldquo;Please wait for the
+            researcher.&rdquo; — no timer, no counter, no red anything — so the
+            recording never distracts the participants. When you come back,
+            press <span className="font-mono">Ctrl + Shift + R</span> to bring
+            the controls up and stop the take. It also stops itself a few
+            minutes after the planned length as a safety net.
+          </p>
+          <p className="mt-1.5 text-xs leading-relaxed text-[--color-warn]">
+            The camera's own indicator light stays on, and so does the macOS green camera
+            dot. Neither can be switched off by any application. Participants must still
+            have consented to recording under IRB 2020-1657.
+          </p>
         </section>
       </div>
     </div>

@@ -74,10 +74,23 @@ interface Props {
   active: boolean;
   /** Shown over the image while a take is running. */
   overlay?: React.ReactNode;
+  /**
+   * Reports whether frames are genuinely arriving. The record button is gated
+   * on this: a camera that never delivers a first frame would otherwise let
+   * an RA start a take that records nothing.
+   */
+  onSignal?: (delivering: boolean) => void;
 }
 
-export default function PreviewPane({ active, overlay }: Props) {
+export default function PreviewPane({ active, overlay, onSignal }: Props) {
   const { url, everReceived, stalled } = usePreviewFrame(active);
+
+  const delivering = active && everReceived && !stalled;
+  useEffect(() => {
+    onSignal?.(delivering);
+    return () => onSignal?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delivering]);
 
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-[--color-panel-edge] bg-black">

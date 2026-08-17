@@ -53,8 +53,15 @@ export default function App() {
   const [outputDir, setOutputDir] = useState("");
   const [sessionCode, setSessionCode] = useState("");
   const [sessionMinutes, setSessionMinutes] = useState(10);
-  const [discreet, setDiscreet] = useState(false);
+  // Recording is ALWAYS discreet — the participant-facing cover is the only
+  // thing a running take shows, by lab decision (2026-08-17). This flag is
+  // just whether the cover is up right now (the researcher can lift it with
+  // the chord and put it back).
   const [discreetActive, setDiscreetActive] = useState(false);
+  // Whether the preview is genuinely delivering frames. The record button is
+  // gated on it: a camera that never produced a frame would otherwise let a
+  // take start that records nothing.
+  const [cameraDelivering, setCameraDelivering] = useState(false);
 
   const [estimate, setEstimate] = useState<SpaceEstimate | null>(null);
   const [disk, setDisk] = useState<DiskInfo | null>(null);
@@ -97,7 +104,6 @@ export default function App() {
     settings: RecordSettings;
     device: DeviceRecord;
   } | null>(null);
-  const recoveredDiscreet = useRef(false);
 
   const camera = deviceList?.devices.find(
     (d) => d.kind === "video" && d.fingerprint === videoFingerprint
@@ -178,7 +184,6 @@ export default function App() {
         if (s.presetId) setPresetId(s.presetId);
         if (s.sessionMinutes) setSessionMinutes(s.sessionMinutes);
         if (s.roomIndex) setRoomIndex(s.roomIndex);
-        if (!recoveredDiscreet.current) setDiscreet(s.discreet);
         settingsLoaded.current = true;
         // Only reach for the network once there is something to reach with.
         if (s.roundRobinUrl && s.roundRobinSecretConfigured) refreshSessions();
@@ -217,12 +222,9 @@ export default function App() {
           setPresetId(ctx.presetId);
           setProfileHash(ctx.profileHash);
           setOpened(ctx.opened);
-          recoveredDiscreet.current = true;
-          setDiscreet(ctx.discreet);
-          // Participants may still be in the room: come back hidden, exactly
-          // as the screen was before the reload.
-          setDiscreetActive(ctx.discreet);
         }
+        // Participants may still be in the room: always come back covered.
+        setDiscreetActive(true);
         setPhase("recording");
       })
       .catch(() => {});
@@ -242,13 +244,12 @@ export default function App() {
           ...(outputDir ? { outputDir } : {}),
           presetId,
           sessionMinutes,
-          discreet,
           roomIndex,
         })
         .catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
-  }, [outputDir, presetId, sessionMinutes, discreet, roomIndex]);
+  }, [outputDir, presetId, sessionMinutes, roomIndex]);
 
   // The session list arrives sorted today-first. An RA standing in a
   // conversation room should not have to pick "today" from a dropdown every
@@ -462,7 +463,7 @@ export default function App() {
         device: liveDevice,
         sessionCode: sessionCode || null,
         notes: null,
-        discreetMode: discreet,
+        discreetMode: true,
         profileName: presetById(presetId).name,
       });
       setResult(finalized);
@@ -504,7 +505,6 @@ export default function App() {
     recovered,
     camera,
     sessionCode,
-    discreet,
     presetId,
     opened,
     profileHash,
@@ -564,7 +564,7 @@ export default function App() {
         // rebuild this screen exactly as it was.
         {
           sessionCode,
-          discreet,
+          discreet: true,
           presetId,
           profileHash,
           opened: linked,
@@ -585,7 +585,7 @@ export default function App() {
       setStartedAtMs(Date.now());
       setElapsedMs(0);
       setPhase("recording");
-      if (discreet) setDiscreetActive(true);
+      setDiscreetActive(true);
     } catch (e) {
       setError(String(e));
     }
@@ -593,7 +593,6 @@ export default function App() {
     settings,
     outputDir,
     sessionCode,
-    discreet,
     phase,
     slotId,
     roomIndex,
@@ -605,7 +604,8 @@ export default function App() {
 
   // ---- discreet mode auto-stop -------------------------------------------
 
-  const autoStopMinutes = discreet ? sessionMinutes + DISCREET_AUTO_STOP_GRACE_MINUTES : null;
+  // A recording nobody can see must never be able to run forever.
+  const autoStopMinutes = sessionMinutes + DISCREET_AUTO_STOP_GRACE_MINUTES;
 
   const stopRef = useRef(handleStop);
   stopRef.current = handleStop;
@@ -659,7 +659,11 @@ export default function App() {
               ? "Not enough free space"
               : codeWarning
                 ? "Fix the session code first"
-                : null;
+                : !cameraDelivering
+                  // A camera that never produced a preview frame would record
+                  // nothing. The button unlocks the moment the preview moves.
+                  ? "Waiting for the camera's first frame…"
+                  : null;
 
   // ---- render -------------------------------------------------------------
 
@@ -680,7 +684,7 @@ export default function App() {
         stopping={stopping}
         autoStopMinutes={autoStopMinutes}
         onStop={handleStop}
-        onHide={discreet ? () => setDiscreetActive(true) : undefined}
+        onHide={() => setDiscreetActive(true)}
       />
     );
   }
@@ -726,7 +730,6 @@ export default function App() {
       outputDir={outputDir}
       sessionCode={sessionCode}
       sessionMinutes={sessionMinutes}
-      discreet={discreet}
       estimate={estimate}
       disk={disk}
       audioLevel={audioLevel}
@@ -825,7 +828,7 @@ export default function App() {
       }}
       onSessionCode={setSessionCode}
       onSessionMinutes={setSessionMinutes}
-      onToggleDiscreet={setDiscreet}
+      onCameraSignal={setCameraDelivering}
       onRefreshDevices={refreshDevices}
       onRecord={handleRecord}
     />

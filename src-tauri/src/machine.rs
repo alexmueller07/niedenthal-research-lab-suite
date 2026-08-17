@@ -412,6 +412,33 @@ pub async fn launch_mode(app: AppHandle, window: tauri::Window, role: String) ->
         }
     }
 
+    // Control mode is nothing but the Round Robin site in a window — opening
+    // it against a dead server would hand the RA a bare browser error page.
+    // Probe first and fail here instead, where the launcher can say it in
+    // words next to the working settings button. Any HTTP response counts as
+    // alive; auth is the site's own business.
+    if parsed == Role::Control {
+        let url = load(&app)
+            .round_robin_url
+            .filter(|u| !u.trim().is_empty())
+            .ok_or("No Round Robin server address is set — open Settings first.")?;
+        let reachable = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(4))
+            .build()
+            .map_err(|e| e.to_string())?
+            .get(&url)
+            .send()
+            .await
+            .is_ok();
+        if !reachable {
+            return Err(format!(
+                "Round Robin at {url} is not reachable right now. If you are testing locally, \
+                 start the server first (START-TEST-SERVER.bat, or `npm run dev` in the \
+                 round-robin folder), then try again."
+            ));
+        }
+    }
+
     let mut settings = load(&app);
     settings.version = 1;
     settings.role = Some(parsed.as_str().to_string());
