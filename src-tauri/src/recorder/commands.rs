@@ -256,7 +256,14 @@ pub async fn start_recording(app: tauri::AppHandle, request: StartRequest) -> Re
         ));
     }
 
-    let settings = request.settings;
+    // Ask the machine which encoder it can actually sustain before committing
+    // a session to it. Software x264 cannot hold 1080p30 in real time on an
+    // ordinary laptop, and falling behind does not merely drop frames — it
+    // produces a file shorter than the conversation, with every frame time
+    // wrong. See the note above best_encoder.
+    let mut settings = request.settings;
+    settings.encoder = ffmpeg::best_encoder(&app).await;
+
     let path_for_task = capture_path.clone();
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -378,6 +385,10 @@ pub async fn preflight(
         capture: capture.to_string_lossy().to_string(),
         preview: preview.to_string_lossy().to_string(),
     };
+    // Preflight has to measure the encoder the real take will use, or it
+    // measures nothing worth knowing.
+    let mut settings = settings;
+    settings.encoder = ffmpeg::best_encoder(&app).await;
     let args = ffmpeg::build_preflight_args(ffmpeg::CaptureBackend::current(), &settings, 5, &paths);
     let (stdout, stderr) = ffmpeg::run_tool(&app, "ffmpeg", args).await?;
 
@@ -560,6 +571,7 @@ pub async fn finalize_recording(
         &request.outcome.progress,
         request.settings.fps,
         &verification,
+        request.outcome.wall_duration_ms,
     );
 
     let audio = request.settings.audio.clone();

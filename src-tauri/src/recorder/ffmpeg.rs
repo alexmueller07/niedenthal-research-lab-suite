@@ -7,9 +7,190 @@
 // wrong. So the args are built by testable code with the reasoning written
 // down, not assembled ad hoc at the call site.
 
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
+
+// ---------------------------------------------------------------------------
+// Choosing an encoder that can keep up
+// ---------------------------------------------------------------------------
+//
+// Software x264 cannot hold 1080p30 in real time on an ordinary laptop, and
+// the failure mode is silent and severe: FFmpeg consumes the camera slower
+// than the camera produces, and the finished file is *shorter than the
+// conversation* — 158 s of session became 52 s of video on the first real
+// test of this app (2026-08-17), with every frame time therefore wrong. For
+// a study that aligns a 100 ms slider trace against video time, that is not
+// a performance issue, it is corrupted data.
+//
+// Every machine made in the last decade has a hardware H.264 encoder that
+// does this at 1.0x while barely warming up (measured on the test laptop:
+// x264 veryfast 0.34x, Intel QSV 0.99x). So the encoder is chosen by asking
+// the machine what it actually has, once per run, and x264 remains the
+// fallback for anything exotic.
+//
+// The tradeoff, stated plainly because it changes a lab guarantee: two
+// machines with different GPUs no longer encode byte-identically. The
+// pinned FFmpeg build still guarantees identical *timing* semantics, the
+// resolution/frame rate/bitrate are unchanged, and the encoder that actually
+// ran is recorded in every recording's manifest — but a profile hash from an
+// Intel machine will differ from an NVIDIA one. Randy needs to know that
+// before the lab standardises.
+
+/// Candidates in preference order. All are hardware except the last.
+const ENCODER_CANDIDATES: [&str; 4] = ["h264_qsv", "h264_nvenc", "h264_amf", "libx264"];
+
+static DETECTED_ENCODER: Mutex<Option<String>> = Mutex::new(None);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncoderFamily {
+    X264,
+    Qsv,
+    Nvenc,
+    Amf,
+}
+
+pub fn encoder_family(name: &str) -> EncoderFamily {
+    match name {
+        "h264_qsv" => EncoderFamily::Qsv,
+        "h264_nvenc" => EncoderFamily::Nvenc,
+        "h264_amf" => EncoderFamily::Amf,
+        _ => EncoderFamily::X264,
+    }
+}
+
+/// The best encoder this machine can actually run, probed once per process.
+///
+/// "Listed in -encoders" is not the same as "works": a driver can be absent
+/// or refuse a session. Each candidate therefore has to encode a handful of
+/// synthetic frames to disk-nowhere before it is trusted.
+pub async fn best_encoder(app: &AppHandle) -> String {
+    if let Ok(guard) = DETECTED_ENCODER.lock() {
+        if let Some(found) = guard.as_ref() {
+            return found.clone();
+        }
+    }
+
+    let mut chosen = "libx264".to_string();
+    for candidate in ENCODER_CANDIDATES {
+        if candidate == "libx264" {
+            break; // the fallback needs no proving
+        }
+        let args: Vec<String> = [
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "nullsrc=s=640x480:r=30:d=0.3",
+            "-c:v",
+            candidate,
+            "-f",
+            "null",
+            "-",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        if run_tool(app, "ffmpeg", args).await.is_ok() {
+            chosen = candidate.to_string();
+            break;
+        }
+    }
+
+    if let Ok(mut guard) = DETECTED_ENCODER.lock() {
+        *guard = Some(chosen.clone());
+    }
+    chosen
+}
+
+/// Encoder selection plus rate control, which have to be decided together —
+/// the hardware encoders spell their speed knob differently and none of them
+/// take x264's `-crf`.
+fn encode_args(a: &mut Vec<String>, settings: &RecordSettings) {
+    let push = |a: &mut Vec<String>, s: &str| a.push(s.to_string());
+    let family = encoder_family(&settings.encoder);
+
+    push(a, "-c:v");
+    a.push(settings.encoder.clone());
+
+    match family {
+        EncoderFamily::X264 => {
+            push(a, "-preset");
+            a.push(settings.encoder_preset.clone());
+        }
+        EncoderFamily::Qsv => {
+            // QSV understands x264's preset vocabulary.
+            push(a, "-preset");
+            a.push(settings.encoder_preset.clone());
+        }
+        EncoderFamily::Nvenc => {
+            // p1 (fastest) .. p7. p4 is the balanced point and still an order
+            // of magnitude faster than software here.
+            push(a, "-preset");
+            push(a, "p4");
+            push(a, "-tune");
+            push(a, "ll"); // low latency: this is live capture, not a transcode
+        }
+        EncoderFamily::Amf => {
+            push(a, "-quality");
+            push(a, "balanced");
+        }
+    }
+
+    // Bitrate. The hardware encoders have no CRF equivalent worth trusting
+    // across vendors, so a CRF profile is expressed to them as a bitrate
+    // derived from the frame size — the same picture budget, stated the way
+    // each encoder understands.
+    let kbps = match settings.rate_control {
+        RateControl::Cbr { kbps } => kbps,
+        RateControl::Crf { crf } => {
+            let pixels = f64::from(settings.width * settings.height);
+            let base = pixels * f64::from(settings.fps) / 1000.0 * 0.10;
+            // Higher CRF means smaller; 23 is the neutral point.
+            let scale = 2f64.powf((23.0 - f64::from(crf)) / 6.0);
+            ((base * scale) as u32).clamp(1500, 40000)
+        }
+    };
+
+    if family == EncoderFamily::X264 {
+        if let RateControl::Crf { crf } = settings.rate_control {
+            push(a, "-crf");
+            a.push(crf.to_string());
+        } else {
+            // maxrate == bitrate with a 2x buffer is what actually pins the
+            // size; -b:v alone is only an average target and can overshoot.
+            push(a, "-b:v");
+            a.push(format!("{kbps}k"));
+            push(a, "-maxrate");
+            a.push(format!("{kbps}k"));
+            push(a, "-bufsize");
+            a.push(format!("{}k", kbps * 2));
+        }
+    } else {
+        push(a, "-b:v");
+        a.push(format!("{kbps}k"));
+        push(a, "-maxrate");
+        a.push(format!("{kbps}k"));
+        push(a, "-bufsize");
+        a.push(format!("{}k", kbps * 2));
+    }
+
+    // 4:2:0 because anything else is unplayable in half the tools a lab uses,
+    // including the PPS app's own <video> element. QSV takes the camera's own
+    // nv12 straight through (same 4:2:0 data, one less conversion per frame);
+    // the others want it spelled yuv420p.
+    push(a, "-pix_fmt");
+    if family == EncoderFamily::Qsv {
+        push(a, "nv12");
+    } else {
+        push(a, "yuv420p");
+    }
+}
 
 /// Which host API FFmpeg captures through. Chosen by target OS, not by the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -240,32 +421,7 @@ pub fn build_record_args(
         push(&mut a, "0:a:0");
     }
 
-    push(&mut a, "-c:v");
-    a.push(settings.encoder.clone());
-    push(&mut a, "-preset");
-    a.push(settings.encoder_preset.clone());
-
-    match settings.rate_control {
-        RateControl::Cbr { kbps } => {
-            // maxrate == bitrate with a 2x buffer is what actually pins the
-            // size; -b:v alone is only an average target and can overshoot.
-            push(&mut a, "-b:v");
-            a.push(format!("{kbps}k"));
-            push(&mut a, "-maxrate");
-            a.push(format!("{kbps}k"));
-            push(&mut a, "-bufsize");
-            a.push(format!("{}k", kbps * 2));
-        }
-        RateControl::Crf { crf } => {
-            push(&mut a, "-crf");
-            a.push(crf.to_string());
-        }
-    }
-
-    // yuv420p because anything else is unplayable in half the tools a lab uses,
-    // including the PPS app's own <video> element.
-    push(&mut a, "-pix_fmt");
-    push(&mut a, "yuv420p");
+    encode_args(&mut a, settings);
 
     let gop = ((settings.gop_seconds * f64::from(settings.fps)).round() as u32).max(1);
     push(&mut a, "-g");

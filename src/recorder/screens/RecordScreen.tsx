@@ -178,10 +178,17 @@ export default function RecordScreen(props: Props) {
         </p>
       )}
 
-      {encoderStruggling && dropped === 0 && (
-        <p className="rounded-lg bg-[--color-warn]/10 px-3 py-2.5 text-sm leading-relaxed text-[--color-warn]">
-          The encoder is running slower than real time. Nothing has been lost yet, but close
-          other applications if you can.
+      {/* Not a performance note — a correctness alarm. Below real time means
+          the finished video ends up shorter than the conversation and every
+          frame time in it is wrong, which is exactly what this app exists to
+          prevent. */}
+      {encoderStruggling && (
+        <p className="rounded-lg bg-[--color-bad] px-4 py-3 text-sm font-semibold leading-relaxed text-white">
+          This machine is encoding at {speed.toFixed(2)}× real time — slower than the
+          conversation is happening. If it stays here, the video will come out about{" "}
+          {(1 / Math.max(speed, 0.05)).toFixed(1)}× too fast and its timing will be
+          unusable for the rating task. Close other applications now; if it does not
+          recover, stop and switch to a lower quality preset.
         </p>
       )}
 

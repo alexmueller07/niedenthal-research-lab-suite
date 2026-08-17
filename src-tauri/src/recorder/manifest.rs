@@ -133,8 +133,34 @@ pub fn achieved_fps(progress: &ProgressSnapshot, wall_duration_ms: u64) -> f64 {
 /// Plain-language summary for the finish screen. Reports what happened rather
 /// than reassuring: a recording that dropped frames says so, in frames and in
 /// seconds of lost material.
-pub fn quality_summary(progress: &ProgressSnapshot, fps: u32, verification: &Verification) -> String {
+pub fn quality_summary(
+    progress: &ProgressSnapshot,
+    fps: u32,
+    verification: &Verification,
+    wall_duration_ms: u64,
+) -> String {
     let mut parts: Vec<String> = Vec::new();
+
+    // The worst thing this app can do is hand back a video that is shorter
+    // than the conversation it recorded. It happens when the encoder cannot
+    // keep up: FFmpeg consumes the camera slower than real time, and every
+    // frame timestamp in the result is wrong — which silently destroys the
+    // alignment the whole PPS measurement rests on. Said first, said plainly.
+    let wall_seconds = wall_duration_ms as f64 / 1000.0;
+    if wall_seconds > 5.0 && verification.duration_seconds > 0.0 {
+        let shortfall = wall_seconds - verification.duration_seconds;
+        if shortfall > wall_seconds * 0.02 && shortfall > 1.0 {
+            parts.push(format!(
+                "THE VIDEO IS SHORTER THAN THE SESSION: {:.0} s of video for {:.0} s of recording, \
+                 so it plays about {:.1}x too fast and its timing cannot be trusted. This machine \
+                 could not encode in real time. Do not use this recording for the rating task — \
+                 tell Alex or Randy.",
+                verification.duration_seconds,
+                wall_seconds,
+                wall_seconds / verification.duration_seconds.max(0.001)
+            ));
+        }
+    }
 
     if progress.dropped_frames > 0 {
         let seconds = progress.dropped_frames as f64 / f64::from(fps.max(1));
@@ -195,6 +221,39 @@ mod tests {
             gop_seconds: 2.0,
             container: ContainerStrategy::CrashSafeMkv,
         }
+    }
+
+    #[test]
+    fn a_video_shorter_than_the_session_is_the_headline() {
+        // The 2026-08-17 failure: 158 s of recording produced 52 s of video
+        // because the encoder ran at a third of real time. Every frame time
+        // in that file is wrong, so this has to be said first and in words an
+        // RA acts on — not left implicit in a frame count.
+        let mut v = verification(vec![]);
+        v.duration_seconds = 52.5;
+        v.frame_count = 1562;
+        let p = ProgressSnapshot {
+            frames: 1562,
+            speed: 0.337,
+            ..Default::default()
+        };
+        let s = quality_summary(&p, 30, &v, 158_870);
+        assert!(s.starts_with("THE VIDEO IS SHORTER THAN THE SESSION"), "got: {s}");
+        assert!(s.contains("52 s of video for 159 s"), "got: {s}");
+        assert!(s.contains("3.0x too fast"), "got: {s}");
+    }
+
+    #[test]
+    fn a_take_that_kept_up_says_nothing_about_length() {
+        // 600 s of video for 600 s of session: the normal case must stay
+        // quiet, or the alarm above becomes noise nobody reads.
+        let p = ProgressSnapshot {
+            frames: 18000,
+            speed: 1.0,
+            ..Default::default()
+        };
+        let s = quality_summary(&p, 30, &verification(vec![]), 600_000);
+        assert!(!s.contains("SHORTER THAN THE SESSION"), "got: {s}");
     }
 
     fn verification(problems: Vec<String>) -> Verification {
@@ -265,14 +324,14 @@ mod tests {
     #[test]
     fn a_clean_take_says_so_without_hedging() {
         let p = ProgressSnapshot { frames: 18000, speed: 1.0, ..Default::default() };
-        let s = quality_summary(&p, 30, &verification(vec![]));
+        let s = quality_summary(&p, 30, &verification(vec![]), 0);
         assert!(s.starts_with("Verified:"));
     }
 
     #[test]
     fn dropped_frames_are_reported_in_seconds_lost() {
         let p = ProgressSnapshot { frames: 17_550, dropped_frames: 450, speed: 1.0, ..Default::default() };
-        let s = quality_summary(&p, 30, &verification(vec![]));
+        let s = quality_summary(&p, 30, &verification(vec![]), 0);
         assert!(s.contains("450 frames were dropped"));
         assert!(s.contains("15.0 s"));
     }
@@ -281,14 +340,14 @@ mod tests {
     fn a_few_duplicates_are_normal_and_stay_quiet() {
         // CFR is maintained by duplicating; a handful is not worth alarming over.
         let p = ProgressSnapshot { frames: 18000, duplicated_frames: 3, speed: 1.0, ..Default::default() };
-        let s = quality_summary(&p, 30, &verification(vec![]));
+        let s = quality_summary(&p, 30, &verification(vec![]), 0);
         assert!(s.starts_with("Verified:"));
     }
 
     #[test]
     fn heavy_duplication_is_surfaced_as_a_camera_problem() {
         let p = ProgressSnapshot { frames: 18000, duplicated_frames: 900, speed: 1.0, ..Default::default() };
-        let s = quality_summary(&p, 30, &verification(vec![]));
+        let s = quality_summary(&p, 30, &verification(vec![]), 0);
         assert!(s.contains("duplicated"));
         assert!(s.contains("not keeping up"));
     }
@@ -296,14 +355,14 @@ mod tests {
     #[test]
     fn a_struggling_encoder_is_named() {
         let p = ProgressSnapshot { frames: 18000, speed: 0.82, ..Default::default() };
-        let s = quality_summary(&p, 30, &verification(vec![]));
+        let s = quality_summary(&p, 30, &verification(vec![]), 0);
         assert!(s.contains("0.82x real time"));
     }
 
     #[test]
     fn verification_problems_are_carried_through_verbatim() {
         let p = ProgressSnapshot { frames: 18000, speed: 1.0, ..Default::default() };
-        let s = quality_summary(&p, 30, &verification(vec!["The audio track is effectively silent.".into()]));
+        let s = quality_summary(&p, 30, &verification(vec!["The audio track is effectively silent.".into()]), 0);
         assert!(s.contains("effectively silent"));
     }
 }
