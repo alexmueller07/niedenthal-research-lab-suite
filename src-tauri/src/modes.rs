@@ -7,7 +7,13 @@
 // behavior to the handle it just created, and the close guards match on label.
 // tauri.conf.json declares no windows at all.
 
+use tauri::webview::Color;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+/// Painted behind every app window before the webview first renders, so a
+/// slow first paint shows the theme color instead of a white flash. Matches
+/// the launcher/recorder dark background; the station is pure black anyway.
+const DARK: Color = Color(14, 16, 19, 255);
 
 use crate::machine::Role;
 use crate::recorder::capture::{RecorderState, SessionKind};
@@ -27,6 +33,7 @@ pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
                 WebviewUrl::App("recorder.html".into()),
             )
             .title("Lab Recorder")
+            .background_color(DARK)
             .inner_size(1280.0, 880.0)
             .min_inner_size(960.0, 640.0)
             .center()
@@ -54,6 +61,7 @@ pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
                 WebviewUrl::App("station.html".into()),
             )
             .title("PPS Study")
+            .background_color(DARK)
             .inner_size(1440.0, 900.0)
             .maximized(true)
             .build()?;
@@ -114,7 +122,8 @@ pub fn open_setup_window(app: &AppHandle) {
         LAUNCHER_LABEL,
         WebviewUrl::App("index.html".into()),
     )
-    .title("Niedenthal Lab Suite — Machine Setup")
+    .title("Niedenthal Lab Suite")
+    .background_color(DARK)
     .inner_size(980.0, 820.0)
     .center()
     .build();

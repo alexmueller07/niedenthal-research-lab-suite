@@ -51,7 +51,13 @@ pub fn run() {
                         Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT,
                         Code::KeyL,
                     ) {
-                        modes::open_setup_window(app);
+                        // Window creation is dispatched from a spawned task,
+                        // never done inside this event callback — same
+                        // deadlock class as sync commands (see launch_mode).
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            modes::open_setup_window(&handle);
+                        });
                     }
                 })
                 .build(),

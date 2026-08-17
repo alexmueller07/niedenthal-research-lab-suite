@@ -382,8 +382,14 @@ pub async fn machine_test(app: AppHandle) -> Result<String, String> {
 
 /// Opens the chosen mode's window and closes the launcher. Remembers the
 /// choice only so the next launch can preselect it — nothing is locked.
+///
+/// `async` is load-bearing, not style: on Windows, creating a window from a
+/// synchronous command deadlocks the event loop — the window shell appears
+/// white, the webview never initializes, and close events are never
+/// processed. An async command runs off the main thread, so the creation
+/// request round-trips through a live event loop.
 #[tauri::command]
-pub fn launch_mode(app: AppHandle, window: tauri::Window, role: String) -> Result<(), String> {
+pub async fn launch_mode(app: AppHandle, window: tauri::Window, role: String) -> Result<(), String> {
     caller_may_configure(&window)?;
     let parsed = parse_role(&role).ok_or_else(|| format!("unknown role: {role}"))?;
     if parsed == Role::Setup {
