@@ -399,6 +399,10 @@ pub struct StopOutcome {
     pub forced: bool,
     pub stderr_tail: String,
     pub container: ContainerStrategy,
+    /// The encoder that actually ran, resolved by Rust at record time.
+    /// Defaulted so an outcome serialized by an older frontend still loads.
+    #[serde(default)]
+    pub encoder: String,
 }
 
 /// Stops the preview if one is running. A live RECORD session is deliberately
@@ -487,6 +491,11 @@ pub fn stop_recording(app: &AppHandle) -> Result<StopOutcome, String> {
         forced,
         stderr_tail: session.shared.stderr_text(),
         container: session.settings.container,
+        // The encoder is resolved in Rust at record time (hardware when the
+        // machine has one), so the frontend's copy of the settings still says
+        // whatever the preset asked for. The manifest is a receipt: it has to
+        // report what actually ran, not what was requested.
+        encoder: session.settings.encoder.clone(),
     })
 }
 

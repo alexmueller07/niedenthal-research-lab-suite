@@ -588,7 +588,13 @@ pub async fn finalize_recording(
             height: request.settings.height,
             requested_fps: request.settings.fps,
             input_format: request.settings.input_format.clone(),
-            encoder: request.settings.encoder.clone(),
+            // What actually ran, which is not what the preset asked for when
+            // Rust resolved a hardware encoder for this machine.
+            encoder: if request.outcome.encoder.is_empty() {
+                request.settings.encoder.clone()
+            } else {
+                request.outcome.encoder.clone()
+            },
             encoder_preset: request.settings.encoder_preset.clone(),
             rate_control: request.settings.rate_control,
             gop_seconds: request.settings.gop_seconds,

@@ -114,6 +114,8 @@ export interface StopOutcome {
   forced: boolean;
   stderrTail: string;
   container: ContainerStrategy;
+  /** The encoder that actually ran, resolved by Rust at record time. */
+  encoder: string;
 }
 
 export interface Verification {

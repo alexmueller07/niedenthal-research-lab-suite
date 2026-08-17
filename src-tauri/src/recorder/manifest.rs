@@ -146,10 +146,16 @@ pub fn quality_summary(
     // keep up: FFmpeg consumes the camera slower than real time, and every
     // frame timestamp in the result is wrong — which silently destroys the
     // alignment the whole PPS measurement rests on. Said first, said plainly.
+    // Thresholds allow for camera start-up: the wall clock begins when the
+    // operator presses Record, and a webcam takes a second or three to hand
+    // over its first frame, so a few seconds of shortfall is normal and must
+    // not cry wolf. A machine that cannot encode in real time misses by tens
+    // of percent (the observed failure was 200%), so 10% separates the two
+    // cleanly.
     let wall_seconds = wall_duration_ms as f64 / 1000.0;
-    if wall_seconds > 5.0 && verification.duration_seconds > 0.0 {
+    if wall_seconds > 15.0 && verification.duration_seconds > 0.0 {
         let shortfall = wall_seconds - verification.duration_seconds;
-        if shortfall > wall_seconds * 0.02 && shortfall > 1.0 {
+        if shortfall > wall_seconds * 0.10 && shortfall > 3.0 {
             parts.push(format!(
                 "THE VIDEO IS SHORTER THAN THE SESSION: {:.0} s of video for {:.0} s of recording, \
                  so it plays about {:.1}x too fast and its timing cannot be trusted. This machine \
@@ -241,6 +247,24 @@ mod tests {
         assert!(s.starts_with("THE VIDEO IS SHORTER THAN THE SESSION"), "got: {s}");
         assert!(s.contains("52 s of video for 159 s"), "got: {s}");
         assert!(s.contains("3.0x too fast"), "got: {s}");
+    }
+
+    #[test]
+    fn camera_start_up_lag_does_not_cry_wolf() {
+        // Measured on the real app: 107.1 s of wall clock produced 104.0 s of
+        // video because the webcam takes ~3 s to hand over its first frame.
+        // That is normal and must stay silent, or the alarm above becomes
+        // noise and nobody reads the one that matters.
+        let mut v = verification(vec![]);
+        v.duration_seconds = 104.0;
+        v.frame_count = 3114;
+        let p = ProgressSnapshot {
+            frames: 3114,
+            speed: 1.0,
+            ..Default::default()
+        };
+        let s = quality_summary(&p, 30, &v, 107_100);
+        assert!(!s.contains("SHORTER THAN THE SESSION"), "got: {s}");
     }
 
     #[test]
