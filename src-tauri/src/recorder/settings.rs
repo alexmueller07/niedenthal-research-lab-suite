@@ -78,7 +78,8 @@ pub fn load(app: &AppHandle) -> AppSettings {
     // defaults are always usable.
     std::fs::read_to_string(settings_path(app))
         .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
+        // BOM-tolerant for the same reason as machine::load.
+        .and_then(|text| serde_json::from_str(text.trim_start_matches('\u{feff}')).ok())
         .unwrap_or_default()
 }
 

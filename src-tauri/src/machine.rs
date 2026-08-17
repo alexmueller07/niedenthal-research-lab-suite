@@ -101,10 +101,13 @@ fn machine_path(app: &AppHandle) -> PathBuf {
 
 pub fn load(app: &AppHandle) -> MachineSettings {
     // A corrupt or missing profile must not stop the app; defaults mean
-    // "unconfigured", which boots the wizard.
+    // "unconfigured", which boots the wizard. The BOM strip is not
+    // hypothetical: editors and scripts on Windows love writing UTF-8 with a
+    // BOM, and serde_json refuses it — which silently read a hand-edited
+    // profile as "unconfigured".
     std::fs::read_to_string(machine_path(app))
         .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .and_then(|text| serde_json::from_str(text.trim_start_matches('\u{feff}')).ok())
         .unwrap_or_default()
 }
 
