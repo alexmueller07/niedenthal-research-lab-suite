@@ -420,6 +420,15 @@ export default function App() {
           "A recording is still running. Press Stop first — closing now would cut the file short."
         )
       ),
+      // FFmpeg exited on its own mid-take — a crash, a device loss, a disk
+      // error. Harvest whatever was captured and show the verdict right away
+      // instead of a screen that pretends to still be recording. Rust only
+      // emits this for RECORD sessions, and handleStop's phase/stopping guard
+      // makes it a no-op for the normal stop path (where the process also
+      // terminates, deliberately).
+      listen("recording-finished", () => {
+        void stopRef.current();
+      }),
     ];
     return () => {
       void Promise.all(unlisten).then((fns) => fns.forEach((fn) => fn()));

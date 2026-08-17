@@ -303,7 +303,14 @@ fn spawn_session(
                         *code = payload.code;
                     }
                     reader_shared.finished.store(true, Ordering::SeqCst);
-                    let _ = reader_app.emit("recording-finished", payload.code);
+                    // Only a RECORD session announces its end. A preview exit
+                    // firing this event could arrive at the webview a beat
+                    // after a take began, and the frontend's died-mid-take
+                    // handler would then stop the brand-new recording — the
+                    // same race stop_any closed, through a different door.
+                    if kind == SessionKind::Record {
+                        let _ = reader_app.emit("recording-finished", payload.code);
+                    }
                 }
                 CommandEvent::Error(err) => {
                     reader_shared.push_stderr(format!("process error: {err}"));
@@ -394,11 +401,21 @@ pub struct StopOutcome {
     pub container: ContainerStrategy,
 }
 
-/// Stops whatever is running, without caring what it was.
+/// Stops the preview if one is running. A live RECORD session is deliberately
+/// untouchable from here: this is what the webview's stop_preview command and
+/// the preflight teardown call, and a React effect cleanup firing one beat
+/// after a take started must not be able to kill it. It could, and did —
+/// every recording died at ~19 frames because the setup screen's preview
+/// cleanup ran right after the phase flipped to recording (2026-08-17).
+/// Ending a take goes through stop_recording, which returns the outcome the
+/// finalize step needs; nothing else may end one.
 pub fn stop_any(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<RecorderState>();
     let taken = {
         let mut slot = state.active.lock().map_err(|_| "recorder state is poisoned")?;
+        if matches!(slot.as_ref().map(|s| s.kind), Some(SessionKind::Record)) {
+            return Ok(());
+        }
         slot.take()
     };
     let Some(mut session) = taken else { return Ok(()) };

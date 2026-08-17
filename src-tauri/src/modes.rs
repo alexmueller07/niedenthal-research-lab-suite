@@ -82,14 +82,21 @@ pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
             register_station_shortcuts(app);
         }
         Role::Control => {
-            // A plain browsing window on the Round Robin site. Deliberately
-            // no capability targets this label and no capability lists a
-            // remote origin, so the page gets zero IPC — it is exactly the
-            // website, framed. Accelerator keys stay enabled here: F5 on a
-            // website is normal life, and there is no app state to lose.
+            // A plain browsing window on the Round Robin site's ADMIN pages.
+            // Straight to /admin, not the site root: the root is the
+            // participant portal, which participants reach from home through
+            // their emailed links — an RA opening Control mode in the lab
+            // wants the session dashboard, every time. (The admin password
+            // prompt appears on first use; the login cookie then holds for
+            // the shift.) Deliberately no capability targets this label and
+            // no capability lists a remote origin, so the page gets zero IPC
+            // — it is exactly the website, framed. Accelerator keys stay
+            // enabled here: F5 on a website is normal life, and there is no
+            // app state to lose.
             let Some(url) = crate::machine::load(app)
                 .round_robin_url
                 .filter(|u| !u.trim().is_empty())
+                .map(|u| format!("{}/admin", u.trim_end_matches('/')))
                 .and_then(|u| tauri::Url::parse(&u).ok())
             else {
                 // No usable server address: fall back to setup, which says
