@@ -177,6 +177,7 @@ export default function App() {
         if (s.outputDir) setOutputDir(s.outputDir);
         if (s.presetId) setPresetId(s.presetId);
         if (s.sessionMinutes) setSessionMinutes(s.sessionMinutes);
+        if (s.roomIndex) setRoomIndex(s.roomIndex);
         if (!recoveredDiscreet.current) setDiscreet(s.discreet);
         settingsLoaded.current = true;
         // Only reach for the network once there is something to reach with.
@@ -242,11 +243,22 @@ export default function App() {
           presetId,
           sessionMinutes,
           discreet,
+          roomIndex,
         })
         .catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
-  }, [outputDir, presetId, sessionMinutes, discreet]);
+  }, [outputDir, presetId, sessionMinutes, discreet, roomIndex]);
+
+  // The session list arrives sorted today-first. An RA standing in a
+  // conversation room should not have to pick "today" from a dropdown every
+  // single session — preselect it, leave the dropdown for the exceptions.
+  useEffect(() => {
+    if (!slotId && sessions.length > 0) {
+      setSlotId(sessions[0].slotId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions]);
 
   // The launch-time flush retries anything a previous session left queued.
   useEffect(() => {

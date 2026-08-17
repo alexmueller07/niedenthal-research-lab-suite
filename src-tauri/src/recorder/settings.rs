@@ -23,6 +23,10 @@ pub struct AppSettings {
     pub preset_id: Option<String>,
     pub session_minutes: Option<u32>,
     pub discreet: bool,
+    /// Which Round Robin room this machine records. A conversation-room
+    /// computer physically *is* one room, so remembering it means the RA
+    /// picks it once and never again.
+    pub room_index: Option<u32>,
 }
 
 /// What the frontend is allowed to see. Same wire shape as the standalone
@@ -34,6 +38,7 @@ pub struct PublicSettings {
     pub preset_id: Option<String>,
     pub session_minutes: Option<u32>,
     pub discreet: bool,
+    pub room_index: Option<u32>,
     pub round_robin_url: Option<String>,
     pub research_drive_root: Option<String>,
     /// Whether a secret exists — never the secret itself.
@@ -46,6 +51,7 @@ pub fn compose_public(recorder: &AppSettings, machine: &MachineSettings) -> Publ
         preset_id: recorder.preset_id.clone(),
         session_minutes: recorder.session_minutes,
         discreet: recorder.discreet,
+        room_index: recorder.room_index,
         round_robin_url: machine.round_robin_url.clone(),
         research_drive_root: machine.research_drive_root.clone(),
         round_robin_secret_configured: machine
@@ -99,6 +105,7 @@ pub fn merge_update(existing: &AppSettings, update: &SettingsUpdate) -> AppSetti
             .or_else(|| existing.preset_id.clone()),
         session_minutes: update.session_minutes.or(existing.session_minutes),
         discreet: update.discreet.unwrap_or(existing.discreet),
+        room_index: update.room_index.or(existing.room_index),
     }
 }
 
@@ -111,6 +118,7 @@ pub struct SettingsUpdate {
     pub preset_id: Option<String>,
     pub session_minutes: Option<u32>,
     pub discreet: Option<bool>,
+    pub room_index: Option<u32>,
     pub round_robin_url: Option<String>,
     pub round_robin_secret: Option<String>,
     pub research_drive_root: Option<String>,
@@ -135,6 +143,7 @@ mod tests {
             preset_id: Some("lab-standard".into()),
             session_minutes: Some(10),
             discreet: true,
+            room_index: Some(1),
         }
     }
 

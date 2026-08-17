@@ -21,6 +21,15 @@ export interface MachineUpdate {
   researchDriveRoot?: string;
 }
 
+export interface MachineHealth {
+  configured: boolean;
+  serverOk: boolean;
+  sessionCount: number | null;
+  serverDetail: string | null;
+  driveConfigured: boolean;
+  driveOk: boolean;
+}
+
 export const machineStatus = () => invoke<MachinePublic>("machine_status");
 
 export const machineConfigure = (update: MachineUpdate) =>
@@ -28,6 +37,8 @@ export const machineConfigure = (update: MachineUpdate) =>
 
 export const machineTest = () => invoke<string>("machine_test");
 
-/** Persists the role and restarts the app into it. Does not resolve. */
-export const machineFinishSetup = (role: RoleName) =>
-  invoke<void>("machine_finish_setup", { role });
+/** Structured probes for the home screen's status chips. */
+export const machineHealth = () => invoke<MachineHealth>("machine_health");
+
+/** Opens the chosen mode's window and closes the launcher. */
+export const launchMode = (role: RoleName) => invoke<void>("launch_mode", { role });

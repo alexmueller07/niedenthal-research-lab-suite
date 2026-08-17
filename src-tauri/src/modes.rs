@@ -19,10 +19,6 @@ pub const LAUNCHER_LABEL: &str = "launcher";
 pub const CONTROL_LABEL: &str = "control";
 
 pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
-    // The machine-setup chord exists in every role. On a Control machine the
-    // window is a remote page with no IPC, so this OS-level chord is
-    // deliberately the only way to reconfigure it.
-    register_reconfigure_chord(app);
     match role {
         Role::Record => {
             let window = WebviewWindowBuilder::new(
@@ -130,9 +126,9 @@ pub fn open_setup_window(app: &AppHandle) {
 
 /// Ctrl+Alt+Shift+L — chosen to collide with neither of the modes' existing
 /// chords (station Ctrl+Shift+Q save-and-quit, recorder Ctrl+Shift+R discreet
-/// unlock). Registration failure is logged, not fatal: the wizard still opens
-/// on the next boot of an unconfigured machine.
-fn register_reconfigure_chord(app: &AppHandle) {
+/// unlock). Registered once at startup (lib.rs). Registration failure is
+/// logged, not fatal: the chooser still opens on every fresh launch.
+pub fn register_reconfigure_chord(app: &AppHandle) {
     use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
     let chord = Shortcut::new(
         Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT),

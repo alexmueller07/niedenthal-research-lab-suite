@@ -62,6 +62,10 @@ pub fn run() {
             // apps' app-data the first time the suite runs on a lab machine.
             // Read-only toward the old apps: they stay working as fallback.
             machine::migrate_if_fresh(app.handle());
+            // The machine-setup chord is registered once, here, for the whole
+            // process — every mode keeps it, and on a Control machine (remote
+            // page, no IPC) it is deliberately the only reconfigure path.
+            modes::register_reconfigure_chord(app.handle());
             let role = machine::current_role(app.handle());
             modes::open_for_role(app.handle(), role)?;
             Ok(())
@@ -112,7 +116,8 @@ pub fn run() {
             machine::machine_status,
             machine::machine_configure,
             machine::machine_test,
-            machine::machine_finish_setup,
+            machine::machine_health,
+            machine::launch_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Niedenthal Lab Suite");

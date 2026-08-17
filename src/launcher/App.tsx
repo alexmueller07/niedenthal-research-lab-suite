@@ -1,61 +1,119 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
+  launchMode,
   machineConfigure,
-  machineFinishSetup,
+  machineHealth,
   machineStatus,
   machineTest,
 } from "./api";
-import type { MachinePublic, RoleName } from "./api";
+import type { MachineHealth, MachinePublic, RoleName } from "./api";
 
-// The one screen an RA sets a lab machine up with — and the screen
-// Ctrl+Alt+Shift+L reopens from any mode when something needs changing.
-//
-// Three shared values (server, secret, drive folder), one role, one test
-// button that answers in plain words. Finishing restarts the app straight
-// into the chosen role, and from then on the machine boots into it.
+// The screen every launch opens on: pick what this computer is doing right
+// now. Nothing is locked — the same machine can record this morning and be a
+// control screen this afternoon. The shared settings (server, secret, drive)
+// persist behind the gear; the status chips run their probes on every open so
+// an RA sees a dead server or an unmounted drive BEFORE a session starts, not
+// during one.
 
-const ROLES: { id: RoleName; title: string; blurb: string }[] = [
+const ROLES: { id: RoleName; title: string; blurb: string; key: string }[] = [
   {
     id: "record",
     title: "Recording room",
-    blurb:
-      "Runs the Lab Recorder. For the conversation-room computers with the webcam.",
+    blurb: "Record a conversation. For the room computers with the webcam.",
+    key: "1",
   },
   {
     id: "station",
     title: "Rating station",
-    blurb:
-      "Runs the PPS study app participants use. For the computer-room stations.",
+    blurb: "Run the PPS study a participant sits down to.",
+    key: "2",
   },
   {
     id: "control",
     title: "Control Center",
-    blurb:
-      "Shows the Round Robin session board. For an RA machine that watches the session.",
+    blurb: "Watch the live session board on the Round Robin site.",
+    key: "3",
   },
 ];
 
+function Chip({ ok, label }: { ok: boolean | null; label: string }) {
+  const tone =
+    ok === null
+      ? "border-[--color-panel-edge] text-[--color-ink-dim]"
+      : ok
+        ? "border-[--color-good]/40 bg-[--color-good]/10 text-[--color-good]"
+        : "border-[--color-bad]/40 bg-[--color-bad]/10 text-[--color-bad]";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${tone}`}>
+      <span aria-hidden>{ok === null ? "…" : ok ? "●" : "●"}</span>
+      {label}
+    </span>
+  );
+}
+
 export default function App() {
   const [status, setStatus] = useState<MachinePublic | null>(null);
-  const [role, setRole] = useState<RoleName | null>(null);
+  const [health, setHealth] = useState<MachineHealth | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [launching, setLaunching] = useState<RoleName | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Settings drafts
   const [url, setUrl] = useState("");
   const [driveRoot, setDriveRoot] = useState("");
   const [secretDraft, setSecretDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     void machineStatus()
       .then((s) => {
         setStatus(s);
         setUrl(s.roundRobinUrl ?? "");
         setDriveRoot(s.researchDriveRoot ?? "");
-        const known = ROLES.find((r) => r.id === s.role);
-        if (known) setRole(known.id);
+        // A machine with nothing configured opens straight onto settings —
+        // there is nothing useful to launch yet.
+        if (!s.roundRobinUrl && !s.secretConfigured) setShowSettings(true);
       })
       .catch((e) => setNote({ ok: false, text: String(e) }));
+    setHealth(null);
+    void machineHealth()
+      .then(setHealth)
+      .catch(() => setHealth(null));
   }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const launch = useCallback(
+    (role: RoleName) => {
+      if (launching) return;
+      setLaunching(role);
+      setNote(null);
+      void launchMode(role).catch((e) => {
+        setLaunching(null);
+        setNote({ ok: false, text: String(e) });
+      });
+    },
+    [launching]
+  );
+
+  // 1/2/3 launch the modes; Enter launches the last-used one. Small, but an
+  // RA opening this app four times a day feels it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (showSettings) return;
+      const byKey = ROLES.find((r) => r.key === e.key);
+      if (byKey) launch(byKey.id);
+      if (e.key === "Enter" && status?.role) {
+        const last = ROLES.find((r) => r.id === status.role);
+        if (last) launch(last.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showSettings, status, launch]);
 
   const save = async (): Promise<boolean> => {
     setBusy(true);
@@ -64,8 +122,6 @@ export default function App() {
       const next = await machineConfigure({
         roundRobinUrl: url.trim(),
         researchDriveRoot: driveRoot.trim(),
-        // Only send the secret when the field was touched; an untouched field
-        // must not clear the stored one.
         ...(secretDraft !== "" ? { roundRobinSecret: secretDraft } : {}),
       });
       setStatus(next);
@@ -88,19 +144,7 @@ export default function App() {
       setNote({ ok: false, text: String(e) });
     } finally {
       setBusy(false);
-    }
-  };
-
-  const start = async () => {
-    if (!role) return;
-    if (!(await save())) return;
-    setBusy(true);
-    setNote({ ok: true, text: "Restarting into the chosen role…" });
-    try {
-      await machineFinishSetup(role);
-    } catch (e) {
-      setBusy(false);
-      setNote({ ok: false, text: String(e) });
+      void machineHealth().then(setHealth).catch(() => {});
     }
   };
 
@@ -119,126 +163,180 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-semibold">Machine setup</h1>
-      <p className="mt-1 text-sm text-[--color-ink-dim]">
-        Set once per computer. Reopen any time with Ctrl + Alt + Shift + L.
-      </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Niedenthal Lab Suite</h1>
+          <p className="mt-1 text-sm text-[--color-ink-dim]">
+            What is this computer doing right now?
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowSettings((s) => !s)}
+          aria-pressed={showSettings}
+          className="rounded-lg border border-[--color-panel-edge] px-4 py-2 text-sm hover:border-[--color-ink-dim]"
+        >
+          {showSettings ? "Back to modes" : "⚙ Settings"}
+        </button>
+      </div>
 
-      {status?.migratedFrom && (
-        <p className="mt-4 rounded-lg border border-[--color-panel-edge] bg-[--color-panel] px-4 py-3 text-sm text-[--color-ink-dim]">
+      {/* Health, probed fresh on every open. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Chip
+          ok={health === null ? null : health.configured && health.serverOk}
+          label={
+            health === null
+              ? "Checking the server…"
+              : !health.configured
+                ? "Server not set up"
+                : health.serverOk
+                  ? `Round Robin connected${
+                      health.sessionCount !== null
+                        ? ` — ${health.sessionCount} upcoming session${health.sessionCount === 1 ? "" : "s"}`
+                        : ""
+                    }`
+                  : `Round Robin problem — ${health.serverDetail ?? "unreachable"}`
+          }
+        />
+        <Chip
+          ok={health === null ? null : health.driveConfigured && health.driveOk}
+          label={
+            health === null
+              ? "Checking the drive…"
+              : !health.driveConfigured
+                ? "Research Drive not set up"
+                : health.driveOk
+                  ? "Research Drive mounted"
+                  : "Research Drive NOT reachable"
+          }
+        />
+        <button
+          type="button"
+          onClick={refresh}
+          className="text-xs text-[--color-ink-dim] underline hover:text-[--color-ink]"
+        >
+          re-check
+        </button>
+      </div>
+
+      {status?.migratedFrom && !showSettings && (
+        <p className="mt-4 rounded-lg border border-[--color-panel-edge] bg-[--color-panel] px-4 py-3 text-xs text-[--color-ink-dim]">
           Settings were imported from the standalone{" "}
-          {status.migratedFrom === "lab-recorder" ? "Lab Recorder" : "PPS"} app
-          on this machine — confirm them with <em>Save &amp; test</em> below.
+          {status.migratedFrom === "lab-recorder" ? "Lab Recorder" : "PPS"} app —
+          confirm them once under ⚙ Settings.
         </p>
       )}
 
-      <h2 className="mt-8 text-sm font-semibold uppercase tracking-wide text-[--color-ink-dim]">
-        What is this computer?
-      </h2>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        {ROLES.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            onClick={() => setRole(r.id)}
-            aria-pressed={role === r.id}
-            className={`rounded-xl border p-4 text-left transition-colors ${
-              role === r.id
-                ? "border-[--color-ink] bg-[--color-panel]"
-                : "border-[--color-panel-edge] hover:border-[--color-ink-dim]"
-            }`}
-          >
-            <span className="block font-semibold">{r.title}</span>
-            <span className="mt-1 block text-xs leading-relaxed text-[--color-ink-dim]">
-              {r.blurb}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <h2 className="mt-8 text-sm font-semibold uppercase tracking-wide text-[--color-ink-dim]">
-        Shared settings (same on every lab machine)
-      </h2>
-      <div className="mt-3 space-y-4 rounded-xl border border-[--color-panel-edge] bg-[--color-panel] p-5">
-        <label className="block">
-          <span className="text-sm">Round Robin server address</span>
-          <input
-            autoComplete="off"
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://sc.psych.wisc.edu"
-            className="mt-1 w-full rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
-          />
-        </label>
-        <label className="block">
-          <span className="text-sm">Shared secret</span>
-          <input
-            autoComplete="off"
-            type="password"
-            value={secretDraft}
-            onChange={(e) => setSecretDraft(e.target.value)}
-            placeholder={
-              status?.secretConfigured
-                ? "•••••• (configured — type to replace)"
-                : "Paste the PPS shared secret"
-            }
-            className="mt-1 w-full rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
-          />
-          <span className="mt-1 block text-xs text-[--color-ink-dim]">
-            The same secret the Round Robin server holds. Stored on this
-            machine only; never shown again after saving.
-          </span>
-        </label>
-        <label className="block">
-          <span className="text-sm">Research Drive recordings folder</span>
-          <div className="mt-1 flex gap-2">
+      {!showSettings ? (
+        <>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            {ROLES.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => launch(r.id)}
+                disabled={launching !== null}
+                className={`rounded-xl border p-5 text-left transition-colors disabled:opacity-60 ${
+                  status?.role === r.id
+                    ? "border-[--color-ink] bg-[--color-panel]"
+                    : "border-[--color-panel-edge] bg-[--color-panel] hover:border-[--color-ink-dim]"
+                }`}
+              >
+                <span className="flex items-baseline justify-between">
+                  <span className="text-lg font-semibold">
+                    {launching === r.id ? "Opening…" : r.title}
+                  </span>
+                  <kbd className="rounded border border-[--color-panel-edge] px-1.5 text-[10px] text-[--color-ink-dim]">
+                    {r.key}
+                  </kbd>
+                </span>
+                <span className="mt-2 block text-xs leading-relaxed text-[--color-ink-dim]">
+                  {r.blurb}
+                </span>
+                {status?.role === r.id && (
+                  <span className="mt-3 block text-[10px] uppercase tracking-wide text-[--color-ink-dim]">
+                    last used — Enter opens it
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="mt-4 text-xs text-[--color-ink-dim]">
+            Closing a mode brings you back here on the next launch. From inside
+            any mode, Ctrl + Alt + Shift + L reopens this screen.
+          </p>
+        </>
+      ) : (
+        <div className="mt-6 space-y-4 rounded-xl border border-[--color-panel-edge] bg-[--color-panel] p-5">
+          <p className="text-sm text-[--color-ink-dim]">
+            Shared settings — identical on every lab machine, entered once.
+          </p>
+          <label className="block">
+            <span className="text-sm">Round Robin server address</span>
             <input
               autoComplete="off"
               type="text"
-              value={driveRoot}
-              onChange={(e) => setDriveRoot(e.target.value)}
-              placeholder={"R:\\niedenthal\\round-robin\\recordings"}
-              className="flex-1 rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://sc.psych.wisc.edu"
+              className="mt-1 w-full rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
             />
+          </label>
+          <label className="block">
+            <span className="text-sm">Shared secret</span>
+            <input
+              autoComplete="off"
+              type="password"
+              value={secretDraft}
+              onChange={(e) => setSecretDraft(e.target.value)}
+              placeholder={
+                status?.secretConfigured
+                  ? "•••••• (configured — type to replace)"
+                  : "Paste the PPS shared secret"
+              }
+              className="mt-1 w-full rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
+            />
+            <span className="mt-1 block text-xs text-[--color-ink-dim]">
+              The same secret the Round Robin server holds. Stored on this
+              machine only; never shown again after saving.
+            </span>
+          </label>
+          <label className="block">
+            <span className="text-sm">Research Drive recordings folder</span>
+            <div className="mt-1 flex gap-2">
+              <input
+                autoComplete="off"
+                type="text"
+                value={driveRoot}
+                onChange={(e) => setDriveRoot(e.target.value)}
+                placeholder={"R:\\niedenthal\\round-robin\\recordings"}
+                className="flex-1 rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
+              />
+              <button
+                type="button"
+                onClick={() => void browseDrive()}
+                className="rounded-lg border border-[--color-panel-edge] px-4 text-sm hover:border-[--color-ink-dim]"
+              >
+                Browse
+              </button>
+            </div>
+            <span className="mt-1 block text-xs text-[--color-ink-dim]">
+              The recordings share, as mounted on this machine. Recording rooms
+              file into it; rating stations fetch from it.
+            </span>
+          </label>
+          <div className="flex items-center gap-3 pt-1">
             <button
               type="button"
-              onClick={() => void browseDrive()}
-              className="rounded-lg border border-[--color-panel-edge] px-4 text-sm hover:border-[--color-ink-dim]"
+              onClick={() => void saveAndTest()}
+              disabled={busy}
+              className="rounded-lg bg-[--color-badger] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
-              Browse
+              Save &amp; test connection
             </button>
           </div>
-          <span className="mt-1 block text-xs text-[--color-ink-dim]">
-            The recordings share, as mounted on this machine. Recording rooms
-            file into it; rating stations fetch from it.
-          </span>
-        </label>
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void saveAndTest()}
-          disabled={busy}
-          className="rounded-lg border border-[--color-panel-edge] px-5 py-2.5 text-sm hover:border-[--color-ink-dim] disabled:opacity-50"
-        >
-          Save &amp; test connection
-        </button>
-        <button
-          type="button"
-          onClick={() => void start()}
-          disabled={busy || !role}
-          className="rounded-lg bg-[--color-badger] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-        >
-          {role
-            ? `Start as ${ROLES.find((r) => r.id === role)?.title.toLowerCase()}`
-            : "Pick a role to start"}
-        </button>
-        <span className="text-xs text-[--color-ink-dim]">
-          Starting restarts the app into the role; it boots into it from then on.
-        </span>
-      </div>
+        </div>
+      )}
 
       {note && (
         <p

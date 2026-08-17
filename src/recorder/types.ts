@@ -181,6 +181,8 @@ export interface PublicSettings {
   presetId: string | null;
   sessionMinutes: number | null;
   discreet: boolean;
+  /** The Round Robin room this machine records — remembered per machine. */
+  roomIndex: number | null;
   roundRobinUrl: string | null;
   researchDriveRoot: string | null;
   /** Whether a shared secret exists. The secret itself never leaves Rust. */
@@ -192,6 +194,7 @@ export interface SettingsUpdate {
   presetId?: string;
   sessionMinutes?: number;
   discreet?: boolean;
+  roomIndex?: number;
   roundRobinUrl?: string;
   /** Empty string clears it; omitting the field leaves it untouched. */
   roundRobinSecret?: string;

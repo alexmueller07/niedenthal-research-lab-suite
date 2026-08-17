@@ -1,8 +1,8 @@
 # Niedenthal Lab Suite
 
-One app for every lab computer. Install the same thing everywhere; a one-time
-setup screen asks what each machine is, and from then on it boots straight
-into that job:
+One app for every lab computer. Install the same thing everywhere; every
+launch opens on a chooser — pick what the computer is doing *right now*
+(keys 1/2/3, or Enter for last time's choice):
 
 | Role | What it runs | Which machines |
 |---|---|---|
@@ -41,29 +41,32 @@ machines: run the `-setup.exe` with `/S`.
 
 ## First run on a lab machine
 
-The app opens on **Machine setup** (later: `Ctrl+Alt+Shift+L` from anywhere):
+The app opens on the mode chooser, with two live status chips up top — is
+the Round Robin server reachable with this machine's secret, and is the
+Research Drive mounted — probed fresh on every launch, so problems surface
+before a session, not during one.
 
-1. Pick what this computer is — recording room, rating station, or Control
-   Center.
-2. Enter the three shared values (identical on every machine): the Round
-   Robin server address, the shared secret, and the Research Drive
-   recordings folder as mounted on this machine.
-3. **Save & test connection** — it answers in plain words whether the server,
-   the secret, and the drive all check out.
-4. **Start** — the app restarts into the role and boots into it from then on.
+One-time, under **⚙ Settings**: enter the three shared values (identical on
+every machine) — the Round Robin server address, the shared secret, and the
+Research Drive recordings folder as mounted on this machine — then **Save &
+test connection**, which answers in plain words. After that, using the app is
+one click: pick the mode. Closing a mode brings the chooser back on next
+launch; `Ctrl+Alt+Shift+L` reopens it from inside any mode.
 
 If a standalone Lab Recorder or PPS app was installed on the machine before,
-setup arrives pre-filled from it; confirm with the test button. The old apps
-are untouched and keep working as a fallback.
+settings arrive pre-filled from it; confirm with the test button. The old
+apps are untouched and keep working as a fallback.
 
 ## Day-to-day use
 
 Exactly as the standalone apps — nothing an RA or participant sees has
 changed:
 
-- **Recording rooms:** camera/mic/quality, Preflight, the Round Robin
-  session+room picker, Record/Stop, discreet mode (`Ctrl+Shift+R` reveals the
-  controls, "Hide the screen again" re-covers). Full guide:
+- **Recording rooms:** camera/mic/quality, Preflight, Record/Stop, discreet
+  mode (`Ctrl+Shift+R` reveals the controls, "Hide the screen again"
+  re-covers). Today's session is preselected automatically and the room
+  number is remembered per machine — a routine session needs zero dropdown
+  clicks. Full guide:
   [docs/recorder/README-standalone.md](docs/recorder/README-standalone.md).
 - **Rating stations:** participants sign in with their email; the RA fills
   the participant form; the conversation video loads by itself. Researcher

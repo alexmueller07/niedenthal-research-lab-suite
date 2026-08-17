@@ -159,9 +159,15 @@ pub fn drive_root(app: &AppHandle) -> Option<String> {
         .filter(|r| !r.trim().is_empty())
 }
 
+/// What to open at boot. Always the launcher: the lab asked for a mode
+/// chooser on every launch rather than a machine locked to one role — the
+/// shared settings persist, the choice does not. `role` in machine.json is
+/// only the *last used* mode, so the chooser can preselect it.
 pub fn current_role(app: &AppHandle) -> Role {
-    // Dev override so `npm run tauri dev` can target any mode without editing
-    // app-data. Debug builds only — a release install ignores it.
+    let _ = app;
+    // Dev override so `npm run tauri dev` can jump straight into a mode
+    // without clicking through the chooser. Debug builds only — a release
+    // install ignores it.
     if cfg!(debug_assertions) {
         if let Ok(value) = std::env::var("SUITE_ROLE") {
             if let Some(role) = parse_role(&value) {
@@ -169,11 +175,7 @@ pub fn current_role(app: &AppHandle) -> Role {
             }
         }
     }
-    load(app)
-        .role
-        .as_deref()
-        .and_then(parse_role)
-        .unwrap_or(Role::Setup)
+    Role::Setup
 }
 
 fn parse_role(value: &str) -> Option<Role> {
@@ -378,26 +380,107 @@ pub async fn machine_test(app: AppHandle) -> Result<String, String> {
     ))
 }
 
-/// Persists the chosen role and restarts the process into it. A restart, not
-/// live window juggling: every role sets up its own scopes, shortcuts, and
-/// state, and a clean boot is the only path that cannot half-apply them.
+/// Opens the chosen mode's window and closes the launcher. Remembers the
+/// choice only so the next launch can preselect it — nothing is locked.
 #[tauri::command]
-pub fn machine_finish_setup(
-    app: AppHandle,
-    window: tauri::Window,
-    role: String,
-) -> Result<(), String> {
+pub fn launch_mode(app: AppHandle, window: tauri::Window, role: String) -> Result<(), String> {
     caller_may_configure(&window)?;
     let parsed = parse_role(&role).ok_or_else(|| format!("unknown role: {role}"))?;
     if parsed == Role::Setup {
-        return Err("Pick a role for this machine first.".into());
+        return Err("Pick a mode first.".into());
     }
+
+    // One mode window at a time: a rating station quietly also being a
+    // recorder is exactly the confusion this app exists to prevent.
+    for label in [
+        crate::modes::RECORDER_LABEL,
+        crate::modes::STATION_LABEL,
+        crate::modes::CONTROL_LABEL,
+    ] {
+        if let Some(existing) = app.get_webview_window(label) {
+            let _ = existing.set_focus();
+            return Err("A mode is already running in another window — close it first.".into());
+        }
+    }
+
     let mut settings = load(&app);
     settings.version = 1;
     settings.role = Some(parsed.as_str().to_string());
     settings.configured_at = Some(chrono::Utc::now().to_rfc3339());
     save(&app, &settings)?;
-    app.restart();
+
+    crate::modes::open_for_role(&app, parsed).map_err(|e| format!("could not open the mode: {e}"))?;
+    let _ = window.close();
+    Ok(())
+}
+
+/// Structured health for the launcher's status chips — same probes as
+/// machine_test, but as data rather than prose, and cheap enough to run on
+/// every launcher load.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineHealth {
+    pub configured: bool,
+    pub server_ok: bool,
+    pub session_count: Option<usize>,
+    pub server_detail: Option<String>,
+    pub drive_configured: bool,
+    pub drive_ok: bool,
+}
+
+#[tauri::command]
+pub async fn machine_health(app: AppHandle) -> MachineHealth {
+    let drive = drive_root(&app);
+    let drive_configured = drive.is_some();
+    let drive_ok = drive
+        .as_deref()
+        .map(|root| std::path::Path::new(root).is_dir())
+        .unwrap_or(false);
+
+    let (configured, server_ok, session_count, server_detail) = match credentials(&app) {
+        Err(_) => (false, false, None, None),
+        Ok((url, secret)) => {
+            let probe = async {
+                let response = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(5))
+                    .build()
+                    .map_err(|e| e.to_string())?
+                    .get(format!("{}/api/pps/sessions", url.trim_end_matches('/')))
+                    .bearer_auth(&secret)
+                    .send()
+                    .await
+                    .map_err(|e| format!("unreachable: {e}"))?;
+                if !response.status().is_success() {
+                    return Err(match response.status().as_u16() {
+                        401 => "the secret was rejected".to_string(),
+                        s => format!("server returned {s}"),
+                    });
+                }
+                #[derive(Deserialize)]
+                struct Wrapper {
+                    sessions: Vec<serde_json::Value>,
+                }
+                response
+                    .json::<Wrapper>()
+                    .await
+                    .map(|w| w.sessions.len())
+                    .map_err(|e| e.to_string())
+            };
+            match probe.await {
+                Ok(count) => (true, true, Some(count), None),
+                Err(e) => (true, false, None, Some(e)),
+            }
+        }
+    };
+
+    MachineHealth {
+        configured,
+        server_ok,
+        session_count,
+        server_detail,
+        drive_configured,
+        drive_ok,
+    }
 }
 
 #[cfg(test)]
