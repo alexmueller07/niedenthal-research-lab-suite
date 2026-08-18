@@ -72,8 +72,17 @@ pub fn run() {
             // process — every mode keeps it, and on a Control machine (remote
             // page, no IPC) it is deliberately the only reconfigure path.
             modes::register_reconfigure_chord(app.handle());
-            let role = machine::current_role(app.handle());
-            modes::open_for_role(app.handle(), role)?;
+            // Opening the first window is dispatched to the async runtime,
+            // never done inline in setup: window creation on the main thread
+            // deadlocks the event loop, and Control mode additionally needs
+            // to await a login token.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let role = machine::current_role(&handle);
+                if let Err(e) = modes::open_for_role(&handle, role).await {
+                    eprintln!("could not open the startup window: {e}");
+                }
+            });
             Ok(())
         })
         .on_window_event(modes::handle_window_event)
@@ -123,6 +132,7 @@ pub fn run() {
             machine::machine_configure,
             machine::machine_test,
             machine::machine_health,
+            machine::machine_self_test,
             machine::launch_mode,
         ])
         .run(tauri::generate_context!())

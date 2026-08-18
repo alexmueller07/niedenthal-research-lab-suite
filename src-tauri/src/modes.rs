@@ -24,7 +24,15 @@ pub const STATION_LABEL: &str = "station";
 pub const LAUNCHER_LABEL: &str = "launcher";
 pub const CONTROL_LABEL: &str = "control";
 
-pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
+/// Async because Control mode has to ask the server for a login token before
+/// it knows where to point the window — and because creating a window from a
+/// synchronous command deadlocks the Windows event loop (see launch_mode).
+pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
+    let control_target: Option<String> = if role == Role::Control {
+        Some(crate::machine::control_url(app).await)
+    } else {
+        None
+    };
     match role {
         Role::Record => {
             let window = WebviewWindowBuilder::new(
@@ -93,10 +101,13 @@ pub fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
             // — it is exactly the website, framed. Accelerator keys stay
             // enabled here: F5 on a website is normal life, and there is no
             // app state to lose.
-            let Some(url) = crate::machine::load(app)
-                .round_robin_url
-                .filter(|u| !u.trim().is_empty())
-                .map(|u| format!("{}/admin", u.trim_end_matches('/')))
+            // control_url mints a one-minute login token from the shared
+            // secret so the dashboard opens with no password typed; it
+            // returns the plain /admin URL if that cannot be done, and an
+            // empty string when the machine has no server configured.
+            let resolved = control_target.unwrap_or_default();
+            let Some(url) = Some(resolved)
+                .filter(|u: &String| !u.trim().is_empty())
                 .and_then(|u| tauri::Url::parse(&u).ok())
             else {
                 // No usable server address: fall back to setup, which says

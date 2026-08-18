@@ -233,10 +233,53 @@ pub async fn list_conversation_clips(
     email: String,
 ) -> Result<ClipsResponse, String> {
     let (url, secret) = credentials(&app)?;
+
+    // First choice: this participant's own conversations, keyed on the email
+    // they signed in with.
+    let by_email = clips_for_email(&url, &secret, &email).await;
+
+    match by_email {
+        Ok(response) if response.clips.iter().any(|c| c.storage_key.is_some()) => Ok(response),
+        // The email is not the only way in, and being unknown to the schedule
+        // must not strand a station in front of a conversation that plainly
+        // exists. Fall back to everything recorded today and let the RA pick
+        // — the chooser for that is already on screen whenever more than one
+        // conversation comes back.
+        other => {
+            let today = clips_today(&url, &secret).await;
+            match today {
+                Ok(clips) if !clips.is_empty() => Ok(ClipsResponse {
+                    participant: ClipsParticipant {
+                        id: String::new(),
+                        email: email.clone(),
+                        full_name: String::new(),
+                    },
+                    clips,
+                }),
+                // Nothing today either: report whichever failure is the more
+                // useful thing to act on.
+                _ => match other {
+                    Ok(_) => Err(format!(
+                        "No conversation has finished recording yet for {email}, and no other \
+                         recording from today is on the server. If the conversation just ended, \
+                         the recording room may still be filing it — wait a moment and retry."
+                    )),
+                    Err(e) => Err(e),
+                },
+            }
+        }
+    }
+}
+
+async fn clips_for_email(
+    url: &str,
+    secret: &str,
+    email: &str,
+) -> Result<ClipsResponse, String> {
     let response = client()?
-        .get(endpoint(&url, "api/pps/recordings"))
-        .query(&[("email", email.as_str())])
-        .bearer_auth(&secret)
+        .get(endpoint(url, "api/pps/recordings"))
+        .query(&[("email", email)])
+        .bearer_auth(secret)
         .send()
         .await
         .map_err(|e| format!("Could not reach Round Robin at {url}: {e}"))?;
@@ -247,6 +290,29 @@ pub async fn list_conversation_clips(
     response
         .json::<ClipsResponse>()
         .await
+        .map_err(|e| format!("Round Robin sent something unexpected: {e}"))
+}
+
+/// Every conversation recorded and stored today, whoever it belongs to.
+async fn clips_today(url: &str, secret: &str) -> Result<Vec<RemoteClip>, String> {
+    #[derive(Deserialize)]
+    struct Wrapper {
+        clips: Vec<RemoteClip>,
+    }
+    let response = client()?
+        .get(endpoint(url, "api/pps/session-clips"))
+        .bearer_auth(secret)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach Round Robin at {url}: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(describe_failure(response).await);
+    }
+    response
+        .json::<Wrapper>()
+        .await
+        .map(|w| w.clips)
         .map_err(|e| format!("Round Robin sent something unexpected: {e}"))
 }
 

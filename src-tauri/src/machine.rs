@@ -303,6 +303,280 @@ pub fn migrate_if_fresh(app: &AppHandle) {
 // Commands (wizard + settings panels)
 // ---------------------------------------------------------------------------
 
+/// Where Control mode should point its window.
+///
+/// Trades the shared secret this machine already holds for a one-minute
+/// login token, so the dashboard opens without an RA typing the lab
+/// password. Any failure falls back to the ordinary /admin URL: the RA meets
+/// the password page, which is inconvenient but never a dead end — and is
+/// exactly what a browser outside the app gets.
+pub async fn control_url(app: &AppHandle) -> String {
+    let Ok((url, secret)) = credentials(app) else {
+        return String::new();
+    };
+    let base = url.trim_end_matches('/').to_string();
+    let fallback = format!("{base}/admin");
+
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+    else {
+        return fallback;
+    };
+
+    #[derive(Deserialize)]
+    struct Minted {
+        token: String,
+    }
+    match client
+        .post(format!("{base}/api/pps/control-token"))
+        .bearer_auth(&secret)
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => match response.json::<Minted>().await {
+            Ok(minted) => format!(
+                "{base}/admin/app-login?token={}",
+                urlencoding_minimal(&minted.token)
+            ),
+            Err(_) => fallback,
+        },
+        _ => fallback,
+    }
+}
+
+/// The token is base64url plus dots and percent-encoded fields, so the only
+/// characters needing escaping in a query string are `%` and `+`. Escaping
+/// those by hand avoids a dependency for one call site.
+fn urlencoding_minimal(token: &str) -> String {
+    token.replace('%', "%25").replace('+', "%2B")
+}
+
+/// One line of the self-test.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckResult {
+    pub label: String,
+    /// None while a check does not apply to this machine.
+    pub passed: Option<bool>,
+    pub detail: String,
+}
+
+/// Everything that has to be true before a session, checked in one click.
+///
+/// Every failure this app has produced in testing was a precondition nobody
+/// had a way to see: a server not serving its API, a database missing a
+/// column so every recording failed to register, a drive path that no longer
+/// resolved, a camera delivering nothing. Each was found by running a session
+/// and watching it break. This is the same information, fifteen seconds
+/// before instead of ten minutes after.
+#[tauri::command]
+pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
+    let mut out: Vec<CheckResult> = Vec::new();
+    let settings = load(&app);
+
+    // ---- server + secret ----
+    let creds = credentials(&app);
+    match &creds {
+        Err(e) => out.push(CheckResult {
+            label: "Round Robin server".into(),
+            passed: Some(false),
+            detail: e.clone(),
+        }),
+        Ok((url, secret)) => {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .ok();
+            match client {
+                None => out.push(CheckResult {
+                    label: "Round Robin server".into(),
+                    passed: Some(false),
+                    detail: "Could not create a network client on this machine.".into(),
+                }),
+                Some(client) => {
+                    let sessions_url =
+                        format!("{}/api/pps/sessions", url.trim_end_matches('/'));
+                    match client.get(&sessions_url).bearer_auth(secret).send().await {
+                        Err(e) => out.push(CheckResult {
+                            label: "Round Robin server".into(),
+                            passed: Some(false),
+                            detail: format!(
+                                "Cannot reach {url}. Is the server running? ({e})"
+                            ),
+                        }),
+                        Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
+                            out.push(CheckResult {
+                                label: "Round Robin server".into(),
+                                passed: Some(false),
+                                detail: "The server is up but rejected this machine's shared secret. Re-enter it in Settings.".into(),
+                            })
+                        }
+                        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
+                            out.push(CheckResult {
+                                label: "Round Robin server".into(),
+                                passed: Some(false),
+                                detail: "The address answers but has no API. It is serving a stale build — restart it (START-TEST-SERVER.bat rebuilds cleanly).".into(),
+                            })
+                        }
+                        Ok(r) if !r.status().is_success() => out.push(CheckResult {
+                            label: "Round Robin server".into(),
+                            passed: Some(false),
+                            detail: format!("The server answered {}.", r.status()),
+                        }),
+                        Ok(r) => {
+                            #[derive(Deserialize)]
+                            struct W {
+                                sessions: Vec<serde_json::Value>,
+                            }
+                            let n = r.json::<W>().await.map(|w| w.sessions.len()).unwrap_or(0);
+                            out.push(CheckResult {
+                                label: "Round Robin server".into(),
+                                passed: Some(true),
+                                detail: format!(
+                                    "Connected, secret accepted, {n} upcoming session(s)."
+                                ),
+                            });
+
+                            // ---- database schema ----
+                            // The integrity columns were missing from the live
+                            // database once, and the only symptom was every
+                            // recording silently failing to register.
+                            let probe = format!(
+                                "{}/api/pps/session-clips",
+                                url.trim_end_matches('/')
+                            );
+                            match client.get(&probe).bearer_auth(secret).send().await {
+                                Ok(r) if r.status().is_success() => out.push(CheckResult {
+                                    label: "Recording database".into(),
+                                    passed: Some(true),
+                                    detail: "The server can read recordings and their checksums.".into(),
+                                }),
+                                Ok(r) => out.push(CheckResult {
+                                    label: "Recording database".into(),
+                                    passed: Some(false),
+                                    detail: format!(
+                                        "The server could not read its recordings table ({}). Its database may need `npm run db:setup`.",
+                                        r.status()
+                                    ),
+                                }),
+                                Err(e) => out.push(CheckResult {
+                                    label: "Recording database".into(),
+                                    passed: Some(false),
+                                    detail: format!("Could not check: {e}"),
+                                }),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Research Drive ----
+    match settings
+        .research_drive_root
+        .filter(|r| !r.trim().is_empty())
+    {
+        None => out.push(CheckResult {
+            label: "Research Drive".into(),
+            passed: Some(false),
+            detail: "No folder is set. Recordings cannot be filed or fetched.".into(),
+        }),
+        Some(root) => {
+            let path = std::path::Path::new(&root);
+            if !path.is_dir() {
+                out.push(CheckResult {
+                    label: "Research Drive".into(),
+                    passed: Some(false),
+                    detail: format!("{root} is not reachable. Is the share mounted?"),
+                });
+            } else {
+                // Readable is not writable, and a recording room finds out at
+                // the worst moment. Prove it with a real file.
+                let probe = path.join(".labsuite-write-test");
+                match std::fs::write(&probe, b"ok") {
+                    Ok(()) => {
+                        let _ = std::fs::remove_file(&probe);
+                        out.push(CheckResult {
+                            label: "Research Drive".into(),
+                            passed: Some(true),
+                            detail: format!("{root} is mounted and writable."),
+                        });
+                    }
+                    Err(e) => out.push(CheckResult {
+                        label: "Research Drive".into(),
+                        passed: Some(false),
+                        detail: format!("{root} is readable but not writable: {e}"),
+                    }),
+                }
+            }
+        }
+    }
+
+    // ---- encoder ----
+    let encoder = crate::recorder::ffmpeg::best_encoder(&app).await;
+    let hardware = encoder != "libx264";
+    out.push(CheckResult {
+        label: "Video encoder".into(),
+        passed: Some(true),
+        detail: if hardware {
+            format!("{encoder} (hardware) — this machine can encode in real time.")
+        } else {
+            "libx264 (software). No hardware encoder found; run Preflight in Recording mode before a session to confirm this machine keeps up.".into()
+        },
+    });
+
+    // ---- camera and microphone ----
+    match crate::recorder::devices::list_devices(&app).await {
+        Err(e) => out.push(CheckResult {
+            label: "Camera".into(),
+            passed: Some(false),
+            detail: format!("Could not list devices: {e}"),
+        }),
+        Ok(devices) => {
+            let cameras: Vec<_> = devices.iter().filter(|d| d.kind == crate::recorder::devices::DeviceKind::Video).collect();
+            let mics: Vec<_> = devices.iter().filter(|d| d.kind == crate::recorder::devices::DeviceKind::Audio).collect();
+            out.push(CheckResult {
+                label: "Camera".into(),
+                passed: Some(!cameras.is_empty()),
+                detail: if cameras.is_empty() {
+                    "No camera this app can record from. A laptop's built-in camera is often hidden from recording software — plug in a USB webcam.".into()
+                } else {
+                    format!("{} available: {}", cameras.len(), cameras[0].name)
+                },
+            });
+            out.push(CheckResult {
+                label: "Microphone".into(),
+                passed: Some(!mics.is_empty()),
+                detail: if mics.is_empty() {
+                    "No microphone found.".into()
+                } else {
+                    format!(
+                        "{} available: {}. Watch the level meter in Recording mode — a muted mic still shows here.",
+                        mics.len(),
+                        mics[0].name
+                    )
+                },
+            });
+        }
+    }
+
+    // ---- anything waiting to be filed ----
+    let pending = crate::recorder::roundrobin::load_queue(&app).len();
+    out.push(CheckResult {
+        label: "Recordings waiting to be filed".into(),
+        passed: Some(pending == 0),
+        detail: if pending == 0 {
+            "None — everything recorded on this machine has been filed.".into()
+        } else {
+            format!("{pending} waiting. They retry automatically; open Recording mode to force one now.")
+        },
+    });
+
+    out
+}
+
 #[tauri::command]
 pub fn machine_status(app: AppHandle) -> MachinePublic {
     MachinePublic::from(&load(&app))
@@ -445,7 +719,9 @@ pub async fn launch_mode(app: AppHandle, window: tauri::Window, role: String) ->
     settings.configured_at = Some(chrono::Utc::now().to_rfc3339());
     save(&app, &settings)?;
 
-    crate::modes::open_for_role(&app, parsed).map_err(|e| format!("could not open the mode: {e}"))?;
+    crate::modes::open_for_role(&app, parsed)
+        .await
+        .map_err(|e| format!("could not open the mode: {e}"))?;
     let _ = window.close();
     Ok(())
 }

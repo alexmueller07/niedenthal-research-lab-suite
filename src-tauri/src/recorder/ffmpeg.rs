@@ -170,27 +170,62 @@ fn encode_args(a: &mut Vec<String>, settings: &RecordSettings) {
         }
     };
 
-    if family == EncoderFamily::X264 {
-        if let RateControl::Crf { crf } = settings.rate_control {
-            push(a, "-crf");
-            a.push(crf.to_string());
-        } else {
-            // maxrate == bitrate with a 2x buffer is what actually pins the
-            // size; -b:v alone is only an average target and can overshoot.
-            push(a, "-b:v");
-            a.push(format!("{kbps}k"));
+    // Rate control. Constant bitrate is the wrong instrument for a webcam:
+    // sensor noise is expensive to encode, a fixed ceiling spends the budget
+    // evenly whether the frame needs it or not, and the result blocks up on
+    // exactly the faces this study measures. Quality-targeted modes let the
+    // encoder spend where the picture is, and the ceiling below still keeps
+    // file size predictable for the Research Drive.
+    match family {
+        EncoderFamily::X264 => {
+            if let RateControl::Crf { crf } = settings.rate_control {
+                push(a, "-crf");
+                a.push(crf.to_string());
+            } else {
+                // maxrate == bitrate with a 2x buffer is what actually pins
+                // the size; -b:v alone is only an average target.
+                push(a, "-b:v");
+                a.push(format!("{kbps}k"));
+                push(a, "-maxrate");
+                a.push(format!("{kbps}k"));
+                push(a, "-bufsize");
+                a.push(format!("{}k", kbps * 2));
+            }
+        }
+        EncoderFamily::Qsv => {
+            // ICQ: quality-targeted, the QSV equivalent of CRF. 20 is
+            // visually clean on webcam material without hoarding bits.
+            push(a, "-global_quality");
+            push(a, "18");
             push(a, "-maxrate");
             a.push(format!("{kbps}k"));
             push(a, "-bufsize");
             a.push(format!("{}k", kbps * 2));
         }
-    } else {
-        push(a, "-b:v");
-        a.push(format!("{kbps}k"));
-        push(a, "-maxrate");
-        a.push(format!("{kbps}k"));
-        push(a, "-bufsize");
-        a.push(format!("{}k", kbps * 2));
+        EncoderFamily::Nvenc => {
+            push(a, "-rc");
+            push(a, "vbr");
+            push(a, "-cq");
+            push(a, "18");
+            push(a, "-b:v");
+            a.push(format!("{}k", kbps / 2)); // target; -cq drives quality
+            push(a, "-maxrate");
+            a.push(format!("{kbps}k"));
+            push(a, "-bufsize");
+            a.push(format!("{}k", kbps * 2));
+        }
+        EncoderFamily::Amf => {
+            push(a, "-rc");
+            push(a, "vbr_peak");
+            push(a, "-qp_i");
+            push(a, "20");
+            push(a, "-qp_p");
+            push(a, "22");
+            push(a, "-maxrate");
+            a.push(format!("{kbps}k"));
+            push(a, "-bufsize");
+            a.push(format!("{}k", kbps * 2));
+        }
     }
 
     // 4:2:0 because anything else is unplayable in half the tools a lab uses,

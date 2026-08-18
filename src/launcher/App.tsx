@@ -4,10 +4,11 @@ import {
   launchMode,
   machineConfigure,
   machineHealth,
+  machineSelfTest,
   machineStatus,
   machineTest,
 } from "./api";
-import type { MachineHealth, MachinePublic, RoleName } from "./api";
+import type { CheckResult, MachineHealth, MachinePublic, RoleName } from "./api";
 
 // The screen every launch opens on: pick what this computer is doing right
 // now. Nothing is locked — the same machine can record this morning and be a
@@ -58,6 +59,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [launching, setLaunching] = useState<RoleName | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [checks, setChecks] = useState<CheckResult[] | null>(null);
+  const [checking, setChecking] = useState(false);
 
   // Settings drafts
   const [url, setUrl] = useState("");
@@ -217,7 +220,53 @@ export default function App() {
         >
           re-check
         </button>
+        {/* The one button worth pressing before a session. Every failure this
+            app has produced in testing was a precondition nobody could see
+            until a session broke on it. */}
+        <button
+          type="button"
+          onClick={() => {
+            setChecking(true);
+            setChecks(null);
+            void machineSelfTest()
+              .then(setChecks)
+              .catch((e) => setNote({ ok: false, text: String(e) }))
+              .finally(() => setChecking(false));
+          }}
+          disabled={checking}
+          className="rounded-lg border border-[--color-panel-edge] px-3 py-1 text-xs hover:border-[--color-ink-dim] disabled:opacity-50"
+        >
+          {checking ? "Checking everything…" : "Check everything"}
+        </button>
       </div>
+
+      {checks && (
+        <section className="mt-4 space-y-2 rounded-xl border border-[--color-panel-edge] bg-[--color-panel] p-4">
+          <p className="text-sm font-semibold">
+            {checks.every((c) => c.passed !== false)
+              ? "Ready for a session."
+              : "Fix these before running a session:"}
+          </p>
+          {checks.map((c) => (
+            <div key={c.label} className="flex gap-2.5 text-xs leading-relaxed">
+              <span
+                aria-hidden
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                  c.passed === false
+                    ? "bg-[--color-bad] text-white"
+                    : "bg-[--color-good] text-black"
+                }`}
+              >
+                {c.passed === false ? "!" : "✓"}
+              </span>
+              <span>
+                <span className="font-semibold">{c.label}</span>
+                <span className="text-[--color-ink-dim]"> — {c.detail}</span>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
 
       {status?.migratedFrom && !showSettings && (
         <p className="mt-4 rounded-lg border border-[--color-panel-edge] bg-[--color-panel] px-4 py-3 text-xs text-[--color-ink-dim]">

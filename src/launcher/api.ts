@@ -40,5 +40,14 @@ export const machineTest = () => invoke<string>("machine_test");
 /** Structured probes for the home screen's status chips. */
 export const machineHealth = () => invoke<MachineHealth>("machine_health");
 
+export interface CheckResult {
+  label: string;
+  passed: boolean | null;
+  detail: string;
+}
+
+/** Every precondition for a session, checked in one click. */
+export const machineSelfTest = () => invoke<CheckResult[]>("machine_self_test");
+
 /** Opens the chosen mode's window and closes the launcher. */
 export const launchMode = (role: RoleName) => invoke<void>("launch_mode", { role });

@@ -21,59 +21,40 @@ export interface Preset {
   caution?: string;
 }
 
+// One profile, deliberately.
+//
+// The lab analyses faces — the whole point of the recordings is subtle
+// expression — so the only sane answer to "what quality?" is "as much detail
+// as the camera can give", and a choice an RA can get wrong is a choice worth
+// removing. A machine left on the old Space Saver profile produced visibly
+// blocky video and nobody noticed until it was looked at closely
+// (2026-08-17). Storage is the cheapest thing in this pipeline; a mistuned
+// recording is the most expensive.
+//
+// The retired profiles are kept only so a settings file that still names one
+// loads without complaint; nothing offers them any more.
 export const PRESETS: Preset[] = [
   {
-    id: "archive",
-    name: "Archive",
+    id: "lab-quality",
+    name: "Lab Quality",
     blurb:
-      "Highest fidelity, smoothest motion. Choose this when storage is not a concern and the recordings may be reanalysed years from now.",
+      "1080p30, tuned for facial detail. About 1.5 GB for a 10-minute conversation.",
     width: 1920,
     height: 1080,
-    fps: 60,
+    fps: 30,
     videoKbps: 20000,
-    audioKbps: 256,
-    caution:
-      "60 fps doubles the work for the encoder. Run Preflight — an older lab machine may not keep up, and frames will be dropped rather than the recording slowing down.",
-  },
-  {
-    id: "lab-standard",
-    name: "Lab Standard",
-    blurb:
-      "The default. Matches the quality the lab's current camcorder workflow produces, at a predictable size.",
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    videoKbps: 12000,
-    audioKbps: 128,
-  },
-  {
-    id: "space-saver",
-    name: "Space Saver",
-    blurb:
-      "A third of the size. Slightly softer during fast movement, indistinguishable when people are sitting and talking.",
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    videoKbps: 4000,
-    audioKbps: 96,
-  },
-  {
-    id: "minimum",
-    name: "Minimum",
-    blurb:
-      "For a drive that is nearly full. Fine for coding behaviour; too soft for anything that depends on facial detail.",
-    width: 1280,
-    height: 720,
-    fps: 30,
-    videoKbps: 2500,
-    audioKbps: 96,
+    audioKbps: 192,
   },
 ];
 
-export const DEFAULT_PRESET_ID = "lab-standard";
+/** Names that older settings files may still carry. All resolve to the one profile. */
+const RETIRED_PRESET_IDS = ["archive", "lab-standard", "space-saver", "minimum"];
+
+export const DEFAULT_PRESET_ID = "lab-quality";
 
 export function presetById(id: string): Preset {
-  return PRESETS.find((p) => p.id === id) ?? PRESETS[1];
+  if (RETIRED_PRESET_IDS.includes(id)) return PRESETS[0];
+  return PRESETS.find((p) => p.id === id) ?? PRESETS[0];
 }
 
 /**

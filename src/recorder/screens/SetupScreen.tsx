@@ -1,6 +1,6 @@
 import AudioMeter from "../components/AudioMeter";
 import PreflightPanel from "../components/PreflightPanel";
-import PresetPicker from "../components/PresetPicker";
+import { presetById } from "../presets";
 import PreviewPane from "../components/PreviewPane";
 import { RecordButton } from "../components/RecordControls";
 import SessionLink from "../components/SessionLink";
@@ -221,12 +221,16 @@ export default function SetupScreen(props: Props) {
 
         <section className="card p-4">
           <h2 className="mb-3 text-sm font-semibold">Quality</h2>
-          <PresetPicker
-            selectedId={props.presetId}
-            sessionMinutes={props.sessionMinutes}
-            onSelect={props.onSelectPreset}
-            disabled={props.busy}
-          />
+          {/* One profile, no choice: the study analyses faces, so the answer
+              is always "as much detail as the camera gives". A machine left
+              on a low profile produced visibly blocky video and nobody
+              noticed. Stated, not selectable. */}
+          <p className="text-xs leading-relaxed text-[--color-ink-dim]">
+            <span className="font-semibold text-[--color-ink]">
+              {presetById(props.presetId).name}
+            </span>{" "}
+            — {presetById(props.presetId).blurb}
+          </p>
 
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div>
