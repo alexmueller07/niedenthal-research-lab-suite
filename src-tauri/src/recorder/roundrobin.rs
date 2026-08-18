@@ -124,9 +124,23 @@ async fn describe_failure(response: reqwest::Response) -> String {
         401 => "Round Robin rejected the shared secret. Check the secret in Settings.".into(),
         403 => "Round Robin refused this request. Check that the secret has recording access.".into(),
         404 => "Round Robin does not recognise that session. Check the session and room.".into(),
-        409 => format!(
-            "Round Robin already has a recording in progress for this room and round. {body}"
-        ),
+        // Two different 409s arrive here, and they need different actions:
+        // no rotation yet (fix it in the Control Center) versus a row already
+        // open for this room (someone else is recording it, or a previous take
+        // never closed). Pasting the raw JSON told the RA neither.
+        409 if body.contains("in_progress") => {
+            "Round Robin already has a recording open for this room and round. \
+             If another computer is recording this room, stop here. Otherwise a \
+             previous take never finished — use \"Take over this room\" to \
+             replace it."
+                .into()
+        }
+        409 if body.contains("rotation") => {
+            "This session has no room rotation yet. Open the Control Center, \
+             find today's session, and press \"Generate room rotation\"."
+                .into()
+        }
+        409 => format!("Round Robin refused this recording. {body}"),
         503 => "Round Robin has no RECORDING_DIR configured, so it has nowhere to file this.".into(),
         _ => format!("Round Robin returned {status}. {body}"),
     }

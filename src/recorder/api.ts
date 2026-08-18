@@ -165,6 +165,13 @@ export const rrPending = () => invoke<PendingRegistration[]>("rr_pending");
 
 export const rrFlush = () => invoke<FlushReport>("rr_flush");
 
+/**
+ * Gives a Round Robin row back when the take it was opened for produced
+ * nothing. Without this the row stays open and blocks the room's next take.
+ */
+export const rrAbandon = (recordingId: string) =>
+  invoke<void>("rr_abandon", { recordingId });
+
 /** Copies to the Research Drive with checksum verification, then closes the row. */
 export const archiveRecording = (request: {
   localPath: string;

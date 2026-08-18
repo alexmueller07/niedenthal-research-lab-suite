@@ -16,6 +16,7 @@ interface Props {
   onRefresh: () => void;
   onClear: () => void;
   onFlush: () => void;
+  onTakeOver: () => void;
 }
 
 /**
@@ -131,10 +132,29 @@ export default function SessionLink(props: Props) {
       )}
 
       {props.error && (
-        <p className="mt-2 rounded-md bg-[--color-warn]/10 px-2.5 py-2 text-xs leading-relaxed text-[--color-warn]">
-          {props.error} Recording still works — the take will be filed when the connection
-          comes back.
-        </p>
+        <div className="mt-2 rounded-md bg-[--color-warn]/10 px-2.5 py-2">
+          <p className="text-xs leading-relaxed text-[--color-warn]">{props.error}</p>
+          {/* The blanket "it will be filed when the connection comes back"
+              that used to sit here was reassuring and, for anything other than
+              a network blip, wrong: a room whose row is already open never
+              recovers on its own, and the take stays unlinked forever. Say the
+              part that is always true, and offer the way out. */}
+          <p className="mt-1 text-xs leading-relaxed text-[--color-ink-dim]">
+            Recording is not blocked by this — press Record and the conversation
+            is captured either way. Only the automatic hand-off to the rating
+            stations needs the link.
+          </p>
+          {props.slotId && (
+            <button
+              type="button"
+              onClick={props.onTakeOver}
+              disabled={props.disabled}
+              className="mt-2 rounded-md border border-[--color-warn]/40 px-2.5 py-1 text-xs text-[--color-warn] hover:bg-[--color-warn]/10 disabled:opacity-50"
+            >
+              Take over this room
+            </button>
+          )}
+        </div>
       )}
 
       {props.pendingCount > 0 && (

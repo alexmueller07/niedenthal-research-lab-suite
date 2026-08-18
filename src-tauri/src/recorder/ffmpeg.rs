@@ -61,6 +61,22 @@ pub fn encoder_family(name: &str) -> EncoderFamily {
     }
 }
 
+/// How much more bitrate this family needs to match x264's picture.
+///
+/// One definition, used by both the encoder arguments and the disk forecast.
+/// They were separate before, and the forecast quietly stayed a software
+/// figure: a 2m39s hardware take measured 392 MB against a predicted 242 MB,
+/// so "room for about 112 more sessions" really meant about 66. Under-stating
+/// free space is the dangerous direction to be wrong in — the failure it
+/// invites is a disk filling up in the middle of a session. (2026-08-18)
+pub fn bitrate_scale(family: EncoderFamily) -> f64 {
+    if family == EncoderFamily::X264 {
+        1.0
+    } else {
+        1.7
+    }
+}
+
 /// The best encoder this machine can actually run, probed once per process.
 ///
 /// "Listed in -encoders" is not the same as "works": a driver can be absent
@@ -157,7 +173,7 @@ fn encode_args(a: &mut Vec<String>, settings: &RecordSettings) {
     // Sizes on the quality cards are software figures and stay honest for
     // software; a machine on hardware writes larger files for the same
     // picture, which is the right trade for study video.
-    let bitrate_scale = if family == EncoderFamily::X264 { 1.0 } else { 1.7 };
+    let bitrate_scale = bitrate_scale(family);
 
     let kbps = match settings.rate_control {
         RateControl::Cbr { kbps } => (f64::from(kbps) * bitrate_scale) as u32,
@@ -333,12 +349,17 @@ impl RecordSettings {
     /// Bytes per second at the configured rate. Only meaningful for CBR — CRF
     /// size cannot be derived from settings and is measured by calibration
     /// instead.
-    pub fn estimated_bytes_per_second(&self) -> Option<u64> {
+    ///
+    /// `family` must be the encoder that will actually run, because a hardware
+    /// encoder is handed `bitrate_scale` times the nominal rate; quoting the
+    /// nominal figure understated real files by that factor.
+    pub fn estimated_bytes_per_second(&self, family: EncoderFamily) -> Option<u64> {
         let RateControl::Cbr { kbps } = self.rate_control else {
             return None;
         };
+        let video_kbps = f64::from(kbps) * bitrate_scale(family);
         let audio_kbps = self.audio.as_ref().map(|a| a.bitrate_kbps).unwrap_or(0);
-        Some(u64::from(kbps + audio_kbps) * 125)
+        Some(((video_kbps + f64::from(audio_kbps)) * 125.0) as u64)
     }
 }
 
@@ -808,17 +829,43 @@ mod tests {
     fn cbr_size_estimate_is_arithmetic() {
         // 12000 kbps video + 128 kbps audio over 600 s ~= 848 MB.
         let s = settings();
-        let per_sec = s.estimated_bytes_per_second().unwrap();
+        let per_sec = s
+            .estimated_bytes_per_second(EncoderFamily::X264)
+            .unwrap();
         assert_eq!(per_sec, 12_128 * 125);
         let ten_minutes = per_sec * 600;
         assert!((ten_minutes as f64 / 1e6 - 909.6).abs() < 1.0);
+    }
+
+    /// The forecast must track what the hardware path is actually handed, or
+    /// it under-reports every file the lab records on a machine with an iGPU.
+    #[test]
+    fn hardware_estimate_follows_the_bitrate_it_is_given() {
+        let s = settings();
+        let software = s
+            .estimated_bytes_per_second(EncoderFamily::X264)
+            .unwrap();
+        let hardware = s.estimated_bytes_per_second(EncoderFamily::Qsv).unwrap();
+
+        // Video is scaled, audio is not, so the ratio sits just under 1.7.
+        assert!(hardware > software);
+        let video_only_ratio =
+            (hardware as f64 - 128.0 * 125.0) / (software as f64 - 128.0 * 125.0);
+        assert!((video_only_ratio - bitrate_scale(EncoderFamily::Qsv)).abs() < 0.01);
+
+        // The measured case that exposed this: a hardware take ran ~148 MB/min
+        // where the old software-only figure predicted ~91 MB/min.
+        let mb_per_min = hardware as f64 * 60.0 / 1e6;
+        assert!((mb_per_min - 153.0).abs() < 6.0, "{mb_per_min} MB/min");
     }
 
     #[test]
     fn crf_has_no_derivable_size() {
         let mut s = settings();
         s.rate_control = RateControl::Crf { crf: 20 };
-        assert!(s.estimated_bytes_per_second().is_none());
+        assert!(s
+            .estimated_bytes_per_second(EncoderFamily::X264)
+            .is_none());
     }
 
     #[test]

@@ -503,6 +503,20 @@ export default function App() {
       refreshPending();
     } catch (e) {
       setError(String(e));
+      // The take did not survive to produce a file, so the row opened for it
+      // never got closed. Left alone it sits "in progress" and Round Robin
+      // refuses the room's next take — so the retry records perfectly and
+      // comes back unlinked, and the rating stations never see either take.
+      // Give the row back before anyone presses Record again.
+      if (opened) {
+        try {
+          await api.rrAbandon(opened.id);
+          setOpened(null);
+        } catch {
+          // Best effort. The server also releases a row it has not heard
+          // about for an hour, and the RA has "Take over this room".
+        }
+      }
     } finally {
       setStopping(false);
       setPhase("done");
@@ -655,6 +669,9 @@ export default function App() {
   // ---- what blocks recording ---------------------------------------------
 
   const codeWarning = identifierWarning(sessionCode);
+  const rrConfigured = Boolean(
+    machineSettings?.roundRobinUrl && machineSettings.roundRobinSecretConfigured
+  );
   const blockedReason =
     !camera
       ? "Choose a camera first"
@@ -672,7 +689,28 @@ export default function App() {
                   // A camera that never produced a preview frame would record
                   // nothing. The button unlocks the moment the preview moves.
                   ? "Waiting for the camera's first frame…"
-                  : null;
+                  : rrConfigured && sessionsLoading
+                    // A take started in this one- or two-second window records
+                    // perfectly and is stamped with NO session, so the rating
+                    // stations can never find it — the take is fine and the
+                    // study still breaks. The list resolves in about a second,
+                    // so waiting costs nothing and closes the race for good.
+                    // (2026-08-18: hit exactly this by pressing Record straight
+                    // after the window opened.)
+                    ? "Checking Round Robin for today's session…"
+                    : null;
+
+  // Not a blocker. An unlinked take is a legitimate choice — a walk-in, or the
+  // server being down mid-session — and the lab's standing rule is that a
+  // technical problem never delays a session. But it must be a *choice*, said
+  // out loud before the button is pressed, not a surprise discovered on the
+  // summary screen after the participants have gone home.
+  const linkNotice =
+    phase !== "setup" || !rrConfigured || sessionsLoading || slotId
+      ? null
+      : sessions.length === 0
+        ? "No session found for today — this take will save locally only, and the rating stations will not find it by themselves."
+        : "No session selected — this take will save locally only, and the rating stations will not find it by themselves.";
 
   // ---- render -------------------------------------------------------------
 
@@ -746,15 +784,14 @@ export default function App() {
       ffmpegVersion={ffmpegVersion}
       profileHash={profileHash}
       blockedReason={blockedReason}
+      linkNotice={linkNotice}
       error={error ?? codeWarning}
       busy={preflightRunning}
       preflightReport={preflightReport}
       preflightRunning={preflightRunning}
       onPreflight={handlePreflight}
       roundRobin={{
-        configured: Boolean(
-          machineSettings?.roundRobinUrl && machineSettings.roundRobinSecretConfigured
-        ),
+        configured: rrConfigured,
         sessions,
         loading: sessionsLoading,
         slotId,
@@ -769,6 +806,20 @@ export default function App() {
         onRoom: setRoomIndex,
         onRefresh: refreshSessions,
         onClear: () => setOpened(null),
+        // Claims the room even though Round Robin still has a row open for it.
+        // The RA is the only one who can know whether the other "recording" is
+        // a real second camera or the remains of a take that died, so this is
+        // deliberately a button and not something the app decides by itself.
+        onTakeOver: () => {
+          if (!slotId) return;
+          void api
+            .rrOpen(slotId, roomIndex, null, true)
+            .then((row) => {
+              setOpened(row);
+              setRrError(null);
+            })
+            .catch((e) => setRrError(String(e)));
+        },
         onFlush: () => {
           void api
             .rrFlush()

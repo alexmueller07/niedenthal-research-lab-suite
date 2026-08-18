@@ -34,6 +34,14 @@ use crate::recorder::ffmpeg::{
 /// alternative to waiting is losing the take.
 const GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// How long to let the OS finish releasing a capture device after the process
+/// holding it has exited. Windows tears the DirectShow graph down behind the
+/// process, and a take spawned into that gap dies on an I/O error with an empty
+/// file. Paid once, between the preview stopping and a take starting, where
+/// half a second is imperceptible next to the two-second camera warm-up that
+/// follows it anyway.
+const DEVICE_RELEASE_SETTLE: Duration = Duration::from_millis(600);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionKind {
@@ -239,6 +247,55 @@ fn preview_path(app: &AppHandle) -> PathBuf {
     dir.join("preview.jpg")
 }
 
+/// Kills FFmpeg sidecars left behind by a previous run of this app.
+///
+/// A sidecar outlives its parent when the app does not exit cleanly — a crash,
+/// or the Task Manager kill an RA reaches for when a window stops responding.
+/// The orphan keeps the camera open indefinitely, and every take afterwards
+/// opens the device, negotiates streams, then dies on "Error during demuxing:
+/// I/O error" with a zero-byte file. Nothing on screen connects the two, the
+/// machine simply stops being able to record until it is rebooted.
+///
+/// Found on this machine with a preview sidecar 22 minutes into holding the
+/// camera after the app it belonged to was force-quit (2026-08-18).
+///
+/// Only our own binary is touched: the sidecar sits next to our executable, so
+/// a system-wide FFmpeg the user installed themselves lives elsewhere and is
+/// never a match. Only processes older than this one are touched, so a second
+/// copy of the suite started after us keeps its live take.
+pub fn reap_orphaned_sidecars() -> usize {
+    let Ok(exe) = std::env::current_exe() else {
+        return 0;
+    };
+    let Some(dir) = exe.parent() else { return 0 };
+
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
+    let own_pid = sysinfo::get_current_pid().ok();
+    let own_start = own_pid
+        .and_then(|pid| system.process(pid))
+        .map(|p| p.start_time())
+        .unwrap_or(u64::MAX);
+
+    let mut killed = 0;
+    for (pid, process) in system.processes() {
+        if Some(*pid) == own_pid {
+            continue;
+        }
+        let Some(path) = process.exe() else { continue };
+        let is_our_sidecar = path.parent() == Some(dir)
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("ffmpeg"));
+        if is_our_sidecar && process.start_time() < own_start && process.kill() {
+            killed += 1;
+        }
+    }
+    killed
+}
+
 /// Spawns FFmpeg and wires its output to app events.
 fn spawn_session(
     app: &AppHandle,
@@ -433,6 +490,18 @@ pub fn stop_any(app: &AppHandle) -> Result<(), String> {
     if !session.shared.finished.load(Ordering::SeqCst) {
         let _ = child.kill();
     }
+
+    // The process being gone is not the same as the camera being free.
+    // DirectShow tears the capture graph down after the process exits, and a
+    // take spawned into that window opens the device, negotiates the streams,
+    // and then dies on "Error during demuxing: I/O error" a beat later — a
+    // recording that looks like it started and produces an empty file.
+    //
+    // This is what start_recording depends on when it calls us: the contract
+    // is "the camera is free when this returns", and it was not being honoured.
+    // (2026-08-18, read straight out of the FFmpeg log after a take came back
+    // at 00:02 with 0 frames.)
+    std::thread::sleep(DEVICE_RELEASE_SETTLE);
     Ok(())
 }
 
@@ -454,13 +523,28 @@ pub fn stop_recording(app: &AppHandle) -> Result<StopOutcome, String> {
     if let Some(mut child) = session.child.take() {
         // "q" on stdin, not a signal. This is what makes FFmpeg write the
         // container's index and trailer instead of leaving a truncated file.
-        child
-            .write(b"q\n")
-            .map_err(|e| format!("could not signal FFmpeg to stop: {e}"))?;
+        //
+        // A failed write is NOT an error. It means the pipe is gone, i.e.
+        // FFmpeg already exited on its own — the camera was taken away, the
+        // disk filled, the device never opened. That is exactly the case where
+        // the caller most needs the outcome below, because `exit_code` and
+        // `stderr_tail` are the only record of why the take died. Returning
+        // Err here instead threw all of that away AND left the session already
+        // taken out of state, so the partial file was orphaned and the RA saw
+        // "could not signal FFmpeg to stop: The pipe is being closed
+        // (os error 232)" — a message about our plumbing, not about their
+        // camera. (2026-08-18, hit while rehearsing the Randy walkthrough.)
+        let signalled = child.write(b"q\n").is_ok();
 
-        let deadline = Instant::now() + GRACEFUL_STOP_TIMEOUT;
-        while !session.shared.finished.load(Ordering::SeqCst) && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(50));
+        // Only wait out the graceful window if the "q" actually landed. If it
+        // did not, there is nothing to wait for: either the process is already
+        // gone (the loop falls straight through) or its stdin is broken and no
+        // amount of waiting will make it finish the trailer.
+        if signalled {
+            let deadline = Instant::now() + GRACEFUL_STOP_TIMEOUT;
+            while !session.shared.finished.load(Ordering::SeqCst) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
         if !session.shared.finished.load(Ordering::SeqCst) {
             let _ = child.kill();

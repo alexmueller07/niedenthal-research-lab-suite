@@ -475,7 +475,9 @@ pub async fn preflight(
         .map(|d| d.available_bytes)
         .unwrap_or(0);
     let space = disk::estimate(
-        settings.estimated_bytes_per_second(),
+        settings.estimated_bytes_per_second(ffmpeg::encoder_family(
+            &ffmpeg::best_encoder(&app).await,
+        )),
         duration_seconds,
         available,
     );
@@ -887,6 +889,40 @@ pub async fn archive_recording(
     }
 }
 
+/// Releases a Round Robin row whose take never produced a usable file.
+///
+/// Opening the row happens before the take, so a take that dies leaves it
+/// sitting `in_progress`. Nothing closed it, and the open guard then refused
+/// every later take for that room — the recordings kept working and kept
+/// coming back unlinked, which is invisible until a participant sits down at
+/// a rating station and their conversation cannot be found.
+///
+/// Closing with nothing to report is exactly right: the server marks a
+/// zero-byte take `failed`, the room frees up immediately, and the failure
+/// stays visible on the Control Center's coverage matrix instead of being
+/// quietly erased. (2026-08-18)
+#[tauri::command]
+pub async fn rr_abandon(app: tauri::AppHandle, recording_id: String) -> Result<(), String> {
+    let (url, secret) = round_robin_credentials(&app)?;
+    roundrobin::close_recording(
+        &url,
+        &secret,
+        &recording_id,
+        &roundrobin::ClosePayload {
+            duration_ms: 0,
+            capture_fps: 0,
+            frames_dropped: 0,
+            frames_duplicated: 0,
+            sha256: String::new(),
+            profile_hash: String::new(),
+            recorder_version: String::new(),
+            cfr: false,
+            bytes: 0,
+        },
+    )
+    .await
+}
+
 // ---------------------------------------------------------------------------
 // Space
 // ---------------------------------------------------------------------------
@@ -905,12 +941,19 @@ pub struct EstimateRequest {
 }
 
 #[tauri::command]
-pub fn estimate_space(request: EstimateRequest) -> SpaceEstimate {
+pub async fn estimate_space(
+    app: tauri::AppHandle,
+    request: EstimateRequest,
+) -> SpaceEstimate {
     let available = disk::disk_for_path(Path::new(&request.path))
         .map(|d| d.available_bytes)
         .unwrap_or(0);
+    // The encoder decides the real file size, so the forecast has to ask which
+    // one will run. Probed once per process and cached thereafter, so the
+    // per-keystroke recompute costs nothing after the first.
+    let family = ffmpeg::encoder_family(&ffmpeg::best_encoder(&app).await);
     disk::estimate(
-        request.settings.estimated_bytes_per_second(),
+        request.settings.estimated_bytes_per_second(family),
         request.duration_seconds,
         available,
     )

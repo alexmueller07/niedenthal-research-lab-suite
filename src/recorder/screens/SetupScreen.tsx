@@ -41,6 +41,12 @@ interface Props {
   ffmpegVersion: string;
   profileHash: string;
   blockedReason: string | null;
+  /**
+   * Said next to the button, not in the settings panel on the other side of
+   * the screen: this is the one thing an RA must know *before* pressing
+   * Record, because it cannot be repaired afterwards.
+   */
+  linkNotice: string | null;
   error: string | null;
   busy: boolean;
   preflightReport: PreflightReport | null;
@@ -63,6 +69,7 @@ interface Props {
     onRefresh: () => void;
     onClear: () => void;
     onFlush: () => void;
+    onTakeOver: () => void;
   };
   machineSettings: {
     value: PublicSettings | null;
@@ -122,6 +129,12 @@ export default function SetupScreen(props: Props) {
             disabled={props.blockedReason !== null || props.busy}
             blockedReason={props.blockedReason}
           />
+
+          {props.linkNotice && (
+            <p className="w-full rounded-md bg-[--color-warn]/10 px-3 py-2 text-sm text-[--color-warn]">
+              {props.linkNotice}
+            </p>
+          )}
 
           {props.error && (
             <p className="w-full rounded-md bg-[--color-bad]/10 px-3 py-2 text-sm text-[--color-bad]">

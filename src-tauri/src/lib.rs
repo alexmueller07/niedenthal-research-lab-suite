@@ -68,6 +68,14 @@ pub fn run() {
             // apps' app-data the first time the suite runs on a lab machine.
             // Read-only toward the old apps: they stay working as fallback.
             machine::migrate_if_fresh(app.handle());
+            // Before anything can touch the camera: clear FFmpeg sidecars a
+            // previous run left holding it. Without this, one force-quit makes
+            // the machine unable to record until it is rebooted, and says
+            // nothing about why.
+            match recorder::capture::reap_orphaned_sidecars() {
+                0 => {}
+                n => eprintln!("cleared {n} leftover FFmpeg process(es) from a previous run"),
+            }
             // The machine-setup chord is registered once, here, for the whole
             // process — every mode keeps it, and on a Control machine (remote
             // page, no IPC) it is deliberately the only reconfigure path.
@@ -111,6 +119,7 @@ pub fn run() {
             recorder::commands::rr_open,
             recorder::commands::rr_pending,
             recorder::commands::rr_flush,
+            recorder::commands::rr_abandon,
             recorder::commands::archive_recording,
             station::commands::write_csv_ratings,
             station::commands::write_csv_transitions,
