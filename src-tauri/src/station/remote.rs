@@ -264,9 +264,14 @@ pub async fn list_conversation_clips(
                 // useful thing to act on.
                 _ => match other {
                     Ok(_) => Err(format!(
-                        "No conversation has finished recording yet for {email}, and no other \
-                         recording from today is on the server. If the conversation just ended, \
-                         the recording room may still be filing it — wait a moment and retry."
+                        "Nothing to play yet. The server has no finished recording for {email}, \
+                         and no recording from the last two weeks either.\n\n\
+                         Two things this usually means. Either the conversation has not been \
+                         recorded and filed yet — the recording room finishes that a few seconds \
+                         after Stop, so wait a moment and press Try again. Or this participant \
+                         signed in with an email that is not the one on the schedule, in which \
+                         case the recording exists under their real address; check the roster on \
+                         the Control Center. You can always choose the file by hand below."
                     )),
                     Err(e) => Err(e),
                 },
