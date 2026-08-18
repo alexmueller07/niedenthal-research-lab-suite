@@ -213,7 +213,7 @@ pub async fn verify(app: &AppHandle, path: &str, nominal_fps: u32) -> Result<Ver
         // second's worth) and keep a floor for short takes. A genuine mismatch
         // — the encoder falling behind, a truncated file — misses by orders of
         // magnitude more than this.
-        let tolerance = (expected_frame_count / 1000).max(2);
+        let tolerance = u64::from(nominal_fps / 2).max(2);
         if diff > tolerance {
             problems.push(format!(
                 "Frame count {frame_count} does not match {duration_seconds:.3} s at {nominal_fps} fps (expected about {expected_frame_count})."

@@ -89,11 +89,22 @@ pub struct PendingRegistration {
 }
 
 fn client() -> Result<reqwest::Client, String> {
+    client_with(REQUEST_TIMEOUT)
+}
+
+fn client_with(timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .timeout(REQUEST_TIMEOUT)
+        .timeout(timeout)
         .build()
         .map_err(|e| format!("could not build an HTTP client: {e}"))
 }
+
+/// Closing a row happens after the participants have left, so nobody is
+/// waiting on it and it can afford to be patient — unlike opening one, where
+/// an RA is standing in the room. Eight seconds was short enough that a
+/// server answering its first request of the day timed out and the take was
+/// queued for retry when it would have succeeded on a slightly longer wait.
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Joins a path onto a configured base URL, tolerating a trailing slash.
 /// One implementation for both modes — see shared/http.rs.
@@ -188,7 +199,7 @@ pub async fn close_recording(
     recording_id: &str,
     payload: &ClosePayload,
 ) -> Result<(), String> {
-    let response = client()?
+    let response = client_with(CLOSE_TIMEOUT)?
         .post(endpoint(
             base_url,
             &format!("api/recordings/{recording_id}/close"),
