@@ -205,7 +205,16 @@ pub async fn verify(app: &AppHandle, path: &str, nominal_fps: u32) -> Result<Ver
     // duration in every muxer.
     if frame_count > 0 && expected_frame_count > 0 {
         let diff = frame_count.abs_diff(expected_frame_count);
-        if diff > 1 {
+        // Expected count is duration x nominal fps, and the container's
+        // duration is itself rounded, so a long take lands a few frames either
+        // side without anything being wrong: a real 104 s recording came in 4
+        // frames under and was reported as a problem, which teaches RAs to
+        // ignore the verdict. Scale the tolerance with length (a tenth of a
+        // second's worth) and keep a floor for short takes. A genuine mismatch
+        // — the encoder falling behind, a truncated file — misses by orders of
+        // magnitude more than this.
+        let tolerance = (expected_frame_count / 1000).max(2);
+        if diff > tolerance {
             problems.push(format!(
                 "Frame count {frame_count} does not match {duration_seconds:.3} s at {nominal_fps} fps (expected about {expected_frame_count})."
             ));
