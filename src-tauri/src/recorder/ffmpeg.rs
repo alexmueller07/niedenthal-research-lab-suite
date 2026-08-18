@@ -124,9 +124,12 @@ fn encode_args(a: &mut Vec<String>, settings: &RecordSettings) {
             a.push(settings.encoder_preset.clone());
         }
         EncoderFamily::Qsv => {
-            // QSV understands x264's preset vocabulary.
+            // QSV understands x264's preset vocabulary, but the preset the
+            // profiles carry ("veryfast") is chosen for software, where speed
+            // is scarce. On the iGPU it is not: "slower" costs almost nothing
+            // here and spends the silicon on picture instead.
             push(a, "-preset");
-            a.push(settings.encoder_preset.clone());
+            push(a, "slower");
         }
         EncoderFamily::Nvenc => {
             // p1 (fastest) .. p7. p4 is the balanced point and still an order
@@ -146,14 +149,24 @@ fn encode_args(a: &mut Vec<String>, settings: &RecordSettings) {
     // across vendors, so a CRF profile is expressed to them as a bitrate
     // derived from the frame size — the same picture budget, stated the way
     // each encoder understands.
+    // Hardware encoders are markedly less efficient per bit than x264 — the
+    // same 4 Mbps that looks clean from software looks blocky from an iGPU,
+    // which is exactly what the first hardware-encoded takes looked like
+    // (2026-08-17). The profiles state a quality intent, not a byte budget, so
+    // honour the intent: give the hardware path the bitrate it needs to match.
+    // Sizes on the quality cards are software figures and stay honest for
+    // software; a machine on hardware writes larger files for the same
+    // picture, which is the right trade for study video.
+    let bitrate_scale = if family == EncoderFamily::X264 { 1.0 } else { 1.7 };
+
     let kbps = match settings.rate_control {
-        RateControl::Cbr { kbps } => kbps,
+        RateControl::Cbr { kbps } => (f64::from(kbps) * bitrate_scale) as u32,
         RateControl::Crf { crf } => {
             let pixels = f64::from(settings.width * settings.height);
             let base = pixels * f64::from(settings.fps) / 1000.0 * 0.10;
             // Higher CRF means smaller; 23 is the neutral point.
             let scale = 2f64.powf((23.0 - f64::from(crf)) / 6.0);
-            ((base * scale) as u32).clamp(1500, 40000)
+            ((base * scale * bitrate_scale) as u32).clamp(1500, 60000)
         }
     };
 

@@ -139,16 +139,44 @@ fn endpoint(base_url: &str, path: &str) -> String {
     crate::shared::http::endpoint(base_url, path)
 }
 
+/// Trims a server response down to something a person can read on a study
+/// screen. A misrouted request comes back as a full HTML error page, and
+/// pasting that into the UI produced an unreadable wall of markup where an
+/// RA needed one sentence (observed 2026-08-17). HTML is dropped entirely —
+/// it never carries a useful message — and anything else is capped.
+pub fn readable_body(body: &str) -> String {
+    let body = body.trim();
+    if body.starts_with('<') || body.to_ascii_lowercase().starts_with("<!doctype") {
+        return String::new();
+    }
+    if body.chars().count() > 200 {
+        let short: String = body.chars().take(200).collect();
+        format!("{short}…")
+    } else {
+        body.to_string()
+    }
+}
+
 async fn describe_failure(response: reqwest::Response) -> String {
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    let body = body.trim();
+    let body = readable_body(&body);
+    let body = body.as_str();
+    let detail = if body.is_empty() {
+        String::new()
+    } else {
+        format!(" {body}")
+    };
     match status.as_u16() {
         401 => "Round Robin rejected the shared secret. Check it on the dashboard.".into(),
+        // A 404 here is ambiguous and the two causes need different actions,
+        // so say both rather than guessing: the participant may be unknown to
+        // the schedule, or the server may not be serving its API at all.
         404 => format!(
-            "Round Robin does not know that participant. {body}"
+            "Round Robin answered 'not found'. Either this participant is not on the \
+             schedule, or the server is not running its API at that address.{detail}"
         ),
-        _ => format!("Round Robin returned {status}. {body}"),
+        _ => format!("Round Robin returned {status}.{detail}"),
     }
 }
 
@@ -550,6 +578,25 @@ mod tests {
             endpoint("https://rr.example", "/api/pps/progress"),
             "https://rr.example/api/pps/progress"
         );
+    }
+
+    #[test]
+    fn an_html_error_page_never_reaches_the_screen() {
+        // A misrouted request returns the server's whole HTML 404 document.
+        // Pasted into the study UI it became a red box of markup an RA could
+        // not read to the end (2026-08-17).
+        let page = "<!DOCTYPE html><html><head><title>404</title></head><body>…</body></html>";
+        assert_eq!(readable_body(page), "");
+        assert_eq!(readable_body("<html>anything</html>"), "");
+    }
+
+    #[test]
+    fn a_long_plain_body_is_capped_and_a_short_one_survives() {
+        let long = "x".repeat(500);
+        let out = readable_body(&long);
+        assert!(out.chars().count() <= 201, "got {} chars", out.chars().count());
+        assert!(out.ends_with('…'));
+        assert_eq!(readable_body("  slotId is required  "), "slotId is required");
     }
 
     #[test]

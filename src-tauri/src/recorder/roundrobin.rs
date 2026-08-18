@@ -105,7 +105,10 @@ pub fn endpoint(base_url: &str, path: &str) -> String {
 async fn describe_failure(response: reqwest::Response) -> String {
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    let body = body.trim();
+    // A misrouted request returns a whole HTML error page; that belongs
+    // nowhere near an RA's screen. Same rule as the station side.
+    let body = crate::station::remote::readable_body(&body);
+    let body = body.as_str();
     match status.as_u16() {
         401 => "Round Robin rejected the shared secret. Check the secret in Settings.".into(),
         403 => "Round Robin refused this request. Check that the secret has recording access.".into(),
