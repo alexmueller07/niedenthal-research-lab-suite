@@ -95,9 +95,13 @@ pub struct RemoteUpdate {
 pub fn load_config(app: &AppHandle) -> RemoteSettings {
     let m = crate::machine::load(app);
     RemoteSettings {
-        round_robin_url: m.round_robin_url,
+        // The effective values, not the raw stored ones: both the server
+        // address and the recordings folder have working defaults, and a
+        // station that sees them empty decides it is unconfigured and never
+        // looks for the participant's video.
+        round_robin_url: Some(crate::machine::server_url(app)),
         round_robin_secret: m.round_robin_secret,
-        research_drive_root: m.research_drive_root,
+        research_drive_root: crate::machine::drive_root(app),
     }
 }
 

@@ -687,7 +687,15 @@ pub fn find_orphaned_captures(dir: String) -> Vec<String> {
 
 #[tauri::command]
 pub fn recorder_load_settings(app: tauri::AppHandle) -> settings::PublicSettings {
-    settings::compose_public(&settings::load(&app), &crate::machine::load(&app))
+    let mut public = settings::compose_public(&settings::load(&app), &crate::machine::load(&app));
+    // Report the address and folder this machine will actually use, not the
+    // raw stored values. Both now have defaults, and a frontend that sees an
+    // empty URL concludes it is unconfigured and never asks the server for
+    // the session list — which silently costs every take its Round Robin
+    // link.
+    public.round_robin_url = Some(crate::machine::server_url(&app));
+    public.research_drive_root = crate::machine::drive_root(&app);
+    public
 }
 
 #[tauri::command]
