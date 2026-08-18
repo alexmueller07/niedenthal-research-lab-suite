@@ -317,20 +317,14 @@ export default function App() {
         </>
       ) : (
         <div className="mt-6 space-y-4 rounded-xl border border-[--color-panel-edge] bg-[--color-panel] p-5">
-          <p className="text-sm text-[--color-ink-dim]">
-            Shared settings — identical on every lab machine, entered once.
-          </p>
-          <label className="block">
-            <span className="text-sm">Round Robin server address</span>
-            <input
-              autoComplete="off"
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://sc.psych.wisc.edu"
-              className="mt-1 w-full rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
-            />
-          </label>
+          {!status?.secretConfigured && (
+            <p className="rounded-lg bg-[--color-badger]/15 px-4 py-3 text-sm leading-relaxed">
+              <span className="font-semibold">One thing to paste, then you are done.</span>{" "}
+              The server and the recordings folder are already set up. Paste the
+              lab's shared secret below and press Save &amp; test connection.
+              Ask Alex or Randy for it.
+            </p>
+          )}
           <label className="block">
             <span className="text-sm">Shared secret</span>
             <input
@@ -350,30 +344,57 @@ export default function App() {
               machine only; never shown again after saving.
             </span>
           </label>
-          <label className="block">
-            <span className="text-sm">Research Drive recordings folder</span>
-            <div className="mt-1 flex gap-2">
+          {/* Both of these have working defaults. They are here for the day
+              the lab moves to the UW server and the real Research Drive, not
+              for a first run. */}
+          <details className="rounded-lg border border-[--color-panel-edge] p-3">
+            <summary className="cursor-pointer text-sm text-[--color-ink-dim]">
+              Advanced — server address and recordings folder
+            </summary>
+
+            <label className="mt-3 block">
+              <span className="text-sm">Round Robin server address</span>
               <input
                 autoComplete="off"
                 type="text"
-                value={driveRoot}
-                onChange={(e) => setDriveRoot(e.target.value)}
-                placeholder={"R:\\niedenthal\\round-robin\\recordings"}
-                className="flex-1 rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="the lab's server (already set)"
+                className="mt-1 w-full rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
               />
-              <button
-                type="button"
-                onClick={() => void browseDrive()}
-                className="rounded-lg border border-[--color-panel-edge] px-4 text-sm hover:border-[--color-ink-dim]"
-              >
-                Browse
-              </button>
-            </div>
-            <span className="mt-1 block text-xs text-[--color-ink-dim]">
-              The recordings share, as mounted on this machine. Recording rooms
-              file into it; rating stations fetch from it.
-            </span>
-          </label>
+              <span className="mt-1 block text-xs text-[--color-ink-dim]">
+                Leave blank to use the lab's deployment. Change it when the UW
+                server takes over.
+              </span>
+            </label>
+
+            <label className="mt-3 block">
+              <span className="text-sm">Recordings folder</span>
+              <div className="mt-1 flex gap-2">
+                <input
+                  autoComplete="off"
+                  type="text"
+                  value={driveRoot}
+                  onChange={(e) => setDriveRoot(e.target.value)}
+                  placeholder="this computer's own folder (already set)"
+                  className="flex-1 rounded-lg border border-[--color-panel-edge] bg-black/40 p-2.5 text-sm outline-none focus:border-[--color-ink-dim]"
+                />
+                <button
+                  type="button"
+                  onClick={() => void browseDrive()}
+                  className="rounded-lg border border-[--color-panel-edge] px-4 text-sm hover:border-[--color-ink-dim]"
+                >
+                  Browse
+                </button>
+              </div>
+              <span className="mt-1 block text-xs text-[--color-ink-dim]">
+                Blank means this computer's own folder, which works when the
+                recording room and the rating station are the same machine.
+                Point it at the mounted Research Drive to share recordings
+                between machines.
+              </span>
+            </label>
+          </details>
           <div className="flex items-center gap-3 pt-1">
             <button
               type="button"

@@ -141,6 +141,21 @@ pub fn merge_update(existing: &MachineSettings, update: MachineUpdate) -> Machin
 // What the rest of the app consumes
 // ---------------------------------------------------------------------------
 
+/// The lab's Round Robin deployment. Baked in so a fresh install has a
+/// working server without anyone typing a URL: it is already running, on the
+/// public internet, and it is the same one every lab machine coordinates
+/// through. A machine that needs a different one (the UW server, once that
+/// lands) overrides it in Settings.
+pub const DEFAULT_ROUND_ROBIN_URL: &str = "https://niedenthal-round-robin.vercel.app";
+
+/// The server address this machine should use.
+pub fn server_url(app: &AppHandle) -> String {
+    load(app)
+        .round_robin_url
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_ROUND_ROBIN_URL.to_string())
+}
+
 /// Base URL plus secret, or a message explaining what is missing. Every
 /// Round Robin call in every mode funnels through this.
 pub fn credentials(app: &AppHandle) -> Result<(String, String), String> {
@@ -148,18 +163,51 @@ pub fn credentials(app: &AppHandle) -> Result<(String, String), String> {
     let url = s
         .round_robin_url
         .filter(|u| !u.trim().is_empty())
-        .ok_or("No Round Robin address is configured. Press Ctrl+Alt+Shift+L to open machine setup.")?;
+        .unwrap_or_else(|| DEFAULT_ROUND_ROBIN_URL.to_string());
     let secret = s
         .round_robin_secret
         .filter(|v| !v.trim().is_empty())
-        .ok_or("No Round Robin shared secret is configured. Press Ctrl+Alt+Shift+L to open machine setup.")?;
+        .ok_or(
+            "This machine has no shared secret yet. Open Settings (Ctrl+Alt+Shift+L), paste the \
+             lab's shared secret, and press Save & test connection. Ask Alex or Randy for it — \
+             it is the one thing that cannot be filled in automatically, because it is what keeps \
+             participant data private.",
+        )?;
     Ok((url, secret))
 }
 
+/// Where recordings are read and written.
+///
+/// Defaults to a folder this app owns, so a machine with no Research Drive
+/// mapped still records, still files, and a rating station on the same
+/// machine still finds the video — which is the whole pipeline, working, with
+/// nothing configured. Pointing this at the mounted Research Drive is what
+/// makes it work *across* machines, and is the one thing an admin sets when
+/// the lab is ready.
 pub fn drive_root(app: &AppHandle) -> Option<String> {
+    if let Some(configured) = load(app)
+        .research_drive_root
+        .filter(|r| !r.trim().is_empty())
+    {
+        return Some(configured);
+    }
+    let fallback = app
+        .path()
+        .app_data_dir()
+        .ok()?
+        .join("recordings");
+    std::fs::create_dir_all(&fallback).ok()?;
+    Some(fallback.to_string_lossy().to_string())
+}
+
+/// True when the drive is this machine's own folder rather than a share —
+/// the UI says so plainly rather than implying recordings are going somewhere
+/// other machines can see.
+pub fn drive_is_local_fallback(app: &AppHandle) -> bool {
     load(app)
         .research_drive_root
         .filter(|r| !r.trim().is_empty())
+        .is_none()
 }
 
 /// What to open at boot. Always the launcher: the lab asked for a mode
@@ -311,11 +359,13 @@ pub fn migrate_if_fresh(app: &AppHandle) {
 /// the password page, which is inconvenient but never a dead end — and is
 /// exactly what a browser outside the app gets.
 pub async fn control_url(app: &AppHandle) -> String {
-    let Ok((url, secret)) = credentials(app) else {
-        return String::new();
-    };
-    let base = url.trim_end_matches('/').to_string();
+    let base = server_url(app).trim_end_matches('/').to_string();
     let fallback = format!("{base}/admin");
+    // Without a secret there is nothing to trade for a token, but the board
+    // is still reachable — the RA just meets the password page.
+    let Ok((_, secret)) = credentials(app) else {
+        return fallback;
+    };
 
     let Ok(client) = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
@@ -473,21 +523,20 @@ pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
         }
     }
 
-    // ---- Research Drive ----
-    match settings
-        .research_drive_root
-        .filter(|r| !r.trim().is_empty())
-    {
+    // ---- recordings folder ----
+    let local_fallback = drive_is_local_fallback(&app);
+    match drive_root(&app) {
         None => out.push(CheckResult {
-            label: "Research Drive".into(),
+            label: "Recordings folder".into(),
             passed: Some(false),
-            detail: "No folder is set. Recordings cannot be filed or fetched.".into(),
+            detail: "No folder is set and this machine's own app folder could not be created."
+                .into(),
         }),
         Some(root) => {
             let path = std::path::Path::new(&root);
             if !path.is_dir() {
                 out.push(CheckResult {
-                    label: "Research Drive".into(),
+                    label: "Recordings folder".into(),
                     passed: Some(false),
                     detail: format!("{root} is not reachable. Is the share mounted?"),
                 });
@@ -499,13 +548,22 @@ pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
                     Ok(()) => {
                         let _ = std::fs::remove_file(&probe);
                         out.push(CheckResult {
-                            label: "Research Drive".into(),
+                            label: "Recordings folder".into(),
                             passed: Some(true),
-                            detail: format!("{root} is mounted and writable."),
+                            detail: if local_fallback {
+                                format!(
+                                    "Using this computer's own folder ({root}). Everything works \
+                                     on this machine. Point it at the Research Drive in Settings \
+                                     when you want a rating station on a *different* computer to \
+                                     reach these recordings."
+                                )
+                            } else {
+                                format!("{root} is mounted and writable.")
+                            },
                         });
                     }
                     Err(e) => out.push(CheckResult {
-                        label: "Research Drive".into(),
+                        label: "Recordings folder".into(),
                         passed: Some(false),
                         detail: format!("{root} is readable but not writable: {e}"),
                     }),
@@ -692,10 +750,7 @@ pub async fn launch_mode(app: AppHandle, window: tauri::Window, role: String) ->
     // words next to the working settings button. Any HTTP response counts as
     // alive; auth is the site's own business.
     if parsed == Role::Control {
-        let url = load(&app)
-            .round_robin_url
-            .filter(|u| !u.trim().is_empty())
-            .ok_or("No Round Robin server address is set — open Settings first.")?;
+        let url = server_url(&app);
         let reachable = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(4))
             .build()
