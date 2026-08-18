@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Lab Suite — Niedenthal Emotions Lab</title>
+<style>
+  :root {
+    --badger: #c5050c;
+    --ink: #1a1a1a;
+    --dim: #5a5a5a;
+    --line: #d8d8d8;
+    --panel: #f6f6f4;
+    --warn-bg: #fff8e6;
+    --warn-line: #e6c86a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 20px 80px;
+    background: #fff;
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  header { border-bottom: 3px solid var(--badger); padding: 36px 0 20px; margin-bottom: 32px; }
+  .eyebrow { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--badger); font-weight: 700; margin: 0; }
+  h1 { font-size: 30px; margin: 8px 0 6px; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--dim); }
+  h2 { font-size: 20px; margin: 40px 0 12px; padding-top: 8px; }
+  h3 { font-size: 16px; margin: 24px 0 6px; }
+  p, li { margin: 8px 0; }
+  code { background: var(--panel); padding: 1px 6px; border-radius: 3px; font-size: 14px; font-family: ui-monospace, Consolas, monospace; }
+  kbd { background: #fff; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
+  a { color: var(--badger); }
+
+  .download { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px; margin: 28px 0; text-align: center; }
+  .btn {
+    display: inline-block; background: var(--badger); color: #fff; text-decoration: none;
+    font-size: 18px; font-weight: 700; padding: 15px 38px; border-radius: 8px;
+  }
+  .btn:hover { background: #a80409; }
+  .download .meta { color: var(--dim); font-size: 14px; margin: 12px 0 0; }
+
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 0 0 4px 46px; margin: 0 0 26px; }
+  ol.steps > li::before {
+    content: counter(s); position: absolute; left: 0; top: 0;
+    width: 30px; height: 30px; border-radius: 50%; background: var(--badger); color: #fff;
+    font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center;
+  }
+  ol.steps h3 { margin-top: 2px; }
+
+  .note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
+  .note strong { display: block; margin-bottom: 2px; }
+
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { background: var(--panel); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+
+  .modes { border: 1px solid var(--line); border-radius: 8px; padding: 4px 18px; margin: 14px 0; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="eyebrow">Niedenthal Emotions Lab · UW–Madison</p>
+  <h1>Lab Suite</h1>
+  <p>The recording rooms, the rating stations, and the session board — one app, one install.</p>
+</header>
+
+<div class="download">
+  <a class="btn" href="https://github.com/alexmueller07/niedenthal-research-lab-suite/releases/latest/download/NiedenthalLabSuite-Setup.exe">
+    Download for Windows
+  </a>
+  <p class="meta">Version 0.1.0 · 83 MB · Windows 10 or 11</p>
+</div>
+
+<p>
+  Install the same app on every lab computer. Each time you open it, you choose
+  what that computer is doing right now — nothing is locked to one job.
+</p>
+
+<div class="modes">
+  <h3>Recording room</h3>
+  <p>Records the conversation. For the room computers with the webcam.</p>
+  <h3>Rating station</h3>
+  <p>Runs the PPS study a participant sits down to. It finds their conversation video by itself.</p>
+  <h3>Control Center</h3>
+  <p>The live session board — who is present, how far along they are, which recordings are in.</p>
+</div>
+
+<h2>Setting it up</h2>
+
+<ol class="steps">
+
+  <li>
+    <h3>Install it</h3>
+    <p>
+      Download the file above and double-click it. Accept the defaults; it takes
+      about a minute.
+    </p>
+    <div class="note">
+      <strong>Windows will show a blue “Windows protected your PC” box.</strong>
+      This is expected — the app isn’t signed with a paid certificate. Click
+      <strong>More info</strong>, then <strong>Run anyway</strong>.
+    </div>
+  </li>
+
+  <li>
+    <h3>Enter the three shared settings — once per computer</h3>
+    <p>
+      Open <strong>Niedenthal Lab Suite</strong> from the Start menu. Click
+      <strong>⚙ Settings</strong> and fill in:
+    </p>
+    <ul>
+      <li><strong>Round Robin server address</strong> — the lab’s scheduling site.</li>
+      <li><strong>Shared secret</strong> — a long password the apps use to talk to that site.</li>
+      <li><strong>Research Drive recordings folder</strong> — the recordings share, as it appears on this computer (for example <code>R:\niedenthal\round-robin\recordings</code>).</li>
+    </ul>
+    <div class="note">
+      <strong>Ask Alex or Randy for the server address and the shared secret.</strong>
+      They are deliberately not written on this page. You only ever type them
+      once per machine; the app remembers them and never shows the secret again.
+    </div>
+    <p>Click <strong>Save &amp; test connection</strong>. It answers in plain words.</p>
+  </li>
+
+  <li>
+    <h3>Press “Check everything”</h3>
+    <p>
+      On the home screen. It checks the server, the secret, the recordings
+      database, the Research Drive, the video encoder, the camera, the
+      microphone, and anything still waiting to upload — and tells you which
+      one is wrong if any is.
+    </p>
+    <p>
+      <strong>Do this before every session.</strong> It takes about fifteen
+      seconds and it is much cheaper than finding out mid-session.
+    </p>
+  </li>
+
+  <li>
+    <h3>Pick what the computer is doing</h3>
+    <p>
+      Click one of the three cards (or press <kbd>1</kbd>, <kbd>2</kbd>,
+      <kbd>3</kbd>). Close that window when you’re done and you land back on
+      the chooser next time. From inside any mode,
+      <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> brings the
+      home screen back.
+    </p>
+  </li>
+
+</ol>
+
+<h2>Running a session</h2>
+
+<h3>In the recording room</h3>
+<p>
+  Choose the camera and microphone the first time, and a folder to save to.
+  <strong>Talk and watch the microphone bar move</strong> — a silent recording
+  looks completely normal until someone needs the audio. Today’s session and
+  this room’s number are filled in for you.
+</p>
+<p>
+  Press <strong>RECORD</strong>. The screen immediately shows only “Please wait
+  for the researcher,” so nothing on it distracts the participants. When you
+  come back, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> to bring the
+  controls up, then press <strong>STOP</strong> and wait a few seconds while it
+  finishes the file.
+</p>
+<p>
+  You should see three things go right: the recording verified, it was copied
+  to the Research Drive, and it was registered with Round Robin. That third one
+  is what lets the rating stations find it.
+</p>
+
+<h3>At a rating station</h3>
+<p>
+  The participant signs in with their email and works through the study. While
+  they answer the first questionnaire, the app is already fetching their
+  conversation video in the background and checking it arrived intact, so the
+  rating task starts with the video ready. Nobody browses for files.
+</p>
+<p>
+  Researcher save-and-quit is still <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>.
+</p>
+
+<h3>At the control machine</h3>
+<p>
+  Control Center opens the session board directly — no password to type. You
+  see who is present, how far each station has got, anyone who has asked for
+  help, and which recordings are in.
+</p>
+
+<h2>If something looks wrong</h2>
+
+<table>
+  <tr><th>What you see</th><th>What to do</th></tr>
+  <tr>
+    <td>A red chip on the home screen</td>
+    <td>Press <strong>Check everything</strong> — it names the problem in plain words.</td>
+  </tr>
+  <tr>
+    <td>“NOT capturing” while recording</td>
+    <td>No frames are reaching the file. Stop, and check the webcam is plugged in and nothing else (Zoom, Teams, the Camera app) is using it. A laptop’s built-in camera often cannot record at all.</td>
+  </tr>
+  <tr>
+    <td>No cameras in the list</td>
+    <td>Plug in a USB webcam. Windows hides some built-in cameras from recording software.</td>
+  </tr>
+  <tr>
+    <td>“N recordings waiting to be filed”</td>
+    <td>Nothing is lost. The network or the drive was unavailable; it retries automatically, and there is a Retry button in the recording screen.</td>
+  </tr>
+  <tr>
+    <td>The rating station can’t find the video</td>
+    <td>It will offer the conversations recorded today so you can pick one, and the manual file picker is always available. Nothing blocks the session.</td>
+  </tr>
+  <tr>
+    <td>Lots of “duplicated frames” after a recording</td>
+    <td>The room is too dim — the webcam slows itself down in low light. Turn the lights up and the picture gets smoother.</td>
+  </tr>
+</table>
+
+<div class="note">
+  <strong>Never delay a session over a technical problem.</strong>
+  The app is built so that recording always works even when the network or the
+  Research Drive is unavailable — it saves locally and files everything later.
+  Note what happened in the session log and email Randy afterwards.
+</div>
+
+<h2>A few things worth knowing</h2>
+<ul>
+  <li>Recordings are participant data under <strong>IRB 2020-1657</strong>. They belong on the Research Drive — never a personal folder, never cloud storage.</li>
+  <li>The app records at high quality on purpose: about <strong>1.4 GB per 10-minute conversation</strong>. The study measures facial expression, so detail matters more than disk space.</li>
+  <li>The participant screens are identical to the app the lab used before. Nothing a participant sees or does has changed.</li>
+  <li>The macOS version is built but has <strong>not been tested on the lab Mac yet</strong> — ask before using it for a real session.</li>
+</ul>
+
+<footer>
+  <p>
+    Questions, or something behaving oddly: Alexander Mueller
+    (<a href="mailto:admueller3@wisc.edu">admueller3@wisc.edu</a>), CC Randy Lee
+    (<a href="mailto:randy.lee@wisc.edu">randy.lee@wisc.edu</a>).
+  </p>
+  <p>
+    Source and release notes:
+    <a href="https://github.com/alexmueller07/niedenthal-research-lab-suite">github.com/alexmueller07/niedenthal-research-lab-suite</a>
+  </p>
+</footer>
+
+</main>
+</body>
+</html>
