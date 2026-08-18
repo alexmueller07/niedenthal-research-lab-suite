@@ -127,8 +127,17 @@ export default function FinishScreen(props: Props) {
                   ok={v.ptsUniform}
                   label={`Frame timing exact — worst gap off by ${v.maxPtsDeviationMs.toFixed(2)} ms`}
                 />
+                {/* Same tolerance the Rust verification uses (probe.rs): the
+                    container's duration follows the audio stream, so a good
+                    take lands a few frames either side of duration x fps.
+                    Half a second's worth. Two checks that disagree about what
+                    "fine" means teach RAs to ignore both. */}
                 <Check
-                  ok={v.frameCount > 0 && Math.abs(v.frameCount - v.expectedFrameCount) <= 1}
+                  ok={
+                    v.frameCount > 0 &&
+                    Math.abs(v.frameCount - v.expectedFrameCount) <=
+                      Math.max(2, Math.floor(v.nominalFps / 2))
+                  }
                   label={`${v.frameCount.toLocaleString()} frames over ${v.durationSeconds.toFixed(2)} s (expected about ${v.expectedFrameCount.toLocaleString()})`}
                 />
                 <Check

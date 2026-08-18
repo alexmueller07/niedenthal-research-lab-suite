@@ -179,8 +179,20 @@ pub fn quality_summary(
     // under-delivers, so a handful is normal and a lot is a symptom.
     if progress.duplicated_frames > f64::from(fps) as u64 {
         let seconds = progress.duplicated_frames as f64 / f64::from(fps.max(1));
+        // Heavy duplication almost always means light, not hardware: a webcam
+        // lengthens its exposure in a dim room and quietly halves its frame
+        // rate, and FFmpeg then repeats frames to hold the constant rate the
+        // file promises. The video is still correctly timed — motion in it
+        // just steps rather than flows — and an RA can fix the cause in
+        // seconds if told what it is.
+        let share = progress.duplicated_frames as f64 / progress.frames.max(1) as f64;
+        let cause = if share > 0.25 {
+            " Nearly all of that is the camera slowing itself down in low light — turn the room lights up, or point a lamp at the participants, and it will recover."
+        } else {
+            ""
+        };
         parts.push(format!(
-            "{} frames were duplicated to hold constant frame rate ({seconds:.1} s of repeated material) — the camera was not keeping up.",
+            "{} frames were duplicated to hold constant frame rate ({seconds:.1} s of repeated material) — the camera was not keeping up.{cause}",
             progress.duplicated_frames
         ));
     }
