@@ -192,37 +192,25 @@ fn encode_args(a: &mut Vec<String>, settings: &RecordSettings) {
                 a.push(format!("{}k", kbps * 2));
             }
         }
-        EncoderFamily::Qsv => {
-            // ICQ: quality-targeted, the QSV equivalent of CRF. 20 is
-            // visually clean on webcam material without hoarding bits.
-            push(a, "-global_quality");
-            push(a, "18");
-            push(a, "-maxrate");
-            a.push(format!("{kbps}k"));
-            push(a, "-bufsize");
-            a.push(format!("{}k", kbps * 2));
-        }
-        EncoderFamily::Nvenc => {
-            push(a, "-rc");
-            push(a, "vbr");
-            push(a, "-cq");
-            push(a, "18");
+        // Hardware encoders: an explicit bitrate, deliberately, after trying
+        // the quality-targeted modes and measuring them.
+        //
+        // QSV's ICQ (-global_quality) is silently ignored by this driver —
+        // asking for 14 produced *less* bitrate than asking for 18, which is
+        // not a quality scale doing anything. Rather than ship a knob that
+        // only appears to work, the hardware path states the bitrate it
+        // wants. That is also the more predictable thing for a lab: a
+        // 10-minute conversation costs about the same on every machine, so
+        // Research Drive space can be planned rather than discovered.
+        //
+        // VBR rather than CBR: the peak is what protects detail during
+        // movement, and there is no reason to pad a still frame up to the
+        // ceiling.
+        EncoderFamily::Qsv | EncoderFamily::Nvenc | EncoderFamily::Amf => {
             push(a, "-b:v");
-            a.push(format!("{}k", kbps / 2)); // target; -cq drives quality
-            push(a, "-maxrate");
             a.push(format!("{kbps}k"));
-            push(a, "-bufsize");
-            a.push(format!("{}k", kbps * 2));
-        }
-        EncoderFamily::Amf => {
-            push(a, "-rc");
-            push(a, "vbr_peak");
-            push(a, "-qp_i");
-            push(a, "20");
-            push(a, "-qp_p");
-            push(a, "22");
             push(a, "-maxrate");
-            a.push(format!("{kbps}k"));
+            a.push(format!("{}k", kbps * 3 / 2));
             push(a, "-bufsize");
             a.push(format!("{}k", kbps * 2));
         }

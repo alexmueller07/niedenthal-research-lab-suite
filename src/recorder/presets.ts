@@ -42,7 +42,9 @@ export const PRESETS: Preset[] = [
     width: 1920,
     height: 1080,
     fps: 30,
-    videoKbps: 20000,
+    // Hardware encoders take this x1.7 (see encode_args), landing near
+    // 20 Mbps — about 1.5 GB for a 10-minute conversation.
+    videoKbps: 12000,
     audioKbps: 192,
   },
 ];

@@ -595,7 +595,21 @@ pub async fn finalize_recording(
             } else {
                 request.outcome.encoder.clone()
             },
-            encoder_preset: request.settings.encoder_preset.clone(),
+            // The speed knob the hardware path actually used, not the one the
+            // profile asked for — a receipt that reports a setting that did
+            // not run is worse than no receipt.
+            encoder_preset: match ffmpeg::encoder_family(
+                if request.outcome.encoder.is_empty() {
+                    &request.settings.encoder
+                } else {
+                    &request.outcome.encoder
+                },
+            ) {
+                ffmpeg::EncoderFamily::Qsv => "slower".to_string(),
+                ffmpeg::EncoderFamily::Nvenc => "p4".to_string(),
+                ffmpeg::EncoderFamily::Amf => "balanced".to_string(),
+                ffmpeg::EncoderFamily::X264 => request.settings.encoder_preset.clone(),
+            },
             rate_control: request.settings.rate_control,
             gop_seconds: request.settings.gop_seconds,
             audio_codec: audio.as_ref().map(|_| "aac".to_string()),
