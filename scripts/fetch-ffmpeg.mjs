@@ -16,8 +16,11 @@
 //                                               (dev only — breaks the parity
 //                                               guarantee, and says so)
 //   node scripts/fetch-ffmpeg.mjs --target aarch64-apple-darwin
+//   node scripts/fetch-ffmpeg.mjs --target universal-apple-darwin
+//                                               both Apple arches, lipo'd into
+//                                               the single file a universal
+//                                               bundle needs (macOS only)
 //   node scripts/fetch-ffmpeg.mjs --all         every target in the manifest
-//                                               (CI, for universal mac builds)
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -208,9 +211,63 @@ async function fetchTarget(triple, spec, manifest) {
   }
 }
 
+/**
+ * The single sidecar a universal macOS bundle needs.
+ *
+ * `tauri build --target universal-apple-darwin` lipos its OWN binary, but it
+ * does not do that for sidecars: it looks for `binaries/<tool>-universal-apple-
+ * darwin` and fails the bundle outright if it is missing. Every macOS CI run
+ * died there ("resource path `binaries/ffmpeg-universal-apple-darwin` doesn't
+ * exist"), which is why no Mac installer has ever existed. (2026-08-18)
+ */
+const UNIVERSAL = "universal-apple-darwin";
+const UNIVERSAL_PARTS = ["x86_64-apple-darwin", "aarch64-apple-darwin"];
+
+async function fetchUniversal(manifest) {
+  if (process.platform !== "darwin") {
+    throw new Error(
+      "a universal macOS sidecar can only be built on macOS — lipo is part of " +
+        "the Xcode command line tools. This target is for the macOS CI job."
+    );
+  }
+
+  const outputs = ["ffmpeg", "ffprobe"].map((tool) =>
+    join(OUT_DIR, `${tool}-${UNIVERSAL}`)
+  );
+  if (outputs.every((p) => existsSync(p)) && !flag("force")) {
+    console.log("  already present — pass --force to rebuild");
+    return;
+  }
+
+  for (const part of UNIVERSAL_PARTS) {
+    const spec = manifest.targets[part];
+    if (!spec) throw new Error(`no ffmpeg-manifest.json entry for ${part}`);
+    console.log(`  [${part}]`);
+    await fetchTarget(part, spec, manifest);
+  }
+
+  for (const tool of ["ffmpeg", "ffprobe"]) {
+    const dest = join(OUT_DIR, `${tool}-${UNIVERSAL}`);
+    const parts = UNIVERSAL_PARTS.map((p) => join(OUT_DIR, `${tool}-${p}`));
+    for (const p of parts) {
+      if (!existsSync(p)) throw new Error(`missing ${p} — cannot build a universal binary`);
+    }
+    execFileSync("lipo", ["-create", "-output", dest, ...parts], { stdio: "inherit" });
+    chmodSync(dest, 0o755);
+    const archs = execFileSync("lipo", ["-archs", dest], { encoding: "utf8" }).trim();
+    console.log(
+      `  ${tool} -> ${dest} (${(statSync(dest).size / 1e6).toFixed(0)} MB, ${archs})`
+    );
+  }
+}
+
 /** Proves the binary actually runs here before the app depends on it. */
 function smokeTest(triple, expectedVersion) {
-  if (triple !== hostTriple()) return; // can't execute a cross-target binary
+  // A universal binary runs on whichever Mac built it, so it is testable even
+  // though its triple never equals the host's.
+  const runnable =
+    triple === hostTriple() || (triple === UNIVERSAL && process.platform === "darwin");
+  if (!runnable) return; // can't execute a cross-target binary
   const exe = triple.includes("windows") ? ".exe" : "";
   const bin = join(OUT_DIR, `ffmpeg-${triple}${exe}`);
   const out = execFileSync(bin, ["-version"], { encoding: "utf8" });
@@ -233,6 +290,16 @@ for (const triple of targets) {
   console.log(`\n[${triple}]`);
   if (flag("use-system")) {
     useSystem(triple);
+    continue;
+  }
+  if (triple === UNIVERSAL) {
+    try {
+      await fetchUniversal(manifest);
+      smokeTest(triple, manifest.ffmpegVersion);
+    } catch (err) {
+      console.error(`  FAILED: ${err.message}`);
+      process.exitCode = 1;
+    }
     continue;
   }
   const spec = manifest.targets[triple];

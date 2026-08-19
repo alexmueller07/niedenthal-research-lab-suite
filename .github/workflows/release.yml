@@ -87,12 +87,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # A universal bundle needs an FFmpeg for each architecture; Tauri lipos
-      # the two sidecars together at bundle time.
-      - name: Fetch FFmpeg for both Apple architectures
-        run: |
-          node scripts/fetch-ffmpeg.mjs --target x86_64-apple-darwin
-          node scripts/fetch-ffmpeg.mjs --target aarch64-apple-darwin
+      # Tauri lipos its own binary for a universal build but NOT the sidecars:
+      # it wants one `<tool>-universal-apple-darwin` and fails the bundle if it
+      # is missing. Fetching the two arches separately, as this step used to,
+      # left that file absent and every macOS run died at bundling.
+      - name: Fetch FFmpeg and build the universal sidecars
+        run: node scripts/fetch-ffmpeg.mjs --target universal-apple-darwin
 
       # Ad-hoc signing is not cosmetic on macOS: TCC attributes camera access
       # to the responsible process, and an unsigned bundle can leave the FFmpeg
