@@ -1,0 +1,10 @@
+.vercel
+.env*
+
+# Belt and braces: an installer left in this folder must never be uploaded.
+# Vercel rejects the whole deployment on any file over 100 MB, and the macOS
+# dmg is ~159 MB — that failure is what sent the installers to release assets
+# with redirects in vercel.json.
+*.dmg
+*.exe
+*.msi

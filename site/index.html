@@ -43,6 +43,12 @@
   .btn:hover { background: #a80409; }
   .download .meta { color: var(--dim); font-size: 14px; margin: 12px 0 0; }
 
+  /* Two platforms, side by side on a desktop and stacked on a narrow window.
+     Each keeps its own size line so nobody has to guess which is theirs. */
+  .picks { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; }
+  .pick { flex: 1 1 240px; max-width: 320px; }
+  .pick .meta { margin-top: 10px; }
+
   ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
   ol.steps > li { counter-increment: s; position: relative; padding: 0 0 4px 46px; margin: 0 0 26px; }
   ol.steps > li::before {
@@ -73,10 +79,20 @@
 </header>
 
 <div class="download">
-  <a class="btn" href="https://github.com/alexmueller07/niedenthal-research-lab-suite/releases/latest/download/NiedenthalLabSuite-Setup.exe">
-    Download for Windows
-  </a>
-  <p class="meta">Version 0.1.0 · 83 MB · Windows 10 or 11</p>
+  <div class="picks">
+    <div class="pick">
+      <a class="btn" href="/NiedenthalLabSuite-Setup.exe" download>
+        Download for Windows
+      </a>
+      <p class="meta">Version 0.1.0 · 83 MB · Windows 10 or 11</p>
+    </div>
+    <div class="pick">
+      <a class="btn" href="/NiedenthalLabSuite.dmg" download>
+        Download for Mac
+      </a>
+      <p class="meta">Version 0.1.0 · 159 MB · macOS 11 or newer<br>Intel and Apple Silicon</p>
+    </div>
+  </div>
 </div>
 
 <p>
@@ -100,13 +116,35 @@
   <li>
     <h3>Install it</h3>
     <p>
-      Download the file above and double-click it. Accept the defaults; it takes
-      about a minute.
+      <strong>Windows:</strong> download and double-click it. Accept the
+      defaults; it takes about a minute.
     </p>
     <div class="note">
       <strong>Windows will show a blue “Windows protected your PC” box.</strong>
       This is expected — the app isn’t signed with a paid certificate. Click
       <strong>More info</strong>, then <strong>Run anyway</strong>.
+    </div>
+    <p>
+      <strong>Mac:</strong> open the downloaded <code>.dmg</code> and drag
+      <strong>Niedenthal Lab Suite</strong> into <strong>Applications</strong>.
+      Then <strong>right-click the app and choose Open</strong> the first time —
+      not a double-click.
+    </p>
+    <div class="note">
+      <strong>macOS will say the app “cannot be opened because Apple cannot
+      check it for malicious software.”</strong>
+      Expected, for the same reason: the lab has no paid Apple developer
+      certificate. Right-click the app, choose <strong>Open</strong>, then
+      <strong>Open</strong> again in the dialog. If you only get a
+      <strong>Cancel</strong> button, go to
+      <strong>System Settings → Privacy &amp; Security</strong>, scroll down,
+      and click <strong>Open Anyway</strong>. You only do this once.
+    </div>
+    <div class="note">
+      <strong>Mac recording rooms: say yes to Camera and Microphone.</strong>
+      macOS asks the first time the app records. If you say no by accident,
+      turn it back on in <strong>System Settings → Privacy &amp; Security →
+      Camera</strong> — the app cannot ask twice.
     </div>
   </li>
 
@@ -246,7 +284,8 @@
   <li>Recordings are participant data under <strong>IRB 2020-1657</strong>. They belong on the Research Drive — never a personal folder, never cloud storage.</li>
   <li>The app records at high quality on purpose: about <strong>1.5 GB per 10-minute conversation</strong>. The study measures facial expression, so detail matters more than disk space. The recording screen tells you how many more sessions the drive has room for.</li>
   <li>The participant screens are identical to the app the lab used before. Nothing a participant sees or does has changed.</li>
-  <li>The macOS version is built but has <strong>not been tested on the lab Mac yet</strong> — ask before using it for a real session.</li>
+  <li>The macOS version has <strong>not been run on the lab Mac yet</strong>. It builds, it is signed, and it installs — but nobody has recorded a real session with it. Ask Alex or Randy before using a Mac for anything that counts.</li>
+  <li>A Mac currently records with a <strong>different FFmpeg build (7.1) than Windows (9.0)</strong>. For a rating station that makes no difference. For a <em>recording</em> room it does: the whole point of pinning one encoder is that every machine produces comparable video. Until those match, prefer Windows for recording.</li>
 </ul>
 
 <footer>

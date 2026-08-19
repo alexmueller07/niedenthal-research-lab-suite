@@ -1,2 +1,11 @@
 .vercel
 .env*
+
+# Installers never live here. Vercel refuses any single file over 100 MB and
+# the macOS dmg is ~159 MB, so both installers are GitHub release assets that
+# /NiedenthalLabSuite*.{exe,dmg} redirect to (see vercel.json). This rule is
+# only a guard against someone dropping a build in here by hand and committing
+# 150 MB to the repo.
+*.dmg
+*.exe
+*.msi

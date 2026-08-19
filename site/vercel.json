@@ -10,5 +10,17 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/NiedenthalLabSuite-Setup.exe",
+      "destination": "https://github.com/alexmueller07/niedenthal-research-lab-suite/releases/latest/download/NiedenthalLabSuite-Setup.exe",
+      "permanent": false
+    },
+    {
+      "source": "/NiedenthalLabSuite.dmg",
+      "destination": "https://github.com/alexmueller07/niedenthal-research-lab-suite/releases/latest/download/NiedenthalLabSuite.dmg",
+      "permanent": false
+    }
   ]
 }
