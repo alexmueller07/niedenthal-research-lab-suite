@@ -27,8 +27,11 @@ moment anyone merged to `main` — including mid-study.
 **Windows** — build locally and upload:
 
 ```bash
-npx tauri build                       # from lab-suite/
-gh release upload v0.1.0 "src-tauri/target/release/bundle/nsis/Niedenthal Lab Suite_0.1.0_x64-setup.exe#NiedenthalLabSuite-Setup.exe" --clobber
+# LAB_SUITE_DEVICE_KEY must match PPS_SHARED_SECRET on the Round Robin
+# deployment. A build without it carries the development key and the
+# production server refuses it — see the README's "Device authentication".
+LAB_SUITE_DEVICE_KEY=... npx tauri build          # from lab-suite/
+gh release upload v1.0.0 "src-tauri/target/release/bundle/nsis/Niedenthal Lab Suite_1.0.0_x64-setup.exe#NiedenthalLabSuite-Setup.exe" --clobber
 ```
 
 **macOS** — Tauri cannot cross-compile it, so it comes from the `Build
@@ -36,8 +39,8 @@ installers` workflow (`.github/workflows/release.yml`, job `build-mac`):
 
 ```bash
 gh run download <run-id> --name niedenthal-lab-suite-macos --dir /tmp/mac
-mv "/tmp/mac/Niedenthal Lab Suite_0.1.0_universal.dmg" /tmp/NiedenthalLabSuite.dmg
-gh release upload v0.1.0 /tmp/NiedenthalLabSuite.dmg --clobber
+mv "/tmp/mac/Niedenthal Lab Suite_1.0.0_universal.dmg" /tmp/NiedenthalLabSuite.dmg
+gh release upload v1.0.0 /tmp/NiedenthalLabSuite.dmg --clobber
 ```
 
 After either, check the byte count end to end rather than trusting the upload:

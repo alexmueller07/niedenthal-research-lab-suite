@@ -1,41 +1,41 @@
 import { useState } from "react";
 import StimulusPlayer from "./StimulusPlayer";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { shuffle } from "../utils/shuffle";
 
-// Final page of the video task: for each clip they just rated, who would like
-// it — them, their partner, or the average UW–Madison student.
+// Final page of the video task: of the clips they just rated, which would they
+// share with their partner, and which would they keep for themselves.
 //
-// All three judgments sit on one page, one row per clip, so the participant
-// compares them for the same clip side by side rather than from memory two
-// screens apart. Selecting nothing is allowed — an empty set is itself a
-// response — but it prompts a confirmation so an accidental skip is caught.
+// Randy, 2026-08-05:
+//   - the average-UW-student column is gone, along with that whole perspective.
+//   - the two remaining columns swap places at random, per participant. They
+//     are a forced comparison between "me" and "them", and a fixed left-right
+//     order is a thumb on that scale: whichever column is read first is the one
+//     answered most carefully. Which order was shown is written to the data
+//     file, so the effect is testable rather than assumed away.
 //
-// From the 2026-07-29 review:
-//   - the average-student column is new (Randy).
-//   - the heading used to talk about sending and picking videos while the
-//     columns talked about liking them; Ben, Sarah and Eddy all flagged the
-//     mismatch. The heading now says what the columns say.
-//   - each row plays its clip back on click, which is what Randy was asking
-//     for; the thumbnail now says so rather than leaving it to be discovered.
+// Selecting nothing is allowed — an empty set is itself a response — but it
+// prompts a confirmation so an accidental skip is caught.
 
-/** The three columns, in the order they are shown and recorded. */
-const COLUMNS = [
-  { key: "partner", header: "My partner would like this" },
-  { key: "self", header: "I would like this" },
-  { key: "average", header: "The average UW–Madison student would like this" },
-] as const;
+export const COLUMN_DEFS = {
+  self: { key: "self", header: "I would be interested" },
+  partner: { key: "partner", header: "My conversation partner would be interested" },
+} as const;
 
-type ColumnKey = (typeof COLUMNS)[number]["key"];
+type ColumnKey = keyof typeof COLUMN_DEFS;
+
+/** The two columns, left to right, as one participant saw them. */
+export type ColumnOrder = [ColumnKey, ColumnKey];
 
 export interface VideoSelectionResult {
-  /** Clip ids the participant thinks their partner would like. */
+  /** Clip ids the participant thinks their partner would be interested in. */
   forPartner: string[];
-  /** Clip ids the participant would like themselves. */
+  /** Clip ids the participant would be interested in themselves. */
   forSelf: string[];
-  /** Clip ids they think the average UW–Madison student would like. */
-  forAverage: string[];
   /** The row order as presented, for the record. */
   presentedOrder: string[];
+  /** The column order as presented, for the record. */
+  columnOrder: ColumnOrder;
 }
 
 interface VideoSelectionPageProps {
@@ -76,10 +76,16 @@ export default function VideoSelectionPage({
   srcFor,
   onSubmit,
 }: VideoSelectionPageProps) {
+  // Drawn once, on mount, and never re-rolled: a column order that changed
+  // under a participant mid-page would be worse than a fixed one.
+  const [columnOrder] = useState<ColumnOrder>(
+    () => shuffle(["self", "partner"] as ColumnKey[]) as ColumnOrder
+  );
+  const columns = columnOrder.map((key) => COLUMN_DEFS[key]);
+
   const [selected, setSelected] = useState<Record<ColumnKey, Set<string>>>({
     partner: new Set(),
     self: new Set(),
-    average: new Set(),
   });
   const [preview, setPreview] = useState<string | null>(null);
   const [showEmptyConfirm, setShowEmptyConfirm] = useState(false);
@@ -101,31 +107,32 @@ export default function VideoSelectionPage({
     onSubmit({
       forPartner: chosen("partner"),
       forSelf: chosen("self"),
-      forAverage: chosen("average"),
       presentedOrder: videoIds,
+      columnOrder,
     });
   };
 
-  const nothingSelected = COLUMNS.every((c) => selected[c.key].size === 0);
+  const nothingSelected = selected.self.size === 0 && selected.partner.size === 0;
 
   return (
     <div className="min-h-full w-full flex flex-col bg-black pb-24">
       <div className="sticky top-0 z-40 w-full bg-black border-b border-white px-8 py-4">
         <h2 className="text-white text-2xl font-bold text-center">
-          For each video below, who do you think would like it?
+          If you could share these videos, which ones do you think your partner
+          would be interested in seeing, and which would you pick for yourself?
         </h2>
       </div>
 
       <div className="flex-1 flex flex-col items-center px-8 pt-16 pb-8 max-w-6xl w-full mx-auto">
         <p className="text-white text-lg mb-6 text-center max-w-4xl">
-          These are the videos you just rated. Tick every box that applies — as many
-          or as few as you like. Click a video to watch it again.
+          Tick every box that applies — as many or as few as you like. Click a
+          video to watch it again.
         </p>
 
         <div className="w-full bg-black border p-6">
           <div className="flex items-end border-b border-white pb-3 mb-2">
             <span className="flex-1 text-white text-lg font-bold">Video</span>
-            {COLUMNS.map((column) => (
+            {columns.map((column) => (
               <span
                 key={column.key}
                 className="w-48 text-white text-base font-bold text-center leading-tight"
@@ -162,7 +169,7 @@ export default function VideoSelectionPage({
                 <span className="text-white text-lg">Video {index + 1}</span>
               </div>
 
-              {COLUMNS.map((column) => (
+              {columns.map((column) => (
                 <div key={column.key} className="w-48 flex justify-center">
                   <Checkbox
                     checked={selected[column.key].has(id)}
@@ -176,7 +183,7 @@ export default function VideoSelectionPage({
 
           <div className="flex items-center pt-4">
             <span className="flex-1 text-gray-400 text-base">Selected</span>
-            {COLUMNS.map((column) => (
+            {columns.map((column) => (
               <span key={column.key} className="w-48 text-gray-400 text-base text-center">
                 {selected[column.key].size} of {videoIds.length}
               </span>

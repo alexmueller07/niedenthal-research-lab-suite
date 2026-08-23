@@ -66,6 +66,21 @@
   th { background: var(--panel); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
 
   .modes { border: 1px solid var(--line); border-radius: 8px; padding: 4px 18px; margin: 14px 0; }
+
+  /* Per-browser install instructions. The wording Windows shows depends on
+     which browser did the downloading — Edge and Chrome disagree about
+     everything including the name of the button — and one generic version
+     sent an RA hunting. Each browser gets its own, opened by name. */
+  details.browser { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; }
+  details.browser > summary {
+    cursor: pointer; padding: 12px 16px; font-weight: 600; list-style: none;
+  }
+  details.browser > summary::-webkit-details-marker { display: none; }
+  details.browser > summary::before { content: "▸ "; color: var(--badger); }
+  details.browser[open] > summary::before { content: "▾ "; }
+  details.browser > div { padding: 0 16px 14px; border-top: 1px solid var(--line); }
+  details.browser > div > p:first-child { margin-top: 12px; }
+  .keep { color: var(--dim); font-size: 14px; margin-top: 10px; }
   footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px; }
 </style>
 </head>
@@ -84,13 +99,13 @@
       <a class="btn" href="/NiedenthalLabSuite-Setup.exe" download>
         Download for Windows
       </a>
-      <p class="meta">Version 0.1.0 · 83 MB · Windows 10 or 11</p>
+      <p class="meta">Version 1.0.0 · 83 MB · Windows 10 or 11</p>
     </div>
     <div class="pick">
       <a class="btn" href="/NiedenthalLabSuite.dmg" download>
         Download for Mac
       </a>
-      <p class="meta">Version 0.1.0 · 159 MB · macOS 11 or newer<br>Intel and Apple Silicon</p>
+      <p class="meta">Version 1.0.0 · 159 MB · macOS 11 or newer<br>Intel and Apple Silicon</p>
     </div>
   </div>
 </div>
@@ -114,18 +129,91 @@
 <ol class="steps">
 
   <li>
-    <h3>Install it</h3>
+    <h3>Install it on Windows</h3>
     <p>
-      <strong>Windows:</strong> download and double-click it. Accept the
-      defaults; it takes about a minute.
+      Download the installer, then open it. Two things get in the way, and both
+      are expected: your browser holds the file back because it is an
+      <code>.exe</code>, and Windows itself shows a blue box before it runs.
+      The lab has no paid code-signing certificate, which is the only reason
+      either happens.
     </p>
-    <div class="note">
-      <strong>Windows will show a blue “Windows protected your PC” box.</strong>
-      This is expected — the app isn’t signed with a paid certificate. Click
-      <strong>More info</strong>, then <strong>Run anyway</strong>.
-    </div>
     <p>
-      <strong>Mac:</strong> open the downloaded <code>.dmg</code> and drag
+      <strong>The browser step is worded differently in every browser</strong>,
+      so find yours:
+    </p>
+
+    <details class="browser">
+      <summary>Microsoft Edge</summary>
+      <div>
+        <p>
+          The download bar says <em>&ldquo;NiedenthalLabSuite-Setup.exe was
+          blocked&rdquo;</em> or <em>&ldquo;can&rsquo;t be downloaded
+          securely&rdquo;</em>.
+        </p>
+        <ol>
+          <li>Open the downloads list (<kbd>Ctrl</kbd>+<kbd>J</kbd>, or the ↓ arrow by the address bar).</li>
+          <li>Hover the blocked file and click the <strong>&hellip;</strong> (More actions) button.</li>
+          <li>Choose <strong>Keep</strong>.</li>
+          <li>If a second box appears saying the file may harm your device, click
+              <strong>Show more</strong>, then <strong>Keep anyway</strong>.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="browser">
+      <summary>Google Chrome</summary>
+      <div>
+        <p>
+          Chrome says <em>&ldquo;NiedenthalLabSuite-Setup.exe is not commonly
+          downloaded&rdquo;</em> or <em>&ldquo;may be dangerous&rdquo;</em>.
+        </p>
+        <ol>
+          <li>Open the downloads list (<kbd>Ctrl</kbd>+<kbd>J</kbd>, or the ↓ arrow by the address bar).</li>
+          <li>Click the <strong>&hellip;</strong> next to the file, or the warning text itself.</li>
+          <li>Choose <strong>Keep</strong> &rarr; <strong>Keep anyway</strong>
+              (older Chrome versions: <strong>Download insecure file</strong>).</li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="browser">
+      <summary>Firefox</summary>
+      <div>
+        <p>The downloads panel shows the file with a warning triangle.</p>
+        <ol>
+          <li>Open the downloads panel (the ↓ arrow, or <kbd>Ctrl</kbd>+<kbd>J</kbd>).</li>
+          <li>Right-click the file and choose <strong>Allow download</strong>.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="browser">
+      <summary>Safari on a Mac, or any other browser</summary>
+      <div>
+        <p>
+          Nothing extra to do &mdash; download the <code>.dmg</code> and follow
+          the Mac steps below. If your browser is not listed and it blocks the
+          file, look for a <strong>Keep</strong>, <strong>Allow</strong> or
+          <strong>Download anyway</strong> option next to it in the downloads
+          list. Every browser has one; only the wording changes.
+        </p>
+      </div>
+    </details>
+
+    <p class="keep">
+      None of this is a virus warning. The browser cannot tell who made an
+      unsigned installer, so it warns about every one of them.
+    </p>
+
+    <div class="note">
+      <strong>Then Windows shows a blue &ldquo;Windows protected your PC&rdquo; box.</strong>
+      This one is the same in every browser. Click <strong>More info</strong>,
+      then <strong>Run anyway</strong>. Accept the installer&rsquo;s defaults;
+      it takes about a minute.
+    </div>
+    <h3 style="margin-top:22px">Install it on a Mac</h3>
+    <p>
+      Open the downloaded <code>.dmg</code> and drag
       <strong>Niedenthal Lab Suite</strong> into <strong>Applications</strong>.
       Then <strong>right-click the app and choose Open</strong> the first time —
       not a double-click.
@@ -149,35 +237,43 @@
   </li>
 
   <li>
-    <h3>Paste the shared secret — once per computer</h3>
+    <h3>Point it at the Research Drive &mdash; once per computer</h3>
     <p>
-      Open <strong>Niedenthal Lab Suite</strong> from the Start menu. It opens
-      on Settings the first time. There is exactly one box to fill in: the
-      lab’s <strong>shared secret</strong>. Paste it and click
-      <strong>Save &amp; test connection</strong>, which answers in plain words.
+      Open <strong>Niedenthal Lab Suite</strong> from the Start menu. There is
+      one thing to set, and it is a folder: the <strong>Research Drive</strong>,
+      as this computer sees it &mdash; a mapped letter like
+      <code>R:\niedenthal\recordings</code>, or the full
+      <code>\\research.drive.wisc.edu\niedenthal\&hellip;</code> path.
+      <strong>Browse</strong> finds it, and <strong>Save &amp; test
+      connection</strong> answers in plain words.
+    </p>
+    <p>
+      That folder is what makes the pipeline work across machines: recording
+      rooms write conversations into it, and rating stations read them back
+      out. A computer without it still records and still runs the study, but
+      only its own recordings are ever findable.
     </p>
     <div class="note">
-      <strong>Ask Alex or Randy for the shared secret.</strong>
-      It is deliberately not written on this page — it is the one thing
-      standing between the internet and participant names, emails and
-      schedules. You type it once per machine and never see it again.
+      <strong>There is no password to ask anyone for.</strong>
+      The app authenticates itself to the lab&rsquo;s server &mdash; that has
+      not changed &mdash; but the credential now ships inside the installer
+      instead of being typed. If you used an earlier build and pasted a
+      &ldquo;shared secret&rdquo;, you can forget it; it still works and
+      nothing will ask for it again.
     </div>
     <p>
-      Everything else is already set: the app knows where the lab’s server is,
-      and it keeps recordings in a folder it manages itself. (An admin can
-      later point it at the Research Drive under <em>Advanced</em>, which is
-      what lets a rating station on a <em>different</em> computer reach a
-      recording.)
+      Everything else is already set: the app knows where the lab&rsquo;s
+      server is.
     </p>
   </li>
 
   <li>
     <h3>Press “Check everything”</h3>
     <p>
-      On the home screen. It checks the server, the secret, the recordings
-      database, the recordings folder, the video encoder, the camera, the
-      microphone, and anything still waiting to upload — and tells you which
-      one is wrong if any is.
+      On the home screen. It checks the server, the recordings database, the
+      Research Drive folder (including whether it is actually writable), the
+      video encoder, the camera, the microphone, and anything still waiting to
+      upload — and tells you which one is wrong if any is.
     </p>
     <p>
       <strong>Do this before every session.</strong> It takes about fifteen
@@ -189,10 +285,15 @@
     <h3>Pick what the computer is doing</h3>
     <p>
       Click one of the three cards (or press <kbd>1</kbd>, <kbd>2</kbd>,
-      <kbd>3</kbd>). Close that window when you’re done and you land back on
-      the chooser next time. From inside any mode,
-      <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> brings the
-      home screen back.
+      <kbd>3</kbd>).
+    </p>
+    <p>
+      <strong>You can change your mind without restarting the app.</strong>
+      Every mode has a <strong>&larr; Modes</strong> button, closing a mode
+      window lands you straight back on this screen, and
+      <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> opens the
+      chooser from anywhere. If a mode is already running, picking a different
+      card asks it to save and hand the computer over.
     </p>
   </li>
 
@@ -220,15 +321,37 @@
   is what lets the rating stations find it.
 </p>
 
-<h3>At a rating station</h3>
+<h3>Before the day starts: the session board</h3>
 <p>
-  The participant signs in with their email and works through the study. While
-  they answer the first questionnaire, the app is already fetching their
-  conversation video in the background and checking it arrived intact, so the
-  rating task starts with the video ready. Nobody browses for files.
+  Whoever hands out the nametags opens <strong>Rating station &rarr; Researcher
+  dashboard</strong> and fills in today&rsquo;s dyads: a colour for each seat,
+  and the study ID that goes with it. The app suggests both IDs from the dyad
+  number and warns if the left seat ends up even, which is the one thing in the
+  protocol that must not be got wrong.
 </p>
 <p>
-  Researcher save-and-quit is still <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>.
+  Do this once, on one computer, and both rating stations read the same numbers
+  for the rest of the day.
+</p>
+
+<h3>At a rating station</h3>
+<p>
+  The RA sets the station up <em>before</em> the participant sits down: tap the
+  colour of their nametag and the dyad, both study IDs and the seat fill in.
+  Date, time and the data folder are filled in already. Then press
+  <strong>Start</strong> and hand the computer over.
+</p>
+<p>
+  From there the participant signs in with their email and works through the
+  study. While they answer the first questionnaire the app is already fetching
+  their conversation video off the Research Drive and checking it arrived
+  intact, so the rating task starts with the video ready. Nobody browses for
+  files.
+</p>
+<p>
+  Researcher save-and-quit is still <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>
+  &mdash; and that box now also offers &ldquo;save and go back to the mode
+  chooser&rdquo;, for turning a station into a recording room without quitting.
 </p>
 
 <h3>At the control machine</h3>
@@ -245,6 +368,18 @@
   <tr>
     <td>A red chip on the home screen</td>
     <td>Press <strong>Check everything</strong> — it names the problem in plain words.</td>
+  </tr>
+  <tr>
+    <td>&ldquo;Research Drive not set&rdquo;</td>
+    <td>Open <strong>&#9881; Settings</strong> and pick the folder. Until you do, recordings made on this computer are invisible to every other one.</td>
+  </tr>
+  <tr>
+    <td>&ldquo;did not accept this copy of the app&rdquo;</td>
+    <td>The installer is out of date, or it was built by hand rather than downloaded from this page. Install the copy from the button at the top.</td>
+  </tr>
+  <tr>
+    <td>You want this computer to do a different job</td>
+    <td>Press <strong>&larr; Modes</strong>, or close the mode window. No need to quit and relaunch.</td>
   </tr>
   <tr>
     <td>“NOT capturing” while recording</td>
@@ -283,7 +418,7 @@
 <ul>
   <li>Recordings are participant data under <strong>IRB 2020-1657</strong>. They belong on the Research Drive — never a personal folder, never cloud storage.</li>
   <li>The app records at high quality on purpose: about <strong>1.5 GB per 10-minute conversation</strong>. The study measures facial expression, so detail matters more than disk space. The recording screen tells you how many more sessions the drive has room for.</li>
-  <li>The participant screens are identical to the app the lab used before. Nothing a participant sees or does has changed.</li>
+  <li><strong>The post-conversation video task changed</strong> (Randy, 2026-08-05): no average-UW-student ratings, each clip judged for yourself and for your partner in an order drawn per clip, and 1&ndash;7 scales instead of 1&ndash;100 sliders. Data files from before and after that change are not directly comparable on those measures.</li>
   <li>The macOS version has <strong>not been run on the lab Mac yet</strong>. It builds, it is signed, and it installs — but nobody has recorded a real session with it. Ask Alex or Randy before using a Mac for anything that counts.</li>
   <li>A Mac currently records with a <strong>different FFmpeg build (7.1) than Windows (9.0)</strong>. For a rating station that makes no difference. For a <em>recording</em> room it does: the whole point of pinning one encoder is that every machine produces comparable video. Until those match, prefer Windows for recording.</li>
 </ul>

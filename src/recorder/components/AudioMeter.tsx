@@ -31,7 +31,7 @@ interface Props {
 export default function AudioMeter({ level, enabled, live }: Props) {
   if (!enabled) {
     return (
-      <div className="text-xs text-[--color-ink-faint]">
+      <div className="text-xs text-(--color-ink-faint)">
         Audio is turned off — this recording will have no sound.
       </div>
     );
@@ -56,13 +56,13 @@ export default function AudioMeter({ level, enabled, live }: Props) {
     <div>
       <div className="mb-1 flex items-baseline justify-between">
         <span className="field-label mb-0">Microphone</span>
-        <span className="font-mono text-xs text-[--color-ink-dim]">
+        <span className="font-mono text-xs text-(--color-ink-dim)">
           {live && Number.isFinite(lufs) && lufs > -119 ? `${lufs.toFixed(1)} LUFS` : "—"}
         </span>
       </div>
 
       <div
-        className="h-3 w-full overflow-hidden rounded-full bg-[--color-panel]"
+        className="h-3 w-full overflow-hidden rounded-full bg-(--color-panel)"
         role="meter"
         aria-valuenow={Math.round(width)}
         aria-valuemin={0}
@@ -76,17 +76,17 @@ export default function AudioMeter({ level, enabled, live }: Props) {
       </div>
 
       {silent && (
-        <p className="mt-1.5 text-xs font-semibold text-[--color-bad]">
+        <p className="mt-1.5 text-xs font-semibold text-(--color-bad)">
           No sound is reaching the recording. Check the microphone is the right one and not muted.
         </p>
       )}
       {quiet && (
-        <p className="mt-1.5 text-xs text-[--color-warn]">
+        <p className="mt-1.5 text-xs text-(--color-warn)">
           Very quiet. Usable, but move the microphone closer if you can.
         </p>
       )}
       {clipping && (
-        <p className="mt-1.5 text-xs font-semibold text-[--color-bad]">
+        <p className="mt-1.5 text-xs font-semibold text-(--color-bad)">
           Peaking — the loudest moments are being clipped. Lower the input level.
         </p>
       )}

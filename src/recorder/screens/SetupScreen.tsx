@@ -74,13 +74,11 @@ interface Props {
   machineSettings: {
     value: PublicSettings | null;
     saving: boolean;
-    onSave: (update: {
-      roundRobinUrl?: string;
-      roundRobinSecret?: string;
-      researchDriveRoot?: string;
-    }) => void;
+    onSave: (update: { roundRobinUrl?: string; researchDriveRoot?: string }) => void;
     onPickDriveFolder: () => void;
   };
+  /** Back to the mode chooser. Rust refuses it while a take is running. */
+  onLeaveMode: () => void;
 
   onSelectVideo: (fingerprint: string) => void;
   onSelectAudio: (fingerprint: string) => void;
@@ -109,8 +107,26 @@ export default function SetupScreen(props: Props) {
       (r) => r.width === props.width && r.height === props.height
     )?.rates ?? [];
 
+  const driveRoot = props.machineSettings.value?.researchDriveRoot ?? null;
+  const driveIsShared = props.machineSettings.value?.driveIsShared ?? false;
+
   return (
-    <div className="mx-auto grid max-w-7xl gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_420px]">
+    <div className="mx-auto max-w-7xl p-5">
+      {/* A way back out of the mode. Until 2026-08-22 there was none: entering
+          a mode was a one-way door and the only exit was quitting the app,
+          which is exactly what the lab's walkthrough got stuck on. */}
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Recording room</h1>
+        <button
+          type="button"
+          onClick={props.onLeaveMode}
+          className="rounded-lg border border-(--color-panel-edge) px-3 py-1.5 text-xs text-(--color-ink-dim) hover:border-(--color-ink-dim) hover:text-(--color-ink)"
+        >
+          ← Modes
+        </button>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px]">
       {/* ---------------- left: what the camera sees ---------------- */}
       <div className="flex flex-col gap-4">
         <PreviewPane active={props.previewLive} onSignal={props.onCameraSignal} />
@@ -131,19 +147,19 @@ export default function SetupScreen(props: Props) {
           />
 
           {props.linkNotice && (
-            <p className="w-full rounded-md bg-[--color-warn]/10 px-3 py-2 text-sm text-[--color-warn]">
+            <p className="w-full rounded-md bg-(--color-warn)/10 px-3 py-2 text-sm text-(--color-warn)">
               {props.linkNotice}
             </p>
           )}
 
           {props.error && (
-            <p className="w-full rounded-md bg-[--color-bad]/10 px-3 py-2 text-sm text-[--color-bad]">
+            <p className="w-full rounded-md bg-(--color-bad)/10 px-3 py-2 text-sm text-(--color-bad)">
               {props.error}
             </p>
           )}
         </div>
 
-        <p className="text-center text-xs text-[--color-ink-faint]">
+        <p className="text-center text-xs text-(--color-ink-faint)">
           {props.ffmpegVersion || "FFmpeg not found"} · settings fingerprint{" "}
           <span className="font-mono">{props.profileHash || "…"}</span>
         </p>
@@ -157,7 +173,7 @@ export default function SetupScreen(props: Props) {
             <button
               type="button"
               onClick={props.onRefreshDevices}
-              className="text-xs text-[--color-ink-dim] underline hover:text-[--color-ink]"
+              className="text-xs text-(--color-ink-dim) underline hover:text-(--color-ink)"
             >
               Rescan
             </button>
@@ -183,19 +199,19 @@ export default function SetupScreen(props: Props) {
           </select>
 
           {camera?.profileNote && (
-            <p className="mt-2 rounded-md bg-[--color-panel] px-2.5 py-2 text-xs leading-relaxed text-[--color-ink-dim]">
+            <p className="mt-2 rounded-md bg-(--color-panel) px-2.5 py-2 text-xs leading-relaxed text-(--color-ink-dim)">
               {camera.profileNote}
             </p>
           )}
 
           {props.capabilities && !props.capabilities.probed && (
-            <p className="mt-2 text-xs leading-relaxed text-[--color-warn]">
+            <p className="mt-2 text-xs leading-relaxed text-(--color-warn)">
               {props.capabilities.note}
             </p>
           )}
 
           {(props.deviceList?.unreachableCameras.length ?? 0) > 0 && (
-            <p className="mt-2 rounded-md bg-[--color-warn]/10 px-2.5 py-2 text-xs leading-relaxed text-[--color-warn]">
+            <p className="mt-2 rounded-md bg-(--color-warn)/10 px-2.5 py-2 text-xs leading-relaxed text-(--color-warn)">
               {props.deviceList!.unreachableCameras.join(", ")} exists on this computer but
               cannot be opened for recording — Windows keeps some built-in cameras away from
               recording software. Plug in a USB webcam to use it.
@@ -206,7 +222,7 @@ export default function SetupScreen(props: Props) {
             <label className="field-label mb-0" htmlFor="mic">
               Microphone
             </label>
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[--color-ink-dim]">
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-(--color-ink-dim)">
               <input
                 type="checkbox"
                 checked={props.audioEnabled}
@@ -238,8 +254,8 @@ export default function SetupScreen(props: Props) {
               is always "as much detail as the camera gives". A machine left
               on a low profile produced visibly blocky video and nobody
               noticed. Stated, not selectable. */}
-          <p className="text-xs leading-relaxed text-[--color-ink-dim]">
-            <span className="font-semibold text-[--color-ink]">
+          <p className="text-xs leading-relaxed text-(--color-ink-dim)">
+            <span className="font-semibold text-(--color-ink)">
               {presetById(props.presetId).name}
             </span>{" "}
             — {presetById(props.presetId).blurb}
@@ -293,7 +309,7 @@ export default function SetupScreen(props: Props) {
           {props.plan && (
             <p
               className={`mt-2 text-xs leading-relaxed ${
-                props.plan.mode ? "text-[--color-ink-dim]" : "text-[--color-bad]"
+                props.plan.mode ? "text-(--color-ink-dim)" : "text-(--color-bad)"
               }`}
             >
               {props.plan.message}
@@ -304,26 +320,67 @@ export default function SetupScreen(props: Props) {
         <section className="card p-4">
           <h2 className="mb-3 text-sm font-semibold">Where it goes</h2>
 
-          <label className="field-label" htmlFor="folder">
-            Save folder
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="folder"
-              className="control font-mono text-xs"
-              value={props.outputDir}
-              readOnly
-              placeholder="No folder chosen"
-            />
-            <button
-              type="button"
-              onClick={props.onPickFolder}
-              disabled={props.busy}
-              className="shrink-0 rounded-lg border border-[--color-panel-edge] bg-[--color-panel] px-3 text-sm hover:border-[--color-ink-faint] disabled:opacity-50"
-            >
-              Choose…
-            </button>
-          </div>
+          {/* The headline answer, and the one instruction an RA needs here.
+              The working folder below is scratch space — the recording's real
+              home is the Research Drive, which is also the only reason a
+              rating station on another computer can find it. */}
+          <p className="field-label mb-1">Recordings go to</p>
+          {driveIsShared ? (
+            <p className="rounded-md bg-(--color-good)/10 px-3 py-2 font-mono text-xs leading-relaxed text-(--color-good)">
+              {driveRoot}
+            </p>
+          ) : (
+            <div className="rounded-md bg-(--color-warn)/10 px-3 py-2">
+              <p className="text-xs font-semibold text-(--color-warn)">
+                Set the output to the Research Drive.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-(--color-ink-dim)">
+                Right now takes stay in a folder on this computer, so a rating
+                station on a different machine cannot find them, and they are
+                not backed up. Recordings are participant data under IRB
+                2020-1657 and belong on the Research Drive
+                (<span className="font-mono">R:\niedenthal\recordings</span>,
+                or wherever the share is mapped on this computer).
+              </p>
+              <button
+                type="button"
+                onClick={props.machineSettings.onPickDriveFolder}
+                className="mt-2 rounded-lg bg-(--color-badger) px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+              >
+                Choose the Research Drive folder…
+              </button>
+            </div>
+          )}
+
+          <details className="mt-3 rounded-lg border border-(--color-panel-edge) p-2.5">
+            <summary className="cursor-pointer text-xs text-(--color-ink-faint)">
+              Working folder on this computer
+            </summary>
+            <div className="mt-2 flex gap-2">
+              <input
+                id="folder"
+                className="control font-mono text-xs"
+                value={props.outputDir}
+                readOnly
+                placeholder="No folder chosen"
+              />
+              <button
+                type="button"
+                onClick={props.onPickFolder}
+                disabled={props.busy}
+                className="shrink-0 rounded-lg border border-(--color-panel-edge) bg-(--color-panel) px-3 text-sm hover:border-(--color-ink-faint) disabled:opacity-50"
+              >
+                Choose…
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-(--color-ink-faint)">
+              Where the camera writes while the conversation runs, before the
+              finished file is copied to the Research Drive. It stays on local
+              disk on purpose: writing 1080p over the network live is how
+              frames get dropped. Leave it alone unless this computer is short
+              of space.
+            </p>
+          </details>
 
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div>
@@ -354,14 +411,14 @@ export default function SetupScreen(props: Props) {
                   onChange={(e) => props.onSessionMinutes(Number(e.target.value))}
                   disabled={props.busy}
                 />
-                <span className="text-sm text-[--color-ink-faint]">min</span>
+                <span className="text-sm text-(--color-ink-faint)">min</span>
               </div>
             </div>
           </div>
 
           {/* No names, no emails, no NetIDs — the lab's rule about identifiers
               applies to filenames as much as to source code. */}
-          <p className="mt-2 text-xs text-[--color-ink-faint]">
+          <p className="mt-2 text-xs text-(--color-ink-faint)">
             Codes only. Never a participant's name, email, or NetID.
           </p>
         </section>
@@ -393,7 +450,7 @@ export default function SetupScreen(props: Props) {
 
         <section className="card p-4">
           <span className="text-sm font-semibold">What happens when you press Record</span>
-          <p className="mt-1 text-xs leading-relaxed text-[--color-ink-dim]">
+          <p className="mt-1 text-xs leading-relaxed text-(--color-ink-dim)">
             The screen immediately shows only &ldquo;Please wait for the
             researcher.&rdquo; — no timer, no counter, no red anything — so the
             recording never distracts the participants. When you come back,
@@ -401,12 +458,13 @@ export default function SetupScreen(props: Props) {
             the controls up and stop the take. It also stops itself a few
             minutes after the planned length as a safety net.
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-[--color-warn]">
+          <p className="mt-1.5 text-xs leading-relaxed text-(--color-warn)">
             The camera's own indicator light stays on, and so does the macOS green camera
             dot. Neither can be switched off by any application. Participants must still
             have consented to recording under IRB 2020-1657.
           </p>
         </section>
+      </div>
       </div>
     </div>
   );

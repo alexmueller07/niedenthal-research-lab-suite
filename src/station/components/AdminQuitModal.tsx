@@ -4,6 +4,8 @@ interface AdminQuitModalProps {
   isOpen: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  /** Save, but stay in the app and go back to the mode chooser. */
+  onLeaveMode: () => void;
 }
 
 // The exact word the researcher must type to confirm a save-and-quit.
@@ -13,7 +15,17 @@ const CONFIRM_WORD = "Confirm";
 // (handled in App). The participant is not told this shortcut exists; requiring
 // the typed confirmation word also prevents an accidental key combination from
 // quitting the session.
-export default function AdminQuitModal({ isOpen, onCancel, onConfirm }: AdminQuitModalProps) {
+//
+// Second exit added 2026-08-22: quitting the whole app used to be the only way
+// out of Station mode, so an RA who just wanted this computer to record next
+// had to quit and relaunch. Both routes save first; they differ only in whether
+// the app stays open.
+export default function AdminQuitModal({
+  isOpen,
+  onCancel,
+  onConfirm,
+  onLeaveMode,
+}: AdminQuitModalProps) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -68,6 +80,20 @@ export default function AdminQuitModal({ isOpen, onCancel, onConfirm }: AdminQui
           >
             Save &amp; Quit
           </button>
+        </div>
+
+        <div className="mt-5 pt-4 border-t border-gray-600">
+          <button
+            onClick={onLeaveMode}
+            disabled={!canConfirm}
+            className="text-gray-400 text-sm underline transition-colors enabled:hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Save and go back to the mode chooser instead
+          </button>
+          <p className="text-gray-500 text-xs mt-1">
+            Same save, but the app stays open — for turning this computer into a
+            recording room or the control screen.
+          </p>
         </div>
       </div>
     </div>

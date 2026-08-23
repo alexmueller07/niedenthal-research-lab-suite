@@ -697,7 +697,29 @@ pub fn recorder_load_settings(app: tauri::AppHandle) -> settings::PublicSettings
     // link.
     public.round_robin_url = Some(crate::machine::server_url(&app));
     public.research_drive_root = crate::machine::drive_root(&app);
+    // A working folder, chosen for the RA rather than asked for. The recording
+    // room's real question is "which Research Drive folder do finished takes go
+    // to"; where FFmpeg writes in the meantime is an implementation detail that
+    // has to stay on local disk anyway (writing 1080p over SMB live is how
+    // frames get dropped). Leaving it blank used to block the Record button on
+    // a fresh machine with a message about a folder nobody had been shown.
+    if public
+        .output_dir
+        .as_ref()
+        .is_none_or(|d| d.trim().is_empty())
+    {
+        public.output_dir = default_capture_dir(&app);
+    }
     public
+}
+
+/// `<app data>/captures`, created on demand. None only if the directory cannot
+/// be made, in which case the frontend keeps asking for one.
+fn default_capture_dir(app: &tauri::AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().ok()?.join("captures");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -712,7 +734,6 @@ pub fn recorder_save_settings(
     if update.touches_machine() {
         let machine_update = crate::machine::MachineUpdate {
             round_robin_url: update.round_robin_url.clone(),
-            round_robin_secret: update.round_robin_secret.clone(),
             research_drive_root: update.research_drive_root.clone(),
         };
         let merged = crate::machine::merge_update(&crate::machine::load(&app), machine_update);
@@ -723,15 +744,16 @@ pub fn recorder_save_settings(
     Ok(settings::compose_public(&merged, &crate::machine::load(&app)))
 }
 
-/// Base URL plus secret, or a message explaining what is missing. Reads the
-/// machine-wide store — the same credentials every mode uses.
-pub fn round_robin_credentials(app: &tauri::AppHandle) -> Result<(String, String), String> {
+/// Base URL plus this build's device key. Reads the machine-wide store — the
+/// same credentials every mode uses. Infallible since the key stopped being
+/// something a person types (see machine::credentials).
+pub fn round_robin_credentials(app: &tauri::AppHandle) -> (String, String) {
     crate::machine::credentials(app)
 }
 
 #[tauri::command]
 pub async fn rr_sessions(app: tauri::AppHandle) -> Result<Vec<roundrobin::SessionSummary>, String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::list_sessions(&url, &secret).await
 }
 
@@ -743,7 +765,7 @@ pub async fn rr_open(
     round: Option<i32>,
     force: bool,
 ) -> Result<roundrobin::OpenedRecording, String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::open_recording(&url, &secret, &slot_id, room_index, round, force).await
 }
 
@@ -754,7 +776,7 @@ pub fn rr_pending(app: tauri::AppHandle) -> Vec<roundrobin::PendingRegistration>
 
 #[tauri::command]
 pub async fn rr_flush(app: tauri::AppHandle) -> Result<roundrobin::FlushReport, String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::flush(&app, &url, &secret).await
 }
 
@@ -857,18 +879,7 @@ pub async fn archive_recording(
         }
     };
 
-    let (url, secret) = match round_robin_credentials(&app) {
-        Ok(pair) => pair,
-        Err(e) => {
-            roundrobin::enqueue(&app, queue_entry(true, &e))?;
-            return Ok(ArchiveReport {
-                archived: Some(outcome),
-                registered: false,
-                queued: true,
-                message: format!("Copied to the Research Drive, but {e}"),
-            });
-        }
-    };
+    let (url, secret) = round_robin_credentials(&app);
 
     match roundrobin::close_recording(&url, &secret, &recording_id, &request.payload).await {
         Ok(()) => Ok(ArchiveReport {
@@ -903,7 +914,7 @@ pub async fn archive_recording(
 /// quietly erased. (2026-08-18)
 #[tauri::command]
 pub async fn rr_abandon(app: tauri::AppHandle, recording_id: String) -> Result<(), String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::close_recording(
         &url,
         &secret,

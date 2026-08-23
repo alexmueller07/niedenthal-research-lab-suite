@@ -1,10 +1,15 @@
-// Enforces the suite's core promise: the participant-facing PPS frontend is
-// byte-identical with the standalone app it was imported from.
+// Change detection for the participant-facing study code.
+//
+// This started as a byte-identity check against the standalone PPS app it was
+// imported from. That promise ended on 2026-08-22, when Randy restructured the
+// post-conversation video task; what the manifest guards now is weaker but
+// still worth having — nobody edits a study screen by accident, or as a
+// side-effect of a refactor, without the diff saying so out loud.
 //
 // Every file under src/station/ — EXCEPT src/station/remote/ (the Round Robin
 // client added 2026-08-13, which is ours to adapt) — is hashed and compared
 // against the committed manifest. CI runs this on every push; a mismatch
-// means someone edited frozen study code, deliberately or not.
+// means someone edited study code, deliberately or not.
 //
 //   node scripts/verify-station-parity.mjs            # verify (CI)
 //   node scripts/verify-station-parity.mjs --update   # regenerate manifest
@@ -64,7 +69,7 @@ try {
 }
 
 if (committed === manifest) {
-  console.log(`Station parity OK (${manifest.trimEnd().split("\n").length} frozen files).`);
+  console.log(`Station parity OK (${manifest.trimEnd().split("\n").length} study files unchanged).`);
   process.exit(0);
 }
 
@@ -85,8 +90,11 @@ for (const file of want.keys()) {
   if (!have.has(file)) console.error(`DELETED frozen file: src/station/${file}`);
 }
 console.error(
-  "\nThe station frontend is frozen: it must stay byte-identical with the standalone" +
-    "\nPPS app (participant-facing study code). If this change is intentional and" +
-    "\napproved, regenerate with: node scripts/verify-station-parity.mjs --update"
+  "\nThese are participant-facing study screens. A change to one alters what a" +
+    "\nparticipant sees or what gets recorded, so it has to be deliberate and it has" +
+    "\nto be said out loud — that is what this check is for." +
+    "\n\nIf the change is intentional and approved, regenerate the manifest with:" +
+    "\n  node scripts/verify-station-parity.mjs --update" +
+    "\nand describe the study change in the commit and in docs/station/CHANGELOG.md."
 );
 process.exit(1);

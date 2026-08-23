@@ -11,7 +11,13 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FormData } from "../App";
 import { csvEscape } from "./csv";
 
-const SOFTWARE_VERSION = "2.0.0";
+// Stamped into every data row. Bumped to 3.0.0 on 2026-08-22, when Randy
+// restructured the video task (two perspectives instead of three, an order
+// drawn per clip, 1-7 scales) and the continuous-rating task started
+// honouring the seat/parity counterbalancing the protocol describes. It is
+// the one column that tells an analyst, from the file alone, which version
+// of the study a row came from.
+const SOFTWARE_VERSION = "3.0.0";
 
 /**
  * Appends one long-format row to transitions.csv.

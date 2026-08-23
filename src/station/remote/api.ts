@@ -11,13 +11,16 @@ import { invoke } from "@tauri-apps/api/core";
 export interface RemotePublic {
   roundRobinUrl: string | null;
   researchDriveRoot: string | null;
-  secretConfigured: boolean;
+  /**
+   * False when the folder above is this computer's own rather than the lab's
+   * share. A station in that state can still run a session, but it can only
+   * find a conversation recorded on this same machine.
+   */
+  driveIsShared: boolean;
 }
 
 export interface RemoteUpdate {
   roundRobinUrl?: string;
-  /** Empty string clears it; omitting the field leaves it untouched. */
-  roundRobinSecret?: string;
   researchDriveRoot?: string;
 }
 
@@ -68,6 +71,17 @@ export const remoteStatus = () => invoke<RemotePublic>("remote_status");
 
 export const remoteConfigure = (update: RemoteUpdate) =>
   invoke<RemotePublic>("remote_configure", { update });
+
+/**
+ * Closes the station window and goes back to the mode chooser, or straight
+ * into another mode. Everything the session holds must already be flushed —
+ * see flushRegistry — because this does not come back.
+ */
+export const leaveMode = (role: "record" | "station" | "control" | null = null) =>
+  invoke<void>("leave_mode", { role });
+
+/** Proves the server answers and the Research Drive is mounted, in RA words. */
+export const remoteTest = () => invoke<string>("remote_test");
 
 export const listConversationClips = (email: string) =>
   invoke<ClipsResponse>("list_conversation_clips", { email });

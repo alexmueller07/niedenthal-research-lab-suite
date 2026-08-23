@@ -24,6 +24,40 @@ pub const STATION_LABEL: &str = "station";
 pub const LAUNCHER_LABEL: &str = "launcher";
 pub const CONTROL_LABEL: &str = "control";
 
+/// Every window that *is* a mode. The launcher is not one of them.
+pub const MODE_LABELS: [&str; 3] = [RECORDER_LABEL, STATION_LABEL, CONTROL_LABEL];
+
+/// Set once, just before the process exits, so the "a mode window closed —
+/// show the chooser again" rule below does not fight an actual quit and
+/// resurrect a window on the way out.
+static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn begin_shutdown() {
+    SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn is_shutting_down() -> bool {
+    SHUTTING_DOWN.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The label of the mode window currently open, if any. One at a time is a
+/// deliberate rule: a rating station quietly also being a recorder is exactly
+/// the confusion this app exists to prevent.
+pub fn running_mode_label(app: &AppHandle) -> Option<&'static str> {
+    MODE_LABELS
+        .into_iter()
+        .find(|label| app.get_webview_window(label).is_some())
+}
+
+/// True while FFmpeg is mid-take. Closing anything then costs a session.
+pub fn recording_in_progress(app: &AppHandle) -> bool {
+    app.state::<RecorderState>()
+        .active
+        .lock()
+        .map(|slot| matches!(slot.as_ref().map(|s| s.kind), Some(SessionKind::Record)))
+        .unwrap_or(false)
+}
+
 /// Async because Control mode has to ask the server for a login token before
 /// it knows where to point the window — and because creating a window from a
 /// synchronous command deadlocks the Windows event loop (see launch_mode).
@@ -53,11 +87,10 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
             // soon as the recorder opens, without anyone having to remember.
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Ok((url, secret)) = commands::round_robin_credentials(&handle) {
-                    if let Ok(report) = roundrobin::flush(&handle, &url, &secret).await {
-                        if report.attempted > 0 {
-                            let _ = handle.emit("registrations-flushed", &report);
-                        }
+                let (url, secret) = commands::round_robin_credentials(&handle);
+                if let Ok(report) = roundrobin::flush(&handle, &url, &secret).await {
+                    if report.attempted > 0 {
+                        let _ = handle.emit("registrations-flushed", &report);
                     }
                 }
             });
@@ -128,6 +161,29 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Leaves the mode running in `window` and goes somewhere else — another mode,
+/// or the chooser.
+///
+/// The lab's first walkthrough of the suite (Alex, 2026-08-22) got stuck here:
+/// entering a mode was a one-way door, and the only way back to the chooser
+/// was to quit the app and start it again. New RAs hit that on their first
+/// morning. Both directions now exist, and every route into this function has
+/// already flushed whatever the mode was holding.
+///
+/// Order matters: the destination window is created *before* the old one is
+/// destroyed. Destroying the last window on Windows starts the process
+/// shutting down, and a window created after that races the exit.
+pub async fn leave_mode(app: &AppHandle, window: &WebviewWindow, to: Option<Role>) -> tauri::Result<()> {
+    match to {
+        Some(role) => open_for_role(app, role).await?,
+        None => open_setup_window(app),
+    }
+    // destroy(), not close(): close() raises CloseRequested, which the station
+    // deliberately intercepts to open its save-and-quit modal — the caller has
+    // already saved, so that would be a loop with a dialog in it.
+    window.destroy()
+}
+
 /// Opens (or focuses) the setup/launcher window. Called at boot for an
 /// unconfigured machine and from the Ctrl+Alt+Shift+L chord in every role.
 pub fn open_setup_window(app: &AppHandle) {
@@ -173,23 +229,17 @@ pub fn register_reconfigure_chord(app: &AppHandle) {
 /// is blocked only while a recording runs.
 /// station (phase 2): close always routes to the researcher save-and-quit
 /// modal instead, because up to ~15 s of buffered slider samples would drop.
-pub fn handle_window_event<R: tauri::Runtime>(
-    window: &tauri::Window<R>,
-    event: &tauri::WindowEvent,
-) {
+pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
+    if matches!(event, tauri::WindowEvent::Destroyed) {
+        handle_window_destroyed(window);
+        return;
+    }
     let tauri::WindowEvent::CloseRequested { api, .. } = event else {
         return;
     };
     match window.label() {
         RECORDER_LABEL => {
-            let recording = window
-                .app_handle()
-                .state::<RecorderState>()
-                .active
-                .lock()
-                .map(|slot| matches!(slot.as_ref().map(|s| s.kind), Some(SessionKind::Record)))
-                .unwrap_or(false);
-            if recording {
+            if recording_in_progress(window.app_handle()) {
                 api.prevent_close();
                 let _ = window.emit("close-blocked", ());
             }
@@ -200,6 +250,55 @@ pub fn handle_window_event<R: tauri::Runtime>(
         }
         _ => {}
     }
+}
+
+/// True when the window that closed most recently was a mode rather than the
+/// chooser. Read once, at exit time, to decide between "go back to the chooser"
+/// and "this really is the end of the session".
+static LAST_CLOSED_WAS_MODE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// A window went away. Remember which kind it was, and bring the chooser
+/// forward if it is already open.
+///
+/// This is the other half of the one-way-door fix: closing a mode with the X
+/// used to end the session outright, and the way back to a different mode was
+/// to launch the app again. Now it lands where every launch lands.
+///
+/// Creating the chooser is NOT done here. On Windows, a window created inside
+/// a window-event callback deadlocks the event loop, and closing the last
+/// window starts the process exiting anyway — so the reopen belongs in the
+/// exit handler below, which can call off the exit first.
+pub fn handle_window_destroyed(window: &tauri::Window) {
+    let label = window.label();
+    if MODE_LABELS.contains(&label) {
+        LAST_CLOSED_WAS_MODE.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(launcher) = window.app_handle().get_webview_window(LAUNCHER_LABEL) {
+            let _ = launcher.set_focus();
+        }
+    } else if label == LAUNCHER_LABEL {
+        LAST_CLOSED_WAS_MODE.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// The last window has gone and the process is about to end. Should it?
+///
+/// Yes when the chooser itself was closed, or something asked for a real quit
+/// (the researcher save-and-quit gate, the chooser's Quit button). No when a
+/// mode window was closed — that is an RA finishing one job, and the next
+/// thing they want is the screen that starts another.
+pub fn handle_exit_requested(app: &AppHandle) -> bool {
+    if is_shutting_down() {
+        return true;
+    }
+    if !LAST_CLOSED_WAS_MODE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return true;
+    }
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        open_setup_window(&handle);
+    });
+    false
 }
 
 /// Ctrl+Shift+Q (and Cmd+Shift+Q on the lab Mac): the researcher save-and-quit

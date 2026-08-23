@@ -23,7 +23,12 @@ interface StimulusPlayerProps {
   src: string;
   /** Fires each time a viewing runs to the end. */
   onWatched: (stats: WatchStats) => void;
-  /** Compact layout for the replay overlay on the rating page. */
+  /**
+   * Compact layout, used everywhere the clip has already been watched once:
+   * the rating pages and the sharing page. It also changes the cover, because
+   * "Play video — the clip plays once through" is a first-viewing instruction
+   * and reads as a contradiction to someone who has just watched it.
+   */
   compact?: boolean;
 }
 
@@ -108,9 +113,9 @@ export default function StimulusPlayer({ src, onWatched, compact = false }: Stim
             className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 hover:bg-black/60 transition-colors cursor-pointer"
           >
             <span className="text-white text-2xl font-semibold border border-white px-8 py-3">
-              {everPlayed ? "Watch again" : "Play video"}
+              {everPlayed || compact ? "Watch again" : "Play video"}
             </span>
-            {!everPlayed && (
+            {!everPlayed && !compact && (
               <span className="text-gray-300 text-base mt-4">
                 The clip plays once through. You cannot fast-forward.
               </span>

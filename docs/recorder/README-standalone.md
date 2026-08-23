@@ -33,10 +33,10 @@ If the network or the Research Drive is down at step 3, nothing is lost: the
 app saves everything locally and files it automatically the next time it can.
 **Never delay or cancel a session over a network problem.**
 
-For all of this to work, each recording computer needs three things set once in
-the app's Settings panel: the **Round Robin address**, the **shared secret**
-(get it from Alex or Randy), and the **Research Drive folder**. Section
-"First run" below walks through it.
+For all of this to work, each recording computer needs one thing set once, in
+the app's Settings panel: the **Research Drive folder**, as it is mounted on
+that machine. Section "First run" below walks through it. (There is no password
+to ask anyone for — the app authenticates itself to the server.)
 
 ---
 
@@ -163,11 +163,11 @@ right. Work down the right-hand column.
    email, or NetID.** The app will warn you if it spots one.
 7. **Planned length** — how long the conversation will be. This is only used to
    predict file size and to set the safety stop.
-8. **Settings panel (once per machine)** — enter the **Round Robin address**,
-   the **shared secret**, and pick the **Research Drive folder** (the lab's
-   recordings share, as mounted on this machine). This is what makes filing
-   and the PPS handoff automatic. Without it the app still records; it just
-   keeps everything local.
+8. **Settings panel (once per machine)** — pick the **Research Drive folder**
+   (the lab's recordings share, as mounted on this machine). This is what
+   makes filing and the PPS handoff automatic. Without it the app still
+   records; it just keeps everything local, where no other computer can reach
+   it.
 
 Settings are remembered, so you only do this once per machine.
 

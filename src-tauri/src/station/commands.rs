@@ -94,6 +94,9 @@ pub fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
             "A recording is still running on this machine. Stop it before quitting.".into(),
         );
     }
+    // Before exit, not after: the last window's Destroyed event otherwise
+    // reads as "a mode was closed" and reopens the chooser on the way out.
+    crate::modes::begin_shutdown();
     app.exit(0);
     Ok(())
 }
@@ -169,6 +172,39 @@ pub fn roundrobin_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Str
     Ok(store_dir(app)?.join("roundrobin.json"))
 }
 
+// ---- Session board ----
+//
+// Today's dyads as the head RA sets them up before anyone arrives: nametag
+// colours, the study IDs that go with them, and which seat is which. It lives
+// beside roundrobin.json in the shared tracking folder, so the board typed on
+// one computer is the board both rating stations read.
+//
+// Why it exists (Alex, from the lab's 2026-08-22 walkthrough): every station
+// used to ask its RA to type the dyad ID, both participant IDs and the seat
+// from memory, mid-session, in front of the participant. Two people typing the
+// same numbers independently is two chances to disagree, and a mismatched dyad
+// ID silently unyokes a pair — the video set stops matching and the empathic
+// accuracy scores compare the wrong two traces. Typed once, read twice.
+pub fn session_board_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(store_dir(app)?.join("session-board.json"))
+}
+
+#[tauri::command]
+pub fn load_session_board(app: tauri::AppHandle) -> Result<String, String> {
+    let path = session_board_path(&app)?;
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_session_board(app: tauri::AppHandle, contents: String) -> Result<String, String> {
+    let path = session_board_path(&app)?;
+    fs::write(&path, contents).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 pub fn progress_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let dir = store_dir(app)?.join("progress");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -233,6 +269,39 @@ pub fn save_roundrobin(app: tauri::AppHandle, contents: String) -> Result<String
 }
 
 // Creates the session folder and returns its absolute path.
+/// Whether a session folder for this participant already holds data.
+///
+/// Reports; never creates. The rating and questionnaire files are append-only,
+/// so a second session written into an existing folder interleaves two
+/// participants' rows in one ratings.csv and neither is recoverable. The folder
+/// name is derived from the study IDs, so the way to land in one that already
+/// exists is to mistype an ID or tap the wrong nametag colour — both of which
+/// are worth catching while the RA is still standing there.
+#[tauri::command]
+pub fn rating_directory_files(
+    base_path: String,
+    dyad_id: String,
+    participant_id: String,
+    partner_id: String,
+    initials: String,
+) -> Result<Vec<String>, String> {
+    let folder = format!(
+        "{}/{}_{}_{}_{}",
+        base_path, dyad_id, participant_id, partner_id, initials
+    );
+    let path = Path::new(&folder);
+    if !path.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut names: Vec<String> = fs::read_dir(path)
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
 #[tauri::command]
 pub fn setup_rating_directory(
     base_path: String,

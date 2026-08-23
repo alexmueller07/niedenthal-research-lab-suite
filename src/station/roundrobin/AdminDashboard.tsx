@@ -13,6 +13,7 @@ import {
   ADMIN_EMAIL,
 } from "./store";
 import ProgressPanel from "./ProgressPanel";
+import SessionBoardPanel from "./SessionBoardPanel";
 import FolderSettings from "./FolderSettings";
 import { loadProgress, saveProgress } from "./progress";
 import type { ProgressMap, RRProgress } from "./progress";
@@ -45,6 +46,9 @@ interface AdminDashboardProps {
   /** Applies data read back from disk without re-saving it. */
   onRefresh: (data: RRData) => void;
   onExit: () => void;
+  /** Back to the mode chooser. Nothing here holds unsaved participant data. */
+  onLeaveMode: () => void;
+  onError?: (message: string) => void;
 }
 
 export default function AdminDashboard({
@@ -52,6 +56,8 @@ export default function AdminDashboard({
   onChange,
   onRefresh,
   onExit,
+  onLeaveMode,
+  onError,
 }: AdminDashboardProps) {
   const [newEmail, setNewEmail] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
@@ -131,7 +137,14 @@ export default function AdminDashboard({
             onClick={onExit}
             className="px-4 py-2 border border-white text-white rounded-lg hover:bg-gray-700 transition-colors"
           >
-            Sign out
+            Back to setup
+          </button>
+          <button
+            type="button"
+            onClick={onLeaveMode}
+            className="px-4 py-2 border border-gray-600 text-gray-400 rounded-lg hover:border-white hover:text-white transition-colors"
+          >
+            ← Modes
           </button>
         </div>
       </div>
@@ -139,6 +152,10 @@ export default function AdminDashboard({
       <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
         {/* Live session progress and help requests */}
         <ProgressPanel progress={progress} onClearHelp={handleClearHelp} />
+
+        {/* Today's dyads: the one thing the head RA fills in, and the reason
+            no station RA types a study ID any more. */}
+        <SessionBoardPanel onError={onError} />
 
         <FolderSettings settings={settings} onChange={handleSettingsChange} />
 

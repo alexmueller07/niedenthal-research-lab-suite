@@ -13,8 +13,8 @@
 //
 // Same architecture as lab-recorder's roundrobin.rs, for the same reasons:
 //
-// - The shared secret lives in a Rust-only config file (remote.json) and is
-//   never sent to the webview. The frontend learns only whether one exists.
+// - The device key lives in Rust only and is never sent to the webview. Since
+//   2026-08-22 it is compiled into the build rather than typed (machine.rs).
 // - Round Robin being unreachable degrades to the manual file picker the RA
 //   uses today — it must never block a session.
 // - The cache holds at most one conversation at a time: preparing a new one
@@ -47,7 +47,8 @@ const COPY_CHUNK_BYTES: usize = 1024 * 1024;
 pub struct RemoteSettings {
     /// Base URL of the Round Robin deployment, e.g. https://roundrobin.example.
     pub round_robin_url: Option<String>,
-    /// The PPS shared secret. Never leaves this process.
+    /// A device key typed on this machine before the built-in one existed.
+    /// Never leaves this process.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub round_robin_secret: Option<String>,
     /// Local mount of the Research Drive share that RECORDING_DIR points at on
@@ -61,29 +62,17 @@ pub struct RemoteSettings {
 pub struct RemotePublic {
     pub round_robin_url: Option<String>,
     pub research_drive_root: Option<String>,
-    /// Whether a secret exists — never the secret itself.
-    pub secret_configured: bool,
-}
-
-impl From<&RemoteSettings> for RemotePublic {
-    fn from(s: &RemoteSettings) -> Self {
-        RemotePublic {
-            round_robin_url: s.round_robin_url.clone(),
-            research_drive_root: s.research_drive_root.clone(),
-            secret_configured: s
-                .round_robin_secret
-                .as_ref()
-                .is_some_and(|v| !v.trim().is_empty()),
-        }
-    }
+    /// True when the Research Drive folder was chosen deliberately rather than
+    /// falling back to this computer's own folder. The station shows the
+    /// difference: only a real share lets a *different* computer's recording
+    /// be found.
+    pub drive_is_shared: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RemoteUpdate {
     pub round_robin_url: Option<String>,
-    /// Empty string clears it; omitting the field leaves it untouched.
-    pub round_robin_secret: Option<String>,
     pub research_drive_root: Option<String>,
 }
 
@@ -107,26 +96,29 @@ pub fn load_config(app: &AppHandle) -> RemoteSettings {
 
 #[tauri::command]
 pub fn remote_status(app: AppHandle) -> RemotePublic {
-    RemotePublic::from(&load_config(&app))
+    RemotePublic {
+        round_robin_url: Some(crate::machine::server_url(&app)),
+        research_drive_root: crate::machine::drive_root(&app),
+        drive_is_shared: !crate::machine::drive_is_local_fallback(&app),
+    }
 }
 
 #[tauri::command]
 pub fn remote_configure(app: AppHandle, update: RemoteUpdate) -> Result<RemotePublic, String> {
     let machine_update = crate::machine::MachineUpdate {
         round_robin_url: update.round_robin_url,
-        round_robin_secret: update.round_robin_secret,
         research_drive_root: update.research_drive_root,
     };
     let merged = crate::machine::merge_update(&crate::machine::load(&app), machine_update);
     crate::machine::save(&app, &merged)?;
-    Ok(RemotePublic::from(&load_config(&app)))
+    Ok(remote_status(app))
 }
 
 // ---------------------------------------------------------------------------
 // Round Robin API
 // ---------------------------------------------------------------------------
 
-fn credentials(app: &AppHandle) -> Result<(String, String), String> {
+fn credentials(app: &AppHandle) -> (String, String) {
     crate::machine::credentials(app)
 }
 
@@ -236,7 +228,7 @@ pub async fn list_conversation_clips(
     app: AppHandle,
     email: String,
 ) -> Result<ClipsResponse, String> {
-    let (url, secret) = credentials(&app)?;
+    let (url, secret) = credentials(&app);
 
     // First choice: this participant's own conversations, keyed on the email
     // they signed in with.
@@ -337,7 +329,7 @@ pub async fn report_study_progress(
     percent: Option<u32>,
     needs_help: Option<bool>,
 ) -> Result<(), String> {
-    let (url, secret) = credentials(&app)?;
+    let (url, secret) = credentials(&app);
     let mut body = serde_json::json!({ "email": email, "stage": stage });
     if let Some(percent) = percent {
         body["percent"] = serde_json::json!(percent);
@@ -360,12 +352,12 @@ pub async fn report_study_progress(
     Ok(())
 }
 
-/// One-shot health check for the dashboard: proves the URL resolves, the
-/// secret is accepted, and the Research Drive mount is reachable, in words an
-/// RA can read back over the phone.
+/// One-shot health check for the dashboard: proves the URL resolves, this
+/// build's device key is accepted, and the Research Drive mount is reachable,
+/// in words an RA can read back over the phone.
 #[tauri::command]
 pub async fn remote_test(app: AppHandle) -> Result<String, String> {
-    let (url, secret) = credentials(&app)?;
+    let (url, secret) = credentials(&app);
     let response = client()?
         .get(endpoint(&url, "api/pps/sessions"))
         .bearer_auth(&secret)
@@ -697,16 +689,17 @@ mod tests {
     // implementation.
 
     #[test]
-    fn the_secret_never_reaches_the_frontend() {
-        let settings = RemoteSettings {
+    fn the_public_shape_has_nowhere_to_put_a_device_key() {
+        // Not a formality: the whole reason the key stays in Rust is that a
+        // rendering bug cannot leak a value the wire shape has no field for.
+        let public = RemotePublic {
             round_robin_url: Some("https://rr.example".into()),
-            round_robin_secret: Some("s3cret".into()),
-            research_drive_root: None,
+            research_drive_root: Some("R:/niedenthal/recordings".into()),
+            drive_is_shared: true,
         };
-        let public = RemotePublic::from(&settings);
-        assert!(public.secret_configured);
         let json = serde_json::to_string(&public).unwrap();
-        assert!(!json.contains("s3cret"), "serialised settings leaked the secret");
+        assert!(!json.contains("secret"), "the public shape grew a secret field");
+        assert!(!json.contains("Key"), "the public shape grew a key field");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import ParticipantForm from "./components/ParticipantForm";
+import StationSetup from "./setup/StationSetup";
 import DyadTaskMain from "./dyad-task/DyadTaskMain";
 import ClassificationTaskMain from "./classification-task/ClassificationTaskMain";
 import PostConversation from "./classification-task/PostConversation";
@@ -28,13 +28,17 @@ import {
   describeClip,
   fetchableClips,
   hasTauri,
+  leaveMode,
   listConversationClips,
   newestClip,
   prepareConversationVideo,
+  remoteConfigure,
   remoteStatus,
   reportStudyProgress,
 } from "./remote/api";
 import type { CopyProgress, RemoteClip, RemotePublic } from "./remote/api";
+import { EMPTY_SETTINGS, loadSettings, saveSettings } from "./utils/settings";
+import type { AppSettings } from "./utils/settings";
 import { flushAll } from "./utils/flushRegistry";
 import { isBlockedShortcut } from "./utils/lockdown";
 import { invoke } from "@tauri-apps/api/core";
@@ -53,11 +57,11 @@ export interface FormData {
 }
 
 /**
- * Where the automatic conversation-video fetch currently stands. Kicked off
- * when the RA submits the participant form, so the ~1 GB copy off the
- * Research Drive runs while the participant answers the post-conversation
- * questionnaire — by the time the rating task wants the video, it is usually
- * already local and checksum-verified.
+ * Where the automatic conversation-video fetch currently stands. Kicked off the
+ * moment the participant signs in, so the ~1 GB copy off the Research Drive
+ * runs while they answer the post-conversation questionnaire — by the time the
+ * rating task wants the video, it is usually already local and
+ * checksum-verified.
  *
  * "choose" appears only when the participant has more than one recording
  * (a multi-round session): which conversation gets rated is a protocol
@@ -78,6 +82,17 @@ export type ConversationPrep =
   | { status: "ready"; clip: RemoteClip; clips: RemoteClip[]; localPath: string }
   | { status: "failed"; message: string; clips: RemoteClip[] };
 
+/**
+ * Where the session is.
+ *
+ * "setup" comes first as of 2026-08-22. It used to come after the participant
+ * had signed in, which meant they sat down, typed their email, and then waited
+ * while an RA reached over them to fill in study IDs — the lab flagged it on
+ * the first walkthrough. The RA now sets the station up, hands the computer
+ * over, and the sign-in screen is the first thing the participant sees.
+ */
+type Stage = "setup" | "signin" | "welcome" | "admin" | "study";
+
 function App() {
   const [formData, setFormData] = useState<FormData>({
     dyadId: "",
@@ -95,6 +110,7 @@ function App() {
     "postConversation" | "dyad" | "classification" | null
   >(null);
   const [dyadCsvFilePath, setDyadCsvFilePath] = useState<string>("");
+  const [sessionFolder, setSessionFolder] = useState<string>("");
   const [completedTasks, setCompletedTasks] = useState({ dyad: false, classification: false });
   // One writer for transitions.csv for the whole session, created once the save
   // folder exists. Both the post-conversation questionnaire and the
@@ -105,10 +121,14 @@ function App() {
   const [csvError, setCsvError] = useState<string | null>(null);
   const [showAdminQuit, setShowAdminQuit] = useState<boolean>(false);
 
-  // Round-robin check-in gate. The app opens on an email-only sign-in:
-  // participants get registered into a random group of 5 and continue into the
-  // study; admin@admin opens the researcher tracking dashboard instead.
-  const [stage, setStage] = useState<"signin" | "welcome" | "admin" | "study">("signin");
+  const [stage, setStage] = useState<Stage>("setup");
+  /**
+   * Where "Back to setup" on the researcher dashboard returns to. The dashboard
+   * is reachable from two places — the setup screen, and the participant
+   * sign-in via admin@admin — and dropping an RA back onto the wrong one costs
+   * them the handover they had already made.
+   */
+  const [adminReturn, setAdminReturn] = useState<Stage>("setup");
   const [rrData, setRrData] = useState<RRData | null>(null);
   const [rrParticipant, setRrParticipant] = useState<RRParticipant | null>(null);
   const [rrIsNew, setRrIsNew] = useState<boolean>(false);
@@ -123,15 +143,16 @@ function App() {
   // help button has to disappear while that runs — see DyadTaskMain.
   const [cursorLocked, setCursorLocked] = useState<boolean>(false);
 
-  // The Round Robin server connection (URL + shared secret + drive mount),
-  // configured once per machine on the dashboard. Null until loaded; treated
-  // as "not configured" — everything remote is skipped — until it says
-  // otherwise.
+  // The Round Robin server connection (URL + drive mount), configured once per
+  // machine. Null until loaded; treated as "not configured" — everything remote
+  // is skipped — until it says otherwise.
   const [remote, setRemote] = useState<RemotePublic | null>(null);
+  const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [prep, setPrep] = useState<ConversationPrep>({ status: "idle" });
 
   useEffect(() => {
     void loadData().then(setRrData);
+    void loadSettings().then(setSettings);
     if (hasTauri()) {
       void remoteStatus()
         .then(setRemote)
@@ -139,7 +160,7 @@ function App() {
     }
   }, []);
 
-  const remoteReady = Boolean(remote?.roundRobinUrl && remote?.secretConfigured);
+  const remoteReady = Boolean(remote?.roundRobinUrl);
 
   const persistRr = (data: RRData) => {
     setRrData(data);
@@ -148,6 +169,16 @@ function App() {
       setCsvError(`Round-robin save failed: ${err}`);
     });
   };
+
+  const handleSettingsChange = useCallback((next: AppSettings) => {
+    setSettings(next);
+    void saveSettings(next).catch((err) => console.error("Settings save failed:", err));
+  }, []);
+
+  const handleDriveChange = useCallback(async (path: string) => {
+    const next = await remoteConfigure({ researchDriveRoot: path });
+    setRemote(next);
+  }, []);
 
   const writeProgress = useCallback(
     (email: string, patch: Partial<RRProgress>) => {
@@ -220,35 +251,6 @@ function App() {
     return () => window.clearInterval(id);
   }, [helpPending, rrParticipant]);
 
-  const handleParticipantSignIn = async (email: string) => {
-    // Both check-in machines share the store file. The snapshot loaded at app
-    // start goes stale the moment the other machine saves a sign-in, and
-    // writing it back would erase that sign-in — so re-load from disk and
-    // merge by email right before saving. A race window remains: two sign-ins
-    // landing between each other's load and save can still drop one, but it
-    // is now milliseconds wide instead of session-long. Alex, 2026-08-10.
-    const onDisk = await loadData();
-    const base = mergeData(onDisk, rrData ?? emptyData());
-    const result = rrSignIn(base, email);
-    if (result.isNew) {
-      persistRr(result.data);
-    } else {
-      // Nothing to save, but keep the fresher merged copy locally.
-      setRrData(result.data);
-    }
-    setRrParticipant(result.participant);
-    setRrIsNew(result.isNew);
-    setStage("welcome");
-    writeProgress(result.participant.email, {
-      stage: "checkin",
-      done: 1,
-      total: 1,
-      detail: `Group ${result.participant.group}`,
-      helpRequestedAt: null,
-      helpResolvedAt: null,
-    });
-  };
-
   useEffect(() => {
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
@@ -305,6 +307,45 @@ function App() {
       console.error("exit_app failed:", err);
     }
   };
+
+  /** Same flush, but the app stays open and lands on the mode chooser. */
+  const handleLeaveMode = useCallback(async () => {
+    try {
+      await flushAll();
+    } catch (err) {
+      console.error("Flush before leaving the mode failed:", err);
+    }
+    try {
+      await leaveMode(null);
+    } catch (err) {
+      setCsvError(String(err));
+    }
+  }, []);
+
+  // The chooser asking this window to hand the computer over to another mode.
+  // Everything buffered goes to disk first — up to ~15 s of slider samples sit
+  // in memory during the rating task, and they are the measurement.
+  useEffect(() => {
+    if (!hasTauri()) return;
+    let unlisten: (() => void) | null = null;
+    void listen<string>("leave-mode", (event) => {
+      void (async () => {
+        try {
+          await flushAll();
+        } catch (err) {
+          console.error("Flush before the mode switch failed:", err);
+        }
+        try {
+          await leaveMode((event.payload as "record" | "station" | "control") ?? null);
+        } catch (err) {
+          setCsvError(String(err));
+        }
+      })();
+    }).then((un) => {
+      unlisten = un;
+    });
+    return () => unlisten?.();
+  }, []);
 
   // ---- automatic conversation-video fetch ---------------------------------
 
@@ -376,42 +417,45 @@ function App() {
 
   /**
    * Finds this participant's conversation recording through Round Robin and
-   * starts fetching it. Fire-and-forget from the form submit: the participant
+   * starts fetching it. Fire-and-forget from the sign-in: the participant
    * moves on to the questionnaire either way, and the dyad task falls back to
    * the manual picker if this never succeeds.
    */
-  const startConversationSearch = useCallback(() => {
-    const email = rrParticipant?.email;
-    if (!hasTauri() || !remoteReady || !email) return;
-    setPrep({ status: "finding" });
-    void listConversationClips(email)
-      .then((response) => {
-        const clips = fetchableClips(response.clips);
-        const recommended = newestClip(clips);
-        if (!recommended) {
-          setPrep({
-            status: "failed",
-            message: `Round Robin has no stored recording for ${email}. If the conversation just ended, the recorder may still be filing it.`,
-            clips: [],
-          });
-          reportStationEvent("No conversation recording on file — check station", true);
-          return;
-        }
-        if (clips.length === 1) {
-          prepareClip(recommended, clips);
-        } else {
-          // More than one conversation on file — which one gets rated is a
-          // protocol decision, so the RA picks. The newest is preselected.
-          setPrep({ status: "choose", clips, recommended });
-        }
-      })
-      .catch((err) => {
-        setPrep({ status: "failed", message: String(err), clips: [] });
-        reportStationEvent("Conversation video lookup FAILED — check station", true);
-      });
-  }, [rrParticipant, remoteReady, prepareClip, reportStationEvent]);
+  const startConversationSearch = useCallback(
+    (email: string) => {
+      if (!hasTauri() || !remoteReady || !email) return;
+      setPrep({ status: "finding" });
+      void listConversationClips(email)
+        .then((response) => {
+          const clips = fetchableClips(response.clips);
+          const recommended = newestClip(clips);
+          if (!recommended) {
+            setPrep({
+              status: "failed",
+              message: `Round Robin has no stored recording for ${email}. If the conversation just ended, the recorder may still be filing it.`,
+              clips: [],
+            });
+            reportStationEvent("No conversation recording on file — check station", true);
+            return;
+          }
+          if (clips.length === 1) {
+            prepareClip(recommended, clips);
+          } else {
+            // More than one conversation on file — which one gets rated is a
+            // protocol decision, so the RA picks. The newest is preselected.
+            setPrep({ status: "choose", clips, recommended });
+          }
+        })
+        .catch((err) => {
+          setPrep({ status: "failed", message: String(err), clips: [] });
+          reportStationEvent("Conversation video lookup FAILED — check station", true);
+        });
+    },
+    [remoteReady, prepareClip, reportStationEvent]
+  );
 
-  const handleFormSubmit = async () => {
+  /** The RA finished setting the station up. Next screen is the participant's. */
+  const handleSetupSubmit = async () => {
     try {
       const basePath = await invoke<string>("setup_rating_directory", {
         basePath: formData.saveFolder,
@@ -421,22 +465,63 @@ function App() {
         initials: formData.subjectInitials,
       });
 
-      // Start pulling the conversation video now, so the copy runs while the
-      // participant answers the post-conversation questionnaire.
-      startConversationSearch();
-
+      setSessionFolder(basePath);
       setDyadCsvFilePath(`${basePath}/ratings.csv`);
       transitionsWriterRef.current = createTransitionsWriter(
         formData,
         `${basePath}/transitions.csv`
       );
-      setSelectedTask("postConversation");
-      setTaskOrder(1);
-      reportProgress("postconv", 0, 1, "Post-conversation questions");
+      setStage("signin");
     } catch (error) {
       console.error("Error setting up directory:", error);
-      alert("Error setting up file directory. Please check the save folder path and try again.");
+      setCsvError(
+        `Could not create the session folder in ${formData.saveFolder}. Is the Research Drive mounted? (${error})`
+      );
     }
+  };
+
+  const handleParticipantSignIn = async (email: string) => {
+    // Both check-in machines share the store file. The snapshot loaded at app
+    // start goes stale the moment the other machine saves a sign-in, and
+    // writing it back would erase that sign-in — so re-load from disk and
+    // merge by email right before saving. A race window remains: two sign-ins
+    // landing between each other's load and save can still drop one, but it
+    // is now milliseconds wide instead of session-long. Alex, 2026-08-10.
+    const onDisk = await loadData();
+    const base = mergeData(onDisk, rrData ?? emptyData());
+    const result = rrSignIn(base, email);
+    if (result.isNew) {
+      persistRr(result.data);
+    } else {
+      // Nothing to save, but keep the fresher merged copy locally.
+      setRrData(result.data);
+    }
+    setRrParticipant(result.participant);
+    setRrIsNew(result.isNew);
+    setStage("welcome");
+
+    // Start pulling the conversation video now, so the ~1 GB copy runs while
+    // the participant reads the welcome screen and answers the first
+    // questionnaire. This used to fire from the RA's form; moving the form
+    // before the sign-in moved this with it, and the email is what the search
+    // is keyed on anyway.
+    startConversationSearch(result.participant.email);
+
+    writeProgress(result.participant.email, {
+      stage: "checkin",
+      done: 1,
+      total: 1,
+      detail: `Group ${result.participant.group}`,
+      helpRequestedAt: null,
+      helpResolvedAt: null,
+    });
+  };
+
+  const beginStudy = () => {
+    setSelectedTask("postConversation");
+    setTaskOrder(1);
+    setStage("study");
+    reportProgress("postconv", 0, 1, "Post-conversation questions");
   };
 
   const handleFormChange = (field: string, value: string) => {
@@ -476,7 +561,9 @@ function App() {
     setTaskOrder(2);
     setSelectedTask("classification");
     setCursorLocked(false);
-    reportProgress("video", 0, 25, "Instructions");
+    // 8 clips plus the sharing page. The video task reports its own finer
+    // progress from here on; this is only the first tick.
+    reportProgress("video", 0, 9, "Instructions");
   };
 
   const handleClassificationTaskComplete = () => {
@@ -501,6 +588,10 @@ function App() {
         isOpen={showAdminQuit}
         onCancel={() => setShowAdminQuit(false)}
         onConfirm={handleConfirmQuit}
+        onLeaveMode={() => {
+          setShowAdminQuit(false);
+          void handleLeaveMode();
+        }}
       />
 
       {csvError && (
@@ -517,29 +608,56 @@ function App() {
         />
       )}
 
-      {stage === "signin" ? (
-        <SignIn
-          onParticipant={handleParticipantSignIn}
-          onAdmin={() => setStage("admin")}
+      {stage === "setup" ? (
+        <StationSetup
+          formData={formData}
+          settings={settings}
+          remote={remote}
+          onSettingsChange={handleSettingsChange}
+          onDriveChange={handleDriveChange}
+          onChange={handleFormChange}
+          onSubmit={() => void handleSetupSubmit()}
+          onDashboard={() => {
+            setAdminReturn("setup");
+            setStage("admin");
+          }}
+          onLeaveMode={() => void handleLeaveMode()}
         />
       ) : stage === "admin" ? (
         <AdminDashboard
           data={rrData ?? { version: 1, groupSize: 5, participants: [], meetings: {} }}
           onChange={persistRr}
           onRefresh={setRrData}
-          onExit={() => setStage("signin")}
+          onExit={() => setStage(adminReturn)}
+          onLeaveMode={() => void handleLeaveMode()}
+          onError={setCsvError}
+        />
+      ) : stage === "signin" ? (
+        <SignIn
+          onParticipant={handleParticipantSignIn}
+          onAdmin={() => {
+            setAdminReturn("signin");
+            setStage("admin");
+          }}
         />
       ) : stage === "welcome" && rrData && rrParticipant ? (
         <Welcome
           data={rrData}
           participant={rrParticipant}
           isNew={rrIsNew}
-          onContinue={() => setStage("study")}
+          onContinue={beginStudy}
         />
       ) : allTasksCompleted ? (
-        <div className="h-screen w-full flex flex-col items-center justify-center">
-          <p className="text-white text-2xl text-center max-w-2xl px-8">
+        <div className="h-screen w-full flex flex-col items-center justify-center px-8">
+          <p className="text-white text-2xl text-center max-w-2xl">
             Please alert your researcher that you are finished.
+          </p>
+          {/* For the RA who comes over, not the participant: proof the session
+              landed somewhere, and where. A session whose data folder is not
+              on the Research Drive is worth catching while everyone is still
+              in the room. */}
+          <p className="text-gray-600 text-xs text-center mt-16 font-mono break-all max-w-3xl">
+            {sessionFolder}
           </p>
         </div>
       ) : selectedTask === "postConversation" ? (
@@ -556,7 +674,7 @@ function App() {
                 clip,
                 prep.status === "idle" || prep.status === "finding" ? [clip] : prep.clips
               ),
-            onRetry: startConversationSearch,
+            onRetry: () => startConversationSearch(rrParticipant?.email ?? ""),
           }}
           onComplete={handleDyadTaskComplete}
           onCsvError={handleCsvError}
@@ -574,11 +692,9 @@ function App() {
           }
         />
       ) : (
-        <ParticipantForm
-          formData={formData}
-          onChange={handleFormChange}
-          onSubmit={handleFormSubmit}
-        />
+        <div className="h-screen w-full flex items-center justify-center">
+          <p className="text-white text-2xl">Loading…</p>
+        </div>
       )}
     </div>
   );

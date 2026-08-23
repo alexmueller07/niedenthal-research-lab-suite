@@ -41,7 +41,7 @@ export interface RRProgress {
   done: number;
   /** Steps in the current stage; 0 when the stage has no step count. */
   total: number;
-  /** Free-text detail for the dashboard, e.g. "Video 12 of 25". */
+  /** Free-text detail for the dashboard, e.g. "Video 3 of 8". */
   detail?: string;
   updatedAt: string;
   /** Set when the participant presses the help button; cleared by the researcher. */

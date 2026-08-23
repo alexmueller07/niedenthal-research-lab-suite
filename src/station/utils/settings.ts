@@ -1,31 +1,16 @@
 // Machine-level researcher settings.
 //
-// Two folder paths the lab sets once per machine, from the round-robin
-// dashboard. Both are optional: with neither set, the app runs entirely
+// The paths and defaults the lab sets once per machine, from the round-robin
+// dashboard. All of them are optional: with none set, the app runs entirely
 // self-contained (bundled proof-of-concept clips, per-machine tracking file),
 // which is what a fresh install does.
 //
 // settings.json always lives in this machine's app-data folder — one of the
 // things it stores is where everything else lives, so it cannot itself be
-// relocated. Rust reads the same file (see store_dir in src-tauri/src/lib.rs).
+// relocated. Rust reads the same file (see store_dir in
+// src-tauri/src/station/commands.rs).
 
 import { invoke } from "@tauri-apps/api/core";
-
-/**
- * How the video task collects the three perspectives.
- *
- * "separate" — the clips are gone through three times, once per perspective.
- *              One perspective is on screen at a time.
- * "combined" — the clips are gone through once, and every emotion is rated for
- *              all three perspectives on the same page.
- *
- * Randy asked (2026-07-30) whether combining would save time; Ben's counter is
- * that seeing all three at once invites participants to norm their own answer
- * against what they just said the average student would feel. Both are built;
- * which one runs is a setting rather than a code change, so it can be switched
- * in the meeting and switched back.
- */
-export type VideoRatingMode = "separate" | "combined";
 
 export interface AppSettings {
   /**
@@ -34,32 +19,32 @@ export interface AppSettings {
    */
   stimulusDir: string | null;
   /**
-   * Absolute path to a shared folder holding the round-robin and progress
-   * files, or null to keep them in this machine's app-data folder. Point every
-   * lab machine at one folder and the dashboard sees every session live.
+   * Absolute path to a shared folder holding the round-robin, session-board and
+   * progress files, or null to keep them in this machine's app-data folder.
+   * Point every lab machine at one folder and the dashboard sees every session
+   * live.
    */
   storeDir: string | null;
-  /** See VideoRatingMode. Defaults to "separate" — the current protocol. */
-  videoRatingMode: VideoRatingMode;
   /**
-   * Whether a clip must be watched all the way through again in the second and
-   * third perspective blocks ("separate" mode only).
-   *
-   * Off by default since 2026-07-30: Ben, Sarah, Eddy and Prior all said the
-   * forced rewatch was the tedious part. The clip is still replayable on demand
-   * and the first viewing is still compulsory; what changed is that a
-   * participant who remembers the clip can go straight to rating it. Whether a
-   * rating followed a fresh viewing is recorded per trial (`watch_plays`), so
-   * the difference stays visible in analysis.
+   * Where each session's ratings.csv / transitions.csv folder is created. Null
+   * means "the pps-data folder on the Research Drive", which is what the setup
+   * screen fills in — an RA has not had to answer this question since
+   * 2026-08-22.
    */
-  requireRewatch: boolean;
+  dataDir: string | null;
+  /**
+   * The RA who runs this computer, remembered between sessions so it is one
+   * fewer field to retype. It is written into every data file, so it is
+   * editable on the setup screen rather than buried here.
+   */
+  raName: string;
 }
 
 export const EMPTY_SETTINGS: AppSettings = {
   stimulusDir: null,
   storeDir: null,
-  videoRatingMode: "separate",
-  requireRewatch: false,
+  dataDir: null,
+  raName: "",
 };
 
 const LOCALSTORAGE_KEY = "pps-settings";
@@ -72,15 +57,14 @@ export async function loadSettings(): Promise<AppSettings> {
   try {
     const raw = hasTauri()
       ? await invoke<string>("load_settings")
-      : localStorage.getItem(LOCALSTORAGE_KEY) ?? "";
+      : (localStorage.getItem(LOCALSTORAGE_KEY) ?? "");
     if (!raw) return EMPTY_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     return {
       stimulusDir: parsed.stimulusDir ?? null,
       storeDir: parsed.storeDir ?? null,
-      videoRatingMode:
-        parsed.videoRatingMode === "combined" ? "combined" : EMPTY_SETTINGS.videoRatingMode,
-      requireRewatch: parsed.requireRewatch ?? EMPTY_SETTINGS.requireRewatch,
+      dataDir: parsed.dataDir ?? null,
+      raName: parsed.raName ?? "",
     };
   } catch (err) {
     console.error("Settings load failed:", err);
@@ -95,4 +79,28 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     return;
   }
   localStorage.setItem(LOCALSTORAGE_KEY, raw);
+}
+
+/** Joins with whichever separator the folder already uses (Windows or POSIX). */
+export function joinPath(dir: string, name: string): string {
+  const separator = dir.includes("\\") ? "\\" : "/";
+  return `${dir.replace(/[/\\]+$/, "")}${separator}${name}`;
+}
+
+/**
+ * Where this session's folder should be created, given what the machine knows.
+ *
+ * Preference order: an explicit dataDir, then a `pps-data` folder beside the
+ * recordings on the Research Drive, then nothing — which is the only case that
+ * puts a folder picker in front of an RA.
+ */
+export function resolveDataDir(
+  settings: AppSettings,
+  researchDriveRoot: string | null
+): string | null {
+  if (settings.dataDir && settings.dataDir.trim() !== "") return settings.dataDir.trim();
+  if (researchDriveRoot && researchDriveRoot.trim() !== "") {
+    return joinPath(researchDriveRoot.trim(), "pps-data");
+  }
+  return null;
 }
