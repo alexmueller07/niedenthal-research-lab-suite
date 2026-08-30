@@ -56,6 +56,13 @@ pub struct MachineSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub round_robin_secret: Option<String>,
     pub research_drive_root: Option<String>,
+    /// Research Drive folders this machine has been pointed at before, newest
+    /// first. Kept so setting one is a click rather than a walk through a
+    /// folder tree: an RA re-mapping the share after a reboot, or a machine
+    /// that alternates between the real share and a local test folder, would
+    /// otherwise browse for it every time. Capped — this is a convenience,
+    /// not a history.
+    pub recent_drive_roots: Vec<String>,
     pub configured_at: Option<String>,
     /// Which standalone app's settings seeded this profile, if any.
     pub migrated_from: Option<String>,
@@ -71,6 +78,9 @@ pub struct MachinePublic {
     /// True when the Research Drive folder was chosen deliberately rather
     /// than falling back to this computer's own folder.
     pub drive_is_shared: bool,
+    /// Previously used folders, newest first, for the one-click chips. Never
+    /// includes the one currently in use — it is already on screen.
+    pub recent_drive_roots: Vec<String>,
     pub migrated_from: Option<String>,
 }
 
@@ -113,15 +123,114 @@ pub(crate) fn save(app: &AppHandle, settings: &MachineSettings) -> Result<(), St
 /// — including the legacy device key, which no interface can see — has to be
 /// carried across rather than defaulted away.
 pub fn merge_update(existing: &MachineSettings, update: MachineUpdate) -> MachineSettings {
+    let research_drive_root = update
+        .research_drive_root
+        .or_else(|| existing.research_drive_root.clone());
     MachineSettings {
         round_robin_url: update
             .round_robin_url
             .or_else(|| existing.round_robin_url.clone()),
-        research_drive_root: update
-            .research_drive_root
-            .or_else(|| existing.research_drive_root.clone()),
+        recent_drive_roots: remember_drive_root(
+            &existing.recent_drive_roots,
+            existing.research_drive_root.as_deref(),
+            research_drive_root.as_deref(),
+        ),
+        research_drive_root,
         ..existing.clone()
     }
+}
+
+/// How many previous folders are offered as chips. Four fits on one line next
+/// to the label and is more than any lab machine has ever needed.
+const MAX_RECENT_DRIVE_ROOTS: usize = 4;
+
+/// Research Drive folders that exist on this computer right now.
+///
+/// The share is mounted at the same handful of places on every lab machine, so
+/// a machine that has never been configured can still offer a click instead of
+/// a folder tree. Existence is the whole test — a path that is there is worth
+/// offering, and one that is not is silently skipped.
+///
+/// `async` so it never runs on the UI thread: probing a mapped letter whose
+/// server has gone away can block for seconds, and this is called while an RA
+/// is looking at a settings screen.
+#[tauri::command]
+pub async fn detect_drive_roots(app: AppHandle) -> Vec<String> {
+    let current = load(&app)
+        .research_drive_root
+        .map(|r| r.trim().to_lowercase())
+        .filter(|r| !r.is_empty());
+
+    let mut candidates: Vec<String> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        // A mapped letter is how the lab reaches the share day to day.
+        for letter in b'D'..=b'Z' {
+            let letter = letter as char;
+            candidates.push(format!("{letter}:\\niedenthal\\recordings"));
+            candidates.push(format!("{letter}:\\recordings"));
+        }
+        // And the UNC path, for a machine that never mapped one.
+        candidates.push("\\\\research.drive.wisc.edu\\niedenthal\\recordings".into());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        candidates.push("/Volumes/niedenthal/recordings".into());
+        candidates.push("/Volumes/niedenthal".into());
+    }
+
+    let mut found: Vec<String> = Vec::new();
+    for candidate in candidates {
+        if found.len() >= MAX_RECENT_DRIVE_ROOTS {
+            break;
+        }
+        if Some(candidate.to_lowercase()) == current {
+            continue;
+        }
+        if std::path::Path::new(&candidate).is_dir() {
+            found.push(candidate);
+        }
+    }
+    found
+}
+
+/// Folds the folder being replaced into the recents list.
+///
+/// The one being *set* is deliberately not added: it is about to be displayed
+/// as the current folder, and a chip offering to switch to the folder you are
+/// already using is noise. The one being replaced is what an RA might want
+/// back.
+fn remember_drive_root(
+    existing: &[String],
+    previous: Option<&str>,
+    next: Option<&str>,
+) -> Vec<String> {
+    let mut recents: Vec<String> = existing.to_vec();
+    if let Some(previous) = previous.map(str::trim).filter(|p| !p.is_empty()) {
+        if next.map(str::trim) != Some(previous) {
+            recents.insert(0, previous.to_string());
+        }
+    }
+    // Dedupe case-insensitively, keeping the newest occurrence: Windows paths
+    // differ only by case all the time (r:\ vs R:\) and are the same folder.
+    let mut seen: Vec<String> = Vec::new();
+    recents.retain(|path| {
+        let key = path.to_lowercase();
+        if seen.contains(&key) {
+            false
+        } else {
+            seen.push(key);
+            true
+        }
+    });
+    // And never offer the folder that is currently in use.
+    if let Some(next) = next.map(str::trim).filter(|n| !n.is_empty()) {
+        let key = next.to_lowercase();
+        recents.retain(|path| path.to_lowercase() != key);
+    }
+    recents.truncate(MAX_RECENT_DRIVE_ROOTS);
+    recents
 }
 
 /// The machine profile as a webview sees it: effective values, not raw stored
@@ -135,6 +244,7 @@ pub fn public_view(app: &AppHandle) -> MachinePublic {
         round_robin_url: Some(server_url(app)),
         research_drive_root: drive_root(app),
         drive_is_shared: !drive_is_local_fallback(app),
+        recent_drive_roots: stored.recent_drive_roots.clone(),
         migrated_from: stored.migrated_from,
     }
 }

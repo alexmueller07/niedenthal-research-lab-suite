@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { hasTauri, remoteConfigure, remoteStatus, remoteTest } from "./api";
 import type { RemotePublic } from "./api";
+import DriveRootChips from "./DriveRootChips";
 
 // The Round Robin server connection, set once per machine on the dashboard —
 // like the folder settings above it, an RA setting up a session never sees any
@@ -88,6 +89,12 @@ export default function RemoteSettingsPanel() {
 
       <div>
         <label className="block text-white text-lg mb-2">Research Drive folder</label>
+        <DriveRootChips
+          recent={status?.recentDriveRoots ?? []}
+          current={driveRoot}
+          onPick={setDriveRoot}
+          className="mb-3 text-gray-300"
+        />
         <div className="flex space-x-2">
           <input
             autoComplete="off"

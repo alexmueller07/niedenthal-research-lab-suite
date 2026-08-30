@@ -15,6 +15,8 @@ export interface MachinePublic {
   researchDriveRoot: string | null;
   /** False when the folder is this computer's own rather than the shared drive. */
   driveIsShared: boolean;
+  /** Folders this machine has used before, newest first — the one-click chips. */
+  recentDriveRoots: string[];
   migratedFrom: string | null;
 }
 
@@ -33,6 +35,9 @@ export interface MachineHealth {
 }
 
 export const machineStatus = () => invoke<MachinePublic>("machine_status");
+
+/** Research Drive folders that exist on this computer right now. Best-effort. */
+export const detectDriveRoots = () => invoke<string[]>("detect_drive_roots");
 
 export const machineConfigure = (update: MachineUpdate) =>
   invoke<MachinePublic>("machine_configure", { update });

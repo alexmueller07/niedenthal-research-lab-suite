@@ -141,6 +141,7 @@ pub fn run() {
             station::remote::report_study_progress,
             station::remote::prepare_conversation_video,
             machine::machine_status,
+            machine::detect_drive_roots,
             machine::machine_configure,
             machine::machine_test,
             machine::machine_health,

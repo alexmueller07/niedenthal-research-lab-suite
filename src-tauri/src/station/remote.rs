@@ -67,6 +67,9 @@ pub struct RemotePublic {
     /// difference: only a real share lets a *different* computer's recording
     /// be found.
     pub drive_is_shared: bool,
+    /// Folders this machine has used before, newest first — the one-click
+    /// chips on the setup screen. See machine::remember_drive_root.
+    pub recent_drive_roots: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -100,6 +103,7 @@ pub fn remote_status(app: AppHandle) -> RemotePublic {
         round_robin_url: Some(crate::machine::server_url(&app)),
         research_drive_root: crate::machine::drive_root(&app),
         drive_is_shared: !crate::machine::drive_is_local_fallback(&app),
+        recent_drive_roots: crate::machine::load(&app).recent_drive_roots,
     }
 }
 

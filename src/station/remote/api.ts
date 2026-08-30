@@ -17,6 +17,8 @@ export interface RemotePublic {
    * find a conversation recorded on this same machine.
    */
   driveIsShared: boolean;
+  /** Folders this machine has used before, newest first — the one-click chips. */
+  recentDriveRoots: string[];
 }
 
 export interface RemoteUpdate {
@@ -68,6 +70,13 @@ export function hasTauri(): boolean {
 }
 
 export const remoteStatus = () => invoke<RemotePublic>("remote_status");
+
+/**
+ * Research Drive folders that exist on this computer right now, probed from
+ * the places the lab mounts the share. Best-effort: an empty list only means
+ * nothing was found at a known location, never that the drive is missing.
+ */
+export const detectDriveRoots = () => invoke<string[]>("detect_drive_roots");
 
 export const remoteConfigure = (update: RemoteUpdate) =>
   invoke<RemotePublic>("remote_configure", { update });

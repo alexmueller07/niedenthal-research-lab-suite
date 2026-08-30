@@ -50,6 +50,7 @@ const srcFor = (id: string) => resolveVideoSrc(id, null);
 
 const BLANK_FORM: FormData = {
   dyadId: "",
+  groupId: "",
   participantId: "",
   partnerId: "",
   computer: "",
@@ -118,6 +119,7 @@ function Preview() {
             roundRobinUrl: "https://example.invalid",
             researchDriveRoot: null,
             driveIsShared: false,
+            recentDriveRoots: [],
           }}
           onSettingsChange={() => {}}
           onDriveChange={async () => {}}
