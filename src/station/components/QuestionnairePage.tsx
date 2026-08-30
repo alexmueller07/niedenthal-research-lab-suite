@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ConfirmationModal from "./ConfirmationModal";
+import { useScrollToTop } from "../utils/scroll";
 
 // Shared questionnaire scaffold. Visuals follow Suhaas's original app (black
 // page, bordered p-8 frame, white px-8 py-3 Continue button) with the two
@@ -36,6 +37,9 @@ export default function QuestionnairePage({
   frameClassName = "bg-black border p-8 text-center max-w-7xl mx-auto flex-1 flex flex-col justify-center",
   children,
 }: QuestionnairePageProps) {
+  // Every questionnaire opens at its own top, not at wherever the previous
+  // page was scrolled to — see utils/scroll.ts.
+  useScrollToTop();
   const [showConfirm, setShowConfirm] = useState(false);
 
   const handleContinue = () => {

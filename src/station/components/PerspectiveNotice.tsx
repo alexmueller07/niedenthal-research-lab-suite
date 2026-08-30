@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { useScrollToTop } from "../utils/scroll";
 
 // The screen that tells a participant whose feelings the next thing is about.
 //
@@ -31,6 +32,7 @@ export default function PerspectiveNotice({
   subline,
   onContinue,
 }: PerspectiveNoticeProps) {
+  useScrollToTop();
   const [remainingMs, setRemainingMs] = useState(PERSPECTIVE_DWELL_MS);
   const locked = remainingMs > 0;
 

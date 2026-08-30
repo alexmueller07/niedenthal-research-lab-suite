@@ -2,6 +2,7 @@ import { useState } from "react";
 import StimulusPlayer from "./StimulusPlayer";
 import ConfirmationModal from "../components/ConfirmationModal";
 import { shuffle } from "../utils/shuffle";
+import { useScrollToTop } from "../utils/scroll";
 
 // Final page of the video task: of the clips they just rated, which would they
 // share with their partner, and which would they keep for themselves.
@@ -76,6 +77,7 @@ export default function VideoSelectionPage({
   srcFor,
   onSubmit,
 }: VideoSelectionPageProps) {
+  useScrollToTop();
   // Drawn once, on mount, and never re-rolled: a column order that changed
   // under a participant mid-page would be worse than a fixed one.
   const [columnOrder] = useState<ColumnOrder>(

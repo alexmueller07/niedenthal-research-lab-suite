@@ -1,6 +1,7 @@
 import { useState } from "react";
 import StimulusPlayer from "./StimulusPlayer";
 import type { WatchStats } from "./StimulusPlayer";
+import { useScrollToTop } from "../utils/scroll";
 
 // Page 1 of each trial: watch the clip.
 //
@@ -33,6 +34,7 @@ export default function VideoWatchPage({
   onWatched,
   onContinue,
 }: VideoWatchPageProps) {
+  useScrollToTop();
   const [watched, setWatched] = useState(false);
 
   const handleWatched = (stats: WatchStats) => {

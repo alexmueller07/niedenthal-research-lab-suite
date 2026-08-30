@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import NumberScale from "../components/NumberScale";
 import ConfirmationModal from "../components/ConfirmationModal";
 import StimulusPlayer from "./StimulusPlayer";
+import { useScrollToTop } from "../utils/scroll";
 
 // The rating page: the clip, then one question per emotion on a 1-7 scale.
 //
@@ -59,6 +60,7 @@ export default function VideoRatingPage({
   positionLabel,
   onSubmit,
 }: VideoRatingPageProps) {
+  useScrollToTop();
   const [intensity, setIntensity] = useState<Record<string, number>>({});
   const [confidence, setConfidence] = useState<number | undefined>(undefined);
   const [showIncomplete, setShowIncomplete] = useState(false);
