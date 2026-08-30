@@ -28,7 +28,7 @@ pub fn write_csv_ratings(path: String, contents: Vec<String>) -> Result<(), Stri
             file,
             "SubID,PartnerID,dyad,computer,subjectInitials,raName,sessionTime,sessionDate,\
 timestamp,taskOrder,Rating,EmoRating,EmoRating_Person,Time,stopTime,Movietime,\
-Shift,Description,trialNumber,softwareVersion"
+Shift,Description,trialNumber,softwareVersion,groupId"
         )
         .map_err(|e| e.to_string())?;
     }
@@ -55,7 +55,7 @@ pub fn write_csv_transitions(path: String, contents: Vec<String>) -> Result<(), 
             file,
             "dyadId,participantId,partnerId,computer,subjectInitials,raName,sessionTime,\
 sessionDate,sessionTimestamp,ratingTask,subTask,emotion1,emotion2,ratingPerson,\
-response,trialNumber,softwareVersion"
+response,trialNumber,softwareVersion,groupId"
         )
         .map_err(|e| e.to_string())?;
     }

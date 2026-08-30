@@ -14,6 +14,7 @@ import type { DyadEntry, SessionBoard } from "../roundrobin/sessionBoard";
 import { resolveDataDir } from "../utils/settings";
 import type { AppSettings } from "../utils/settings";
 import type { RemotePublic } from "../remote/api";
+import DriveRootChips from "../remote/DriveRootChips";
 
 // The first screen in Rating Station mode: the RA sets the computer up, then
 // hands it to the participant.
@@ -53,6 +54,13 @@ function hasTauri(): boolean {
 
 const inputClass =
   "w-full p-3 text-white bg-gray-800 border border-white rounded-lg focus:outline-none focus:border-blue-400";
+
+/**
+ * The study groups the RA assigns a session to. Fixed rather than free text:
+ * it is a condition label that has to join cleanly across files, and "A" / "a"
+ * / "Group A" typed by three RAs is three groups in the analysis.
+ */
+const STUDY_GROUPS = ["A", "B", "C"] as const;
 
 /** IDs land in folder names, so no path-special characters. */
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -174,6 +182,7 @@ export default function StationSetup({
   if (!formData.partnerId) missing.push("partner ID");
   if (!formData.subjectInitials) missing.push("initials");
   if (!formData.computer) missing.push("seat");
+  if (!formData.groupId) missing.push("group");
   if (!formData.raName) missing.push("RA name");
   if (!formData.saveFolder) missing.push("data folder");
 
@@ -301,6 +310,12 @@ export default function StationSetup({
             </div>
           ) : (
             <>
+              <DriveRootChips
+                recent={remote?.recentDriveRoots ?? []}
+                current={driveDraft}
+                onPick={setDriveDraft}
+                className="mb-3 text-gray-300"
+              />
               <div className="flex space-x-2">
                 <input
                   autoComplete="off"
@@ -488,6 +503,29 @@ export default function StationSetup({
         {/* ---- 3. The rest ---- */}
         <section className="border border-gray-700 rounded-lg p-5 mb-6 space-y-4">
           <h2 className="text-white text-xl font-bold">This session</h2>
+          <div>
+            <label className="block text-white text-lg mb-2">Group</label>
+            <div className="flex space-x-3">
+              {STUDY_GROUPS.map((group) => (
+                <button
+                  key={group}
+                  type="button"
+                  onClick={() => onChange("groupId", group)}
+                  className={`flex-1 px-4 py-3 border border-white rounded-lg transition-colors ${
+                    formData.groupId === group
+                      ? "bg-white text-black"
+                      : "bg-gray-800 hover:bg-gray-700 text-white"
+                  }`}
+                >
+                  {group}
+                </button>
+              ))}
+            </div>
+            <p className="text-gray-500 text-xs mt-2">
+              Recorded in both data files. It does not change what this
+              participant sees — every group runs the same session.
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Field
               label="Subject initials"

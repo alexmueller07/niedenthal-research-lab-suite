@@ -19,7 +19,7 @@ import TransitionScreen from "./TransitionScreen";
 // honouring the seat/parity counterbalancing the protocol describes. It is
 // the one column that tells an analyst, from the file alone, which version
 // of the study a row came from.
-const SOFTWARE_VERSION = "3.0.0";
+const SOFTWARE_VERSION = "3.1.0";
 
 const DYAD_BLOCKS = 4;
 
@@ -277,6 +277,8 @@ function DyadTaskMain({
       description,
       trialNumber.current,
       SOFTWARE_VERSION,
+      // Last column on purpose — see FormData.groupId in App.tsx.
+      formData.groupId,
     ]
       .map(csvEscape)
       .join(",");

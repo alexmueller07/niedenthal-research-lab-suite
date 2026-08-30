@@ -46,6 +46,13 @@ import { listen } from "@tauri-apps/api/event";
 
 export interface FormData {
   dyadId: string;
+  /**
+   * Study group, A / B / C. Metadata only — the app runs identically for all
+   * three. It is the last column of both data files, appended rather than
+   * inserted so every column the pilot analysis scripts read by position
+   * stayed where it was.
+   */
+  groupId: string;
   participantId: string;
   partnerId: string;
   computer: string;
@@ -96,6 +103,7 @@ type Stage = "setup" | "signin" | "welcome" | "admin" | "study";
 function App() {
   const [formData, setFormData] = useState<FormData>({
     dyadId: "",
+    groupId: "",
     participantId: "",
     partnerId: "",
     computer: "",

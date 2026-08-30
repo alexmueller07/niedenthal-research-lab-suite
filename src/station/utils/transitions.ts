@@ -17,7 +17,7 @@ import { csvEscape } from "./csv";
 // honouring the seat/parity counterbalancing the protocol describes. It is
 // the one column that tells an analyst, from the file alone, which version
 // of the study a row came from.
-const SOFTWARE_VERSION = "3.0.0";
+const SOFTWARE_VERSION = "3.1.0";
 
 /**
  * Appends one long-format row to transitions.csv.
@@ -66,6 +66,8 @@ export function createTransitionsWriter(
       response,
       trialNumber,
       SOFTWARE_VERSION,
+      // Last column on purpose — see FormData.groupId in App.tsx.
+      formData.groupId,
     ]
       .map(csvEscape)
       .join(",");
