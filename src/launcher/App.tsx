@@ -13,6 +13,10 @@ import {
   runningMode,
 } from "./api";
 import type { CheckResult, MachineHealth, MachinePublic, RoleName } from "./api";
+// Shared with the station's two drive fields — one place decides what a
+// "recent" or "found" folder looks like.
+import DriveRootChips from "../station/remote/DriveRootChips";
+import WindowControls from "../shared/WindowControls";
 
 // The screen every launch opens on: pick what this computer is doing right
 // now. Nothing is locked — the same machine can record this morning and be a
@@ -231,6 +235,9 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-3xl p-8">
+      {/* No title bar since 2026-08-29 (modes.rs), so minimise and close
+          live here. Quit, below, is a different thing: it ends the suite. */}
+      <WindowControls />
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Niedenthal Lab Suite</h1>
@@ -478,6 +485,12 @@ export default function App() {
             </p>
           </div>
           <label className="block">
+            <DriveRootChips
+              recent={status?.recentDriveRoots ?? []}
+              current={driveRoot}
+              onPick={setDriveRoot}
+              className="mb-2 text-(--color-ink-dim)"
+            />
             <div className="mt-1 flex gap-2">
               <input
                 autoComplete="off"

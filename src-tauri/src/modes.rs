@@ -15,6 +15,49 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindo
 /// the launcher/recorder dark background; the station is pure black anyway.
 const DARK: Color = Color(14, 16, 19, 255);
 
+/// The primary monitor's usable area — the screen minus the taskbar — in the
+/// logical units the window builder takes.
+fn work_area_logical(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
+    let monitor = app.primary_monitor().ok().flatten()?;
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    Some((
+        f64::from(area.position.x) / scale,
+        f64::from(area.position.y) / scale,
+        f64::from(area.size.width) / scale,
+        f64::from(area.size.height) / scale,
+    ))
+}
+
+/// No title bar, no border, filling the screen down to the taskbar.
+///
+/// The lab asked for the chrome to go (2026-08-29): a title bar above a
+/// participant-facing task is one more thing to click by accident, and on the
+/// station it is the only piece of the screen that is not the study.
+///
+/// Deliberately NOT `.fullscreen(true)`. Real fullscreen on Windows covers the
+/// taskbar and makes Win+Ctrl+arrow desktop switching unreliable — and RAs
+/// switch desktops between a session and their own work all day. Sizing to the
+/// work area instead keeps the window a window: alt-tabbable, taskbar visible,
+/// desktops switchable, just without a frame.
+///
+/// The fallback matters. A monitor query can fail (a session opening while the
+/// display is asleep, a remote desktop mid-reconnect), and a chromeless window
+/// at some default size with no title bar to drag would be genuinely stuck. So
+/// no work area means a plain maximised window, which is always usable.
+fn fill_screen<'a>(
+    builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
+    app: &AppHandle,
+) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    match work_area_logical(app) {
+        Some((x, y, width, height)) => builder
+            .decorations(false)
+            .position(x, y)
+            .inner_size(width, height),
+        None => builder.maximized(true),
+    }
+}
+
 use crate::machine::Role;
 use crate::recorder::capture::{RecorderState, SessionKind};
 use crate::recorder::{commands, roundrobin};
@@ -69,16 +112,17 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
     };
     match role {
         Role::Record => {
-            let window = WebviewWindowBuilder::new(
+            let window = fill_screen(
+                WebviewWindowBuilder::new(
+                    app,
+                    RECORDER_LABEL,
+                    WebviewUrl::App("recorder.html".into()),
+                )
+                .title("Lab Recorder")
+                .background_color(DARK)
+                .min_inner_size(960.0, 640.0),
                 app,
-                RECORDER_LABEL,
-                WebviewUrl::App("recorder.html".into()),
             )
-            .title("Lab Recorder")
-            .background_color(DARK)
-            .inner_size(1280.0, 880.0)
-            .min_inner_size(960.0, 640.0)
-            .center()
             .build()?;
             disable_browser_accelerator_keys(&window);
 
@@ -96,15 +140,16 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
             });
         }
         Role::Station => {
-            let window = WebviewWindowBuilder::new(
+            let window = fill_screen(
+                WebviewWindowBuilder::new(
+                    app,
+                    STATION_LABEL,
+                    WebviewUrl::App("station.html".into()),
+                )
+                .title("PPS Study")
+                .background_color(DARK),
                 app,
-                STATION_LABEL,
-                WebviewUrl::App("station.html".into()),
             )
-            .title("PPS Study")
-            .background_color(DARK)
-            .inner_size(1440.0, 900.0)
-            .maximized(true)
             .build()?;
             disable_browser_accelerator_keys(&window);
 
@@ -191,15 +236,16 @@ pub fn open_setup_window(app: &AppHandle) {
         let _ = existing.set_focus();
         return;
     }
-    let built = WebviewWindowBuilder::new(
+    let built = fill_screen(
+        WebviewWindowBuilder::new(
+            app,
+            LAUNCHER_LABEL,
+            WebviewUrl::App("index.html".into()),
+        )
+        .title("Niedenthal Lab Suite")
+        .background_color(DARK),
         app,
-        LAUNCHER_LABEL,
-        WebviewUrl::App("index.html".into()),
     )
-    .title("Niedenthal Lab Suite")
-    .background_color(DARK)
-    .inner_size(980.0, 820.0)
-    .center()
     .build();
     match built {
         Ok(window) => disable_browser_accelerator_keys(&window),
