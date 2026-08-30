@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import StationSetup from "./setup/StationSetup";
+import { fnv1aHex } from "./utils/hash";
 import DyadTaskMain from "./dyad-task/DyadTaskMain";
 import ClassificationTaskMain from "./classification-task/ClassificationTaskMain";
 import PostConversation from "./classification-task/PostConversation";
@@ -32,6 +33,7 @@ import {
   listConversationClips,
   newestClip,
   prepareConversationVideo,
+  prepareLocalVideo,
   remoteConfigure,
   remoteStatus,
   reportStudyProgress,
@@ -81,12 +83,23 @@ export type ConversationPrep =
   | { status: "choose"; clips: RemoteClip[]; recommended: RemoteClip }
   | {
       status: "copying";
-      clip: RemoteClip;
+      /** Null for a file the RA browsed to — there is no Round Robin clip. */
+      clip: RemoteClip | null;
+      /**
+       * What the Rust copier is emitting progress under. Held explicitly rather
+       * than read off `clip`, because a hand-picked file has no clip and its
+       * copy still has to be able to report progress.
+       */
+      recordingId: string;
       clips: RemoteClip[];
       copiedBytes: number;
       totalBytes: number;
     }
-  | { status: "ready"; clip: RemoteClip; clips: RemoteClip[]; localPath: string }
+  /**
+   * Playable. `clip` is null for a file the RA browsed to by hand — there is no
+   * Round Robin recording behind it, and nothing downstream needs one.
+   */
+  | { status: "ready"; clip: RemoteClip | null; clips: RemoteClip[]; localPath: string }
   | { status: "failed"; message: string; clips: RemoteClip[] };
 
 /**
@@ -157,6 +170,15 @@ function App() {
   const [remote, setRemote] = useState<RemotePublic | null>(null);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [prep, setPrep] = useState<ConversationPrep>({ status: "idle" });
+  /**
+   * The address the RA typed on the setup screen to find the video early.
+   *
+   * Only a head start. The participant signs in for themselves afterwards, and
+   * if they sign in as somebody else it is their address the search is redone
+   * for — an RA's guess must never decide whose conversation gets rated.
+   */
+  const [setupEmail, setSetupEmail] = useState<string>("");
+  const searchedEmailRef = useRef<string>("");
 
   useEffect(() => {
     void loadData().then(setRrData);
@@ -365,7 +387,7 @@ function App() {
     void listen<CopyProgress>("conversation-copy-progress", (event) => {
       setPrep((current) =>
         current.status === "copying" &&
-        current.clip.recordingId === event.payload.recordingId
+        current.recordingId === event.payload.recordingId
           ? {
               ...current,
               copiedBytes: event.payload.copiedBytes,
@@ -406,7 +428,14 @@ function App() {
         });
         return;
       }
-      setPrep({ status: "copying", clip, clips, copiedBytes: 0, totalBytes: 0 });
+      setPrep({
+        status: "copying",
+        clip,
+        recordingId: clip.recordingId,
+        clips,
+        copiedBytes: 0,
+        totalBytes: 0,
+      });
       void prepareConversationVideo(clip.recordingId, clip.storageKey, clip.sha256 ?? null)
         .then((prepared) => {
           setPrep({ status: "ready", clip, clips, localPath: prepared.localPath });
@@ -424,6 +453,40 @@ function App() {
   );
 
   /**
+   * A file the RA browsed to on the setup screen.
+   *
+   * Copied into the same local cache a fetched recording lands in rather than
+   * played from where it sits: browsing almost always means browsing to the
+   * Research Drive, and streaming a gigabyte over SMB while the slider is
+   * sampled against video time every 100 ms is how a stall becomes a hole in
+   * the data.
+   */
+  const prepareFile = useCallback(
+    (path: string) => {
+      const recordingId = `manual-${fnv1aHex(path)}`;
+      setPrep({
+        status: "copying",
+        clip: null,
+        recordingId,
+        clips: [],
+        copiedBytes: 0,
+        totalBytes: 0,
+      });
+      void prepareLocalVideo(recordingId, path)
+        .then((prepared) => {
+          setPrep({
+            status: "ready",
+            clip: null,
+            clips: [],
+            localPath: prepared.localPath,
+          });
+        })
+        .catch((err) => setPrep({ status: "failed", message: String(err), clips: [] }));
+    },
+    []
+  );
+
+  /**
    * Finds this participant's conversation recording through Round Robin and
    * starts fetching it. Fire-and-forget from the sign-in: the participant
    * moves on to the questionnaire either way, and the dyad task falls back to
@@ -432,6 +495,7 @@ function App() {
   const startConversationSearch = useCallback(
     (email: string) => {
       if (!hasTauri() || !remoteReady || !email) return;
+      searchedEmailRef.current = email;
       setPrep({ status: "finding" });
       void listConversationClips(email)
         .then((response) => {
@@ -510,10 +574,15 @@ function App() {
 
     // Start pulling the conversation video now, so the ~1 GB copy runs while
     // the participant reads the welcome screen and answers the first
-    // questionnaire. This used to fire from the RA's form; moving the form
-    // before the sign-in moved this with it, and the email is what the search
-    // is keyed on anyway.
-    startConversationSearch(result.participant.email);
+    // questionnaire.
+    //
+    // Skipped when the RA already started it for this same address on the setup
+    // screen — restarting would throw away a copy that may be nearly done. A
+    // participant who signs in as somebody else DOES redo it: their address is
+    // the authority on whose conversation this is, not the RA's guess.
+    if (searchedEmailRef.current !== result.participant.email) {
+      startConversationSearch(result.participant.email);
+    }
 
     writeProgress(result.participant.email, {
       stage: "checkin",
@@ -621,6 +690,22 @@ function App() {
           formData={formData}
           settings={settings}
           remote={remote}
+          roster={rrData?.participants ?? []}
+          video={{
+            // Without a server there is nothing to ask, so the section says so
+            // rather than leaving Find video looking broken.
+            canSearch: hasTauri() && remoteReady,
+            email: setupEmail,
+            onEmailChange: setSetupEmail,
+            onFind: () => startConversationSearch(setupEmail.trim()),
+            prep,
+            onUseClip: (clip) =>
+              prepareClip(
+                clip,
+                prep.status === "choose" ? prep.clips : [clip]
+              ),
+            onUseFile: prepareFile,
+          }}
           onSettingsChange={handleSettingsChange}
           onDriveChange={handleDriveChange}
           onChange={handleFormChange}

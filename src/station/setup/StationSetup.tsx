@@ -15,6 +15,10 @@ import { resolveDataDir } from "../utils/settings";
 import type { AppSettings } from "../utils/settings";
 import type { RemotePublic } from "../remote/api";
 import DriveRootChips from "../remote/DriveRootChips";
+import ConversationVideo from "./ConversationVideo";
+import type { ConversationPrep } from "../App";
+import type { RemoteClip } from "../remote/api";
+import type { RRParticipant } from "../roundrobin/store";
 
 // The first screen in Rating Station mode: the RA sets the computer up, then
 // hands it to the participant.
@@ -36,6 +40,19 @@ interface StationSetupProps {
   formData: FormData;
   settings: AppSettings;
   remote: RemotePublic | null;
+  /** Known participants, for the video section's email suggestions. */
+  roster: RRParticipant[];
+  /** Finding and confirming the conversation recording — see ConversationVideo. */
+  video: {
+    /** False when this machine has no Round Robin server to ask. */
+    canSearch: boolean;
+    email: string;
+    onEmailChange: (email: string) => void;
+    onFind: () => void;
+    prep: ConversationPrep;
+    onUseClip: (clip: RemoteClip) => void;
+    onUseFile: (path: string) => void;
+  };
   /** Persists a settings change (RA name, folders) for next time. */
   onSettingsChange: (settings: AppSettings) => void;
   /** Sets the Research Drive folder machine-wide. */
@@ -105,6 +122,8 @@ export default function StationSetup({
   formData,
   settings,
   remote,
+  roster,
+  video,
   onSettingsChange,
   onDriveChange,
   onChange,
@@ -500,7 +519,19 @@ export default function StationSetup({
           )}
         </section>
 
-        {/* ---- 3. The rest ---- */}
+        {/* ---- 3. The conversation recording ---- */}
+        <ConversationVideo
+          canSearch={video.canSearch}
+          roster={roster}
+          email={video.email}
+          onEmailChange={video.onEmailChange}
+          onFind={video.onFind}
+          prep={video.prep}
+          onUseClip={video.onUseClip}
+          onUseFile={video.onUseFile}
+        />
+
+        {/* ---- 4. The rest ---- */}
         <section className="border border-gray-700 rounded-lg p-5 mb-6 space-y-4">
           <h2 className="text-white text-xl font-bold">This session</h2>
           <div>

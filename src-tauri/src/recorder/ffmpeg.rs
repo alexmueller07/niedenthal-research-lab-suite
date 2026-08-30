@@ -712,6 +712,30 @@ pub async fn run_tool(app: &AppHandle, tool: &str, args: Vec<String>) -> Result<
     ))
 }
 
+/// Same as `run_tool`, but keeps stdout as bytes.
+///
+/// `run_tool` decodes stdout with from_utf8_lossy, which is right for FFmpeg's
+/// text output and quietly destroys binary: every byte that is not valid UTF-8
+/// becomes U+FFFD, so a JPEG that came back through it is corrupt in a way
+/// nothing downstream can detect. Anything asking FFmpeg to write an image to
+/// stdout comes through here instead.
+pub async fn run_tool_bytes(
+    app: &AppHandle,
+    tool: &str,
+    args: Vec<String>,
+) -> Result<Vec<u8>, String> {
+    let cmd = app
+        .shell()
+        .sidecar(tool)
+        .map_err(|e| format!("{tool} sidecar is missing — run `npm run ffmpeg` to fetch it ({e})"))?;
+    let out = cmd
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| format!("could not start {tool}: {e}"))?;
+    Ok(out.stdout)
+}
+
 /// First line of `ffmpeg -version`, stamped into every recording manifest so a
 /// file can always be traced back to the encoder that produced it.
 pub async fn ffmpeg_version(app: &AppHandle) -> Result<String, String> {

@@ -104,6 +104,34 @@ export const prepareConversationVideo = (
     request: { recordingId, storageKey, sha256 },
   });
 
+/**
+ * Where a recording sits on this computer's Research Drive, without copying it.
+ *
+ * The setup screen needs a path before the ~1 GB copy has started, so it can
+ * show the RA a frame and let them confirm the right conversation.
+ */
+export const resolveClipPath = (storageKey: string) =>
+  invoke<string>("resolve_clip_path", { storageKey });
+
+/**
+ * One frame from a video file, as a blob URL the caller owns.
+ *
+ * The caller must revokeObjectURL it — the frame is a few tens of KB, but a
+ * setup screen an RA fiddles with can produce a dozen of them.
+ */
+export async function videoThumbnailUrl(path: string, atSeconds = 2): Promise<string> {
+  const bytes = await invoke<ArrayBuffer>("video_thumbnail", { path, atSeconds });
+  return URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+}
+
+/**
+ * Copies a file the RA browsed to into the same local cache a fetched
+ * recording lands in, so it plays off local disk rather than streaming over
+ * SMB. `recordingId` must be stable per file — see fnv1aHex in utils/hash.ts.
+ */
+export const prepareLocalVideo = (recordingId: string, path: string) =>
+  invoke<PreparedVideo>("prepare_local_video", { recordingId, path });
+
 export const reportStudyProgress = (
   email: string,
   stage: string,

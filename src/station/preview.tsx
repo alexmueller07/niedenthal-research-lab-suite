@@ -121,6 +121,16 @@ function Preview() {
             driveIsShared: false,
             recentDriveRoots: [],
           }}
+          roster={[]}
+          video={{
+            canSearch: false,
+            email: "",
+            onEmailChange: () => {},
+            onFind: () => {},
+            prep: { status: "idle" },
+            onUseClip: () => {},
+            onUseFile: () => {},
+          }}
           onSettingsChange={() => {}}
           onDriveChange={async () => {}}
           onChange={(field, value) => setForm((prev) => ({ ...prev, [field]: value }))}

@@ -573,7 +573,9 @@ function DyadTaskMain({
             ) : !manualMode && prep && prep.status === "copying" ? (
               <>
                 <h1 className="text-white text-2xl mb-4">Preparing the conversation video…</h1>
-                <p className="text-gray-400 mb-2">{describeClip(prep.clip)}</p>
+                <p className="text-gray-400 mb-2">
+                  {prep.clip ? describeClip(prep.clip) : "A file chosen by the researcher"}
+                </p>
                 <p className="text-gray-400 mb-4">
                   Copying from the Research Drive and verifying the recorder&rsquo;s
                   checksum. This can take a minute for a full conversation.
