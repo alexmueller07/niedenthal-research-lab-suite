@@ -514,8 +514,13 @@ pub async fn preflight(
                 settings.encoder,
                 stderr_tail(2)
             )
+        } else if opened {
+            format!("{} encoded {} frames", settings.encoder, last.frames)
         } else {
-            format!("{} opened", settings.encoder)
+            // No frames arrived and nothing blamed the encoder, so the camera
+            // is the fault and the encoder was never given anything to do.
+            // Claiming it "opened" would be inventing a result.
+            format!("Not tested — no frame reached {}", settings.encoder)
         },
     });
 
