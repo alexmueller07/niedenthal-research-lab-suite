@@ -262,6 +262,17 @@ async function fetchUniversal(manifest) {
 }
 
 /** Proves the binary actually runs here before the app depends on it. */
+/// The FFmpeg version this target is supposed to carry.
+///
+/// Per-target, because Windows and macOS are not on the same build (see the
+/// _comment at the top of the manifest). Comparing every target against one
+/// global number made the macOS fetch warn on every run, and a warning that
+/// always fires is a warning nobody reads.
+function expectedVersion(manifest, triple) {
+  const spec = manifest.targets[triple];
+  return (spec && spec.ffmpegVersion) || manifest.ffmpegVersion;
+}
+
 function smokeTest(triple, expectedVersion) {
   // A universal binary runs on whichever Mac built it, so it is testable even
   // though its triple never equals the host's.
@@ -295,7 +306,9 @@ for (const triple of targets) {
   if (triple === UNIVERSAL) {
     try {
       await fetchUniversal(manifest);
-      smokeTest(triple, manifest.ffmpegVersion);
+      // The universal binary is lipo'd from the two macOS targets, so its
+      // version is theirs, not the manifest-wide default.
+      smokeTest(triple, expectedVersion(manifest, "x86_64-apple-darwin"));
     } catch (err) {
       console.error(`  FAILED: ${err.message}`);
       process.exitCode = 1;
@@ -312,7 +325,7 @@ for (const triple of targets) {
   }
   try {
     await fetchTarget(triple, spec, manifest);
-    smokeTest(triple, manifest.ffmpegVersion);
+    smokeTest(triple, expectedVersion(manifest, triple));
   } catch (err) {
     console.error(`  FAILED: ${err.message}`);
     console.error(

@@ -15,7 +15,18 @@
     "",
     "macOS entries have not been exercised on real hardware yet — the lab Mac is",
     "flagged as unverified across the repo's notes. Expect to adjust these URLs on",
-    "the first macOS build (Alexander, 2026-08-11)."
+    "the first macOS build (Alexander, 2026-08-11).",
+    "",
+    "KNOWN GAP, stated rather than left to be discovered (2026-09-12): Windows and",
+    "macOS are NOT on the same FFmpeg. Windows is pinned to 9.0 with a checksum;",
+    "both macOS entries are 7.1 and still unpinned (sha256: null). So the guarantee",
+    "at the top of this file — every lab machine on one encoder — currently holds",
+    "across the Windows machines only. All conversation recording happens on the",
+    "Windows room computers, so no study data is affected today, but a Mac used for",
+    "a session would produce files this manifest cannot vouch for. Closing it means",
+    "finding a 9.0 macOS build and running `--pin` on a Mac; until then ffmpegVersion",
+    "is declared per target so the smoke test compares against the truth instead of",
+    "warning on every macOS fetch, which is how a real warning gets ignored."
   ],
   "ffmpegVersion": "9.0",
   "targets": {
@@ -30,6 +41,7 @@
       }
     },
     "x86_64-apple-darwin": {
+      "ffmpegVersion": "7.1",
       "url": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",
       "companion": "https://evermeet.cx/ffmpeg/ffprobe-7.1.zip",
       "archive": "zip",
@@ -40,6 +52,7 @@
       }
     },
     "aarch64-apple-darwin": {
+      "ffmpegVersion": "7.1",
       "url": "https://www.osxexperts.net/ffmpeg711arm.zip",
       "companion": "https://www.osxexperts.net/ffprobe711arm.zip",
       "archive": "zip",
