@@ -18,23 +18,25 @@
     "the first macOS build (Alexander, 2026-08-11).",
     "",
     "KNOWN GAP, stated rather than left to be discovered (2026-09-12): Windows and",
-    "macOS are NOT on the same FFmpeg. Windows is pinned to 9.0 with a checksum;",
+    "macOS are NOT on the same FFmpeg. Windows is pinned to 9.0.1 with a checksum;",
     "both macOS entries are 7.1 and still unpinned (sha256: null). So the guarantee",
     "at the top of this file — every lab machine on one encoder — currently holds",
     "across the Windows machines only. All conversation recording happens on the",
     "Windows room computers, so no study data is affected today, but a Mac used for",
     "a session would produce files this manifest cannot vouch for. Closing it means",
-    "finding a 9.0 macOS build and running `--pin` on a Mac; until then ffmpegVersion",
-    "is declared per target so the smoke test compares against the truth instead of",
-    "warning on every macOS fetch, which is how a real warning gets ignored."
+    "finding a 9.0.1 macOS build and running `--pin` on a Mac; until then",
+    "ffmpegVersion is declared per target so the smoke test compares against the",
+    "truth instead of warning on every macOS fetch, which is how a real warning",
+    "gets ignored."
   ],
-  "ffmpegVersion": "9.0",
+  "ffmpegVersion": "9.0.1",
   "targets": {
     "x86_64-pc-windows-msvc": {
-      "_note": "gyan.dev keeps no stable per-version URL, so this points at the rolling release build. That is exactly why the checksum pin matters: when gyan rotates the build the fetch fails loudly and someone re-pins on purpose, rather than a lab machine quietly acquiring a different encoder.",
-      "url": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+      "_note": "Pinned to gyan.dev's versioned package URL, not the rolling ffmpeg-release-essentials.zip. The rolling URL changes contents the moment upstream publishes anything, which broke every CI build here between 2026-08-30 and 2026-09-12 with a checksum mismatch — the pin working exactly as intended, but on a URL guaranteed to trip it. The versioned URL keeps serving these bytes until gyan prunes the package, at which point the fetch fails loudly and someone re-pins on purpose. (An earlier note here said gyan keeps no per-version URL. It does: /builds/packages/ffmpeg-<version>-essentials_build.zip.)",
+      "_repin_2026_09_12": "9.0 -> 9.0.1, forced because gyan had already pruned the 9.0 package (404) so the old build was no longer fetchable at all. Checked rather than assumed: encoding the same deterministic source with both builds at the lab's real settings gives a BYTE-IDENTICAL h264 bitstream under h264_qsv, and a 0.7% larger one under libx264 (the bundled x264 changed). Every lab machine records on a hardware encoder, so recordings are unaffected; only the software fallback would differ, and the encoder plus FFmpeg version are written into every recording manifest either way.",
+      "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.1-essentials_build.zip",
       "archive": "zip",
-      "sha256": "e6b54767a6065919048f1a098eb27211ca4e12b4348a05d88777a5855d0b6e71",
+      "sha256": "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9",
       "binaries": {
         "ffmpeg": "ffmpeg.exe",
         "ffprobe": "ffprobe.exe"
