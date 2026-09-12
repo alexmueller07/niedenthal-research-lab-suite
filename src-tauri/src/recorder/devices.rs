@@ -199,6 +199,36 @@ fn usb_ids(alt_name: &str) -> (Option<String>, Option<String>) {
     (grab("vid_"), grab("pid_"))
 }
 
+
+/// Guarantees every device has a fingerprint no other device shares.
+///
+/// Fingerprints are React keys in the device dropdowns, and the value the
+/// chosen camera and microphone are remembered by. When a device has no
+/// `Alternative name` line, both its token and its fingerprint fall back to
+/// the friendly name — and Windows truncates DirectShow audio names, so two
+/// microphones can arrive with byte-identical ones. The readiness screen then
+/// says "2 available" while the dropdown renders one, because React keeps a
+/// single child per duplicate key, and the second device cannot be selected
+/// at all.
+///
+/// Only the fingerprint is made unique. The name and the FFmpeg token are left
+/// exactly as the operating system gave them, so the labels an RA reads still
+/// match what Windows calls the device and the capture still opens it.
+fn disambiguate(mut devices: Vec<Device>) -> Vec<Device> {
+    let mut seen: Vec<String> = Vec::new();
+    for device in &mut devices {
+        if seen.contains(&device.fingerprint) {
+            let mut n = 2;
+            while seen.contains(&format!("{}#{n}", device.fingerprint)) {
+                n += 1;
+            }
+            device.fingerprint = format!("{}#{n}", device.fingerprint);
+        }
+        seen.push(device.fingerprint.clone());
+    }
+    devices
+}
+
 /// Parses `ffmpeg -list_devices true -f dshow -i dummy` (which writes to stderr
 /// and exits non-zero — both expected).
 ///
@@ -265,7 +295,7 @@ pub fn parse_dshow_devices(stderr: &str) -> Vec<Device> {
             profile_note: profile.map(|p| p.note.to_string()),
         });
     }
-    out
+    disambiguate(out)
 }
 
 /// Parses `ffmpeg -f dshow -list_options true -i video=NAME`.
@@ -392,7 +422,7 @@ pub fn parse_avfoundation_devices(stderr: &str) -> Vec<Device> {
             profile_note: profile.map(|p| p.note.to_string()),
         });
     }
-    out
+    disambiguate(out)
 }
 
 /// AVFoundation has no `-list_options`. It does, however, print the full mode
@@ -971,5 +1001,56 @@ mod tests {
             max_fps: 15.0,
         }];
         assert_eq!(recommend_mode(&m, GENERIC_FORMAT_PREFERENCE), Some((640, 480, 15)));
+    }
+
+    // ---- fingerprints have to be unique ------------------------------------
+
+    /// Two microphones whose friendly names collide.
+    ///
+    /// Windows truncates DirectShow audio names, and neither of these carries
+    /// an `Alternative name` line, so both would previously take the same
+    /// fingerprint: the readiness screen said "2 available" while the dropdown
+    /// showed one, and the second mic could not be selected.
+    const DSHOW_TWO_MICS_SAME_NAME: &str = r#"
+[dshow @ 0000] DirectShow audio devices
+[dshow @ 0000]  "Microphone (Logitech BRIO"
+[dshow @ 0000]  "Microphone (Logitech BRIO"
+"#;
+
+    #[test]
+    fn two_microphones_with_the_same_name_stay_two_selectable_devices() {
+        let d = parse_dshow_devices(DSHOW_TWO_MICS_SAME_NAME);
+        assert_eq!(d.len(), 2, "both devices survive parsing");
+        assert_ne!(
+            d[0].fingerprint, d[1].fingerprint,
+            "fingerprints are dropdown keys and must differ"
+        );
+        assert_eq!(
+            d[0].name, d[1].name,
+            "the names Windows gave them are left alone"
+        );
+        assert_eq!(
+            d[0].token, d[1].token,
+            "and so is the token FFmpeg opens them by"
+        );
+    }
+
+    #[test]
+    fn distinct_devices_keep_the_fingerprints_they_already_had() {
+        // The common case must be untouched: a real alternative name is
+        // already unique, and renaming it would orphan every saved choice.
+        let d = parse_dshow_devices(DSHOW_MODERN);
+        for device in &d {
+            assert!(
+                !device.fingerprint.contains('#') || device.fingerprint.starts_with("@device"),
+                "unmodified fingerprint expected, got {:?}",
+                device.fingerprint
+            );
+        }
+        let mut seen: Vec<&str> = d.iter().map(|x| x.fingerprint.as_str()).collect();
+        seen.sort_unstable();
+        let before = seen.len();
+        seen.dedup();
+        assert_eq!(before, seen.len(), "already-unique fingerprints stay unique");
     }
 }
