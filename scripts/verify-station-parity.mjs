@@ -41,10 +41,31 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * Hash a study file by its content, with line endings normalised.
+ *
+ * Raw bytes were hashed until 2026-09-12, which made the check depend on the
+ * checking machine's git config: with core.autocrlf=true the working copy is
+ * CRLF, without it LF, and the same unmodified file hashes two different ways.
+ * So the manifest only ever matched on a machine configured like the one that
+ * generated it — this failed in CI while passing locally on the same commit,
+ * and would fail for anyone on a Mac.
+ *
+ * Normalising is the right weakening. What this check guards, since byte
+ * identity with the standalone PPS app ended on 2026-08-22, is that nobody
+ * edits a participant-facing screen by accident or as a side effect of a
+ * refactor. A line ending is not a study change, and a check that cries wolf
+ * over one is a check people learn to regenerate without reading.
+ */
+function hashContent(file) {
+  const text = readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
 function currentManifest() {
   return walk(STATION)
     .map((file) => {
-      const hash = createHash("sha256").update(readFileSync(file)).digest("hex");
+      const hash = hashContent(file);
       const rel = relative(STATION, file).replaceAll("\\", "/");
       return `${hash}  ${rel}`;
     })
