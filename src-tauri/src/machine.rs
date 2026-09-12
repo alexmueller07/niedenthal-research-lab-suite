@@ -549,6 +549,14 @@ fn urlencoding_minimal(token: &str) -> String {
     token.replace('%', "%25").replace('+', "%2B")
 }
 
+/// Resolution the readiness screen probes the encoder at.
+///
+/// The lab records every conversation at 1080p (the Lab Quality preset), and a
+/// driver can accept a small frame and refuse a large one — so a probe at any
+/// other size would answer a question nobody asked.
+const PROBE_WIDTH: u32 = 1920;
+const PROBE_HEIGHT: u32 = 1080;
+
 /// One line of the self-test.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -749,15 +757,35 @@ pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
     }
 
     // ---- encoder ----
-    let encoder = crate::recorder::ffmpeg::best_encoder(&app).await;
+    //
+    // This row used to read `passed: Some(true)` unconditionally and assert
+    // "this machine can encode in real time" from nothing but the encoder's
+    // name. On 2026-09-11 it showed green for `h264_qsv` on a machine with no
+    // Quick Sync, half an hour before that machine recorded a 0-byte file. It
+    // now reports what the functional probe accepted, and claims real-time
+    // capability only where Preflight can measure it — which is Recording
+    // mode, not here.
+    let encoder =
+        crate::recorder::ffmpeg::best_encoder(&app, PROBE_WIDTH, PROBE_HEIGHT).await;
     let hardware = encoder != "libx264";
+    let software_works =
+        crate::recorder::ffmpeg::probe_encoder(&app, "libx264", PROBE_WIDTH, PROBE_HEIGHT).await;
     out.push(CheckResult {
         label: "Video encoder".into(),
-        passed: Some(true),
+        passed: Some(hardware || software_works),
         detail: if hardware {
-            format!("{encoder} (hardware) — this machine can encode in real time.")
+            format!(
+                "{encoder} (hardware), tested at {PROBE_WIDTH}x{PROBE_HEIGHT}. Run Preflight in \
+                 Recording mode to confirm it keeps up with the camera."
+            )
+        } else if software_works {
+            "libx264 (software). No hardware encoder on this machine passed a test encode; run \
+             Preflight in Recording mode before a session to confirm this machine keeps up."
+                .into()
         } else {
-            "libx264 (software). No hardware encoder found; run Preflight in Recording mode before a session to confirm this machine keeps up.".into()
+            "No encoder on this machine could be made to work, so recording will fail. Send the \
+             FFmpeg log from Preflight to whoever maintains this app."
+                .into()
         },
     });
 

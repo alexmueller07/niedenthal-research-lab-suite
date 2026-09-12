@@ -1,4 +1,5 @@
 import AudioMeter from "../components/AudioMeter";
+import { isNetworkPath } from "../naming";
 import PreflightPanel from "../components/PreflightPanel";
 import { presetById } from "../presets";
 import PreviewPane from "../components/PreviewPane";
@@ -380,6 +381,15 @@ export default function SetupScreen(props: Props) {
               frames get dropped. Leave it alone unless this computer is short
               of space.
             </p>
+            {isNetworkPath(props.outputDir) && (
+              <p className="mt-2 rounded-md bg-(--color-warn)/10 px-2.5 py-2 text-xs leading-relaxed text-(--color-warn)">
+                This working folder is on a network drive. The recording will still
+                be made, but the camera will be writing every frame over the network
+                as the conversation happens, which is how frames get dropped. Point
+                it at a folder on this computer and let the finished file copy to the
+                Research Drive afterwards.
+              </p>
+            )}
           </details>
 
           <div className="mt-3 grid grid-cols-2 gap-3">

@@ -39,6 +39,14 @@ export default function FinishScreen(props: Props) {
   const v = props.result?.verification;
   const clean = v?.ok === true && !props.outcome.forced;
 
+  // A take that produced no frames is not "saved with problems" — nothing was
+  // saved. Saying otherwise beside a two-second length and a green "0 dropped"
+  // is how Room C's lost session read as a conversion hiccup (2026-09-11).
+  const empty =
+    !props.finalizing &&
+    (v?.frameCount ?? props.outcome.progress.frames) === 0 &&
+    (props.result?.sizeBytes ?? 0) === 0;
+
   return (
     <div className="mx-auto max-w-3xl p-5">
       <div className="card p-6">
@@ -56,17 +64,27 @@ export default function FinishScreen(props: Props) {
               <span
                 aria-hidden
                 className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg font-bold ${
-                  clean ? "bg-(--color-good) text-black" : "bg-(--color-warn) text-black"
+                  clean
+                    ? "bg-(--color-good) text-black"
+                    : empty
+                      ? "bg-(--color-bad) text-white"
+                      : "bg-(--color-warn) text-black"
                 }`}
               >
                 {clean ? "✓" : "!"}
               </span>
               <div>
                 <h1 className="text-xl font-semibold">
-                  {clean ? "Recording verified" : "Recording saved with problems"}
+                  {clean
+                    ? "Recording verified"
+                    : empty
+                      ? "Nothing was recorded"
+                      : "Recording saved with problems"}
                 </h1>
                 <p className="mt-1 text-sm leading-relaxed text-(--color-ink-dim)">
-                  {props.result?.summary ?? props.error ?? "Verification did not run."}
+                  {empty
+                    ? "No frames reached the file, so there is no take to keep or recover. The FFmpeg log below says which part failed; Preflight on the setup screen names it in plain words."
+                    : (props.result?.summary ?? props.error ?? "Verification did not run.")}
                 </p>
               </div>
             </div>
