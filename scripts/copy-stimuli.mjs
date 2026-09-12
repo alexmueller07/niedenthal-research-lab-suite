@@ -9,7 +9,7 @@
 //   npm run stimuli                 # looks for ./mp4_noname
 //   npm run stimuli -- D:\lab\clips # or point it somewhere else
 //
-// Which clips are copied comes from src/video-task/videos.ts, so adding a clip
+// Which clips are copied comes from src/station/video-task/videos.ts, so adding a clip
 // to a set is enough — this script picks it up.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -21,11 +21,11 @@ const source = resolve(process.argv[2] ?? join(root, "mp4_noname"));
 const destination = join(root, "public", "videos");
 
 // videos.ts is TypeScript, so read the ids out of it rather than importing it.
-const catalog = readFileSync(join(root, "src", "video-task", "videos.ts"), "utf8");
+const catalog = readFileSync(join(root, "src", "station", "video-task", "videos.ts"), "utf8");
 const ids = [...catalog.matchAll(/\{\s*id:\s*"(\d+)"/g)].map((match) => match[1]);
 
 if (ids.length === 0) {
-  console.error("No clip ids found in src/video-task/videos.ts — nothing to copy.");
+  console.error("No clip ids found in src/station/video-task/videos.ts — nothing to copy.");
   process.exit(1);
 }
 

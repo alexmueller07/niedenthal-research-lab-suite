@@ -27,19 +27,25 @@ moment anyone merged to `main` — including mid-study.
 **Windows** — build locally and upload:
 
 ```bash
+# The version is whatever package.json / tauri.conf.json / Cargo.toml say —
+# all three, and they must agree. Take it from one rather than typing it, so
+# the filename below cannot drift from the build that produced it.
+V=$(node -p "require('./package.json').version")   # from lab-suite/
+
 # LAB_SUITE_DEVICE_KEY must match PPS_SHARED_SECRET on the Round Robin
 # deployment. A build without it carries the development key and the
 # production server refuses it — see the README's "Device authentication".
 # It is already set as a repository secret, so CI builds carry it; only a
 # local build needs it passed by hand.
-LAB_SUITE_DEVICE_KEY=... npx tauri build          # from lab-suite/
+LAB_SUITE_DEVICE_KEY=... npx tauri build
 
 # Copy to the exact asset name FIRST. `gh release upload file#name` sets the
 # asset's *label*, not its filename — upload the bundle directly and GitHub
-# names it "Niedenthal.Lab.Suite_1.0.0_x64-setup.exe", which is not what
+# names it "Niedenthal.Lab.Suite_$V_x64-setup.exe", which is not what
 # vercel.json redirects to, so every download 404s.
-cp "src-tauri/target/release/bundle/nsis/Niedenthal Lab Suite_1.0.0_x64-setup.exe" /tmp/NiedenthalLabSuite-Setup.exe
-gh release upload v1.0.0 /tmp/NiedenthalLabSuite-Setup.exe --clobber
+cp "src-tauri/target/release/bundle/nsis/Niedenthal Lab Suite_${V}_x64-setup.exe" /tmp/NiedenthalLabSuite-Setup.exe
+gh release create "v$V" --title "Niedenthal Lab Suite $V" --notes "..."   # first time only
+gh release upload "v$V" /tmp/NiedenthalLabSuite-Setup.exe --clobber
 ```
 
 **macOS** — Tauri cannot cross-compile it, so it comes from the `Build
@@ -48,8 +54,8 @@ installers` workflow (`.github/workflows/release.yml`, job `build-mac`):
 ```bash
 gh workflow run "Build installers" --ref <branch>     # if there is no run yet
 gh run download <run-id> --name niedenthal-lab-suite-macos --dir /tmp/mac
-mv "/tmp/mac/Niedenthal Lab Suite_1.0.0_universal.dmg" /tmp/NiedenthalLabSuite.dmg
-gh release upload v1.0.0 /tmp/NiedenthalLabSuite.dmg --clobber
+mv "/tmp/mac/Niedenthal Lab Suite_${V}_universal.dmg" /tmp/NiedenthalLabSuite.dmg
+gh release upload "v$V" /tmp/NiedenthalLabSuite.dmg --clobber
 ```
 
 After either, check the byte count end to end rather than trusting the upload:
