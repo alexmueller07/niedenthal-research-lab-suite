@@ -1166,6 +1166,7 @@ mod tests {
             round_robin_url: Some("https://sc.psych.wisc.edu".into()),
             round_robin_secret: Some("s3cret".into()),
             research_drive_root: Some("Z:/recordings".into()),
+            recent_drive_roots: Vec::new(),
             configured_at: None,
             migrated_from: None,
         }
@@ -1195,6 +1196,7 @@ mod tests {
             role: Some("station".into()),
             round_robin_url: Some("https://rr.example".into()),
             research_drive_root: Some("R:/niedenthal/recordings".into()),
+            recent_drive_roots: Vec::new(),
             drive_is_shared: true,
             migrated_from: None,
         };

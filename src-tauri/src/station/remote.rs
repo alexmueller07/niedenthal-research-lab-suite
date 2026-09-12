@@ -821,6 +821,7 @@ mod tests {
         let public = RemotePublic {
             round_robin_url: Some("https://rr.example".into()),
             research_drive_root: Some("R:/niedenthal/recordings".into()),
+            recent_drive_roots: Vec::new(),
             drive_is_shared: true,
         };
         let json = serde_json::to_string(&public).unwrap();
