@@ -611,13 +611,19 @@ pub async fn preflight(
     );
     checks.push(PreflightCheck {
         label: "Room on the drive".into(),
+        // Advisory, like the readout it mirrors. The Research Drive reports
+        // no free space at all, so a strict version of this check fails
+        // permanently on the one drive the lab actually records to — and a
+        // check that is always red is a check nobody reads. It goes red only
+        // when the drive gave a real number and that number is too small.
         passed: space.fits,
         detail: space.warning.clone().unwrap_or_else(|| {
             format!(
                 "{} free, about {} needed",
                 available
+                    .filter(|b| *b > 0)
                     .map(disk::human_bytes)
-                    .unwrap_or_else(|| "an unreadable amount".into()),
+                    .unwrap_or_else(|| "an unreported amount".into()),
                 space
                     .projected_bytes
                     .map(disk::human_bytes)

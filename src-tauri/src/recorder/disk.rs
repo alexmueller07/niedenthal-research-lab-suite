@@ -12,9 +12,13 @@ use serde::{Deserialize, Serialize};
 #[cfg(not(target_os = "windows"))]
 use sysinfo::Disks;
 
-/// Refuse to start when the projected recording would leave less than this
-/// fraction of its own size as headroom. Encoders overshoot, other software
-/// writes to the same drive, and a full disk mid-session loses the take.
+/// Warn when the projected recording would leave less than this fraction of
+/// its own size as headroom. Encoders overshoot, other software writes to the
+/// same drive, and a full disk mid-session loses the take.
+///
+/// Warn, not refuse. This blocked recording until 2026-09-13, and the drive
+/// the lab records to reports no free space at all, so the guard fired on the
+/// one destination that mattered and stopped sessions it was meant to protect.
 pub const HEADROOM_FRACTION: f64 = 0.20;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,33 +169,55 @@ pub fn estimate(
         };
     };
 
-    // An unreadable drive is not a full drive. Some network shares refuse to
-    // report a quota at all, and blocking Record over that would stop a
-    // session for a question nobody needed answered — the same rule the
-    // constant-quality branch above already follows. (2026-09-12)
-    let Some(available_bytes) = available_bytes else {
+    let projected = rate * duration_seconds;
+    let needed = (projected as f64 * (1.0 + HEADROOM_FRACTION)) as u64;
+
+    // A drive this app cannot get a number out of is not a full drive.
+    //
+    // Two ways that happens, and the UW Research Drive does both: the volume
+    // cannot be read at all, and — more often — it answers successfully with
+    // zero bytes available, because the share is quota-managed and does not
+    // publish a per-user figure. Treating either as "full" is how Room B was
+    // stopped from recording onto a drive with hundreds of GB free
+    // (2026-09-11), and a zero reading kept doing it even after the first fix.
+    //
+    // Zero is therefore read as "no answer", not as "no room". A genuinely
+    // full local disk reports zero too, and is deliberately given the same
+    // benefit of the doubt: see `fits` below, which no longer gates anything.
+    let unknown = available_bytes.is_none_or(|b| b == 0);
+    if unknown {
         return SpaceEstimate {
-            projected_bytes: Some(rate * duration_seconds),
+            projected_bytes: Some(projected),
             bytes_per_minute: Some(rate * 60),
             available_bytes: 0,
             sessions_remaining: None,
             fits: true,
             warning: Some(format!(
-                "Free space on this drive could not be read, so it is not being checked. This \
-                 recording needs about {}.",
-                human_bytes(rate * duration_seconds)
+                "This drive does not report how much room is left, so free space is not being \
+                 checked. This recording needs about {}.",
+                human_bytes(projected)
             )),
         };
-    };
+    }
+    let available_bytes = available_bytes.unwrap_or(0);
 
-    let projected = rate * duration_seconds;
-    let needed = (projected as f64 * (1.0 + HEADROOM_FRACTION)) as u64;
-    let fits = needed <= available_bytes;
     let sessions = if needed == 0 { 0 } else { available_bytes / needed };
+
+    // `fits` is a statement about arithmetic, not a permission.
+    //
+    // Nothing blocks Record on it any more. Losing a conversation because a
+    // disk filled up is bad; refusing to record a conversation that two
+    // participants are sitting in the room for, over a number the app may
+    // have got wrong, is worse — and unlike a full disk it is guaranteed to
+    // cost the session. The figure is still shown, and still warns loudly.
+    // (2026-09-13, at the lab's request after the Research Drive kept
+    // reporting zero.)
+    let fits = needed <= available_bytes;
 
     let warning = if !fits {
         Some(format!(
-            "Not enough space. This recording needs about {} (including {}% headroom) but only {} is free.",
+            "This recording needs about {} (including {}% headroom) but only {} looks free. \
+             Recording is still allowed — check the drive before a real session.",
             human_bytes(needed),
             (HEADROOM_FRACTION * 100.0) as u32,
             human_bytes(available_bytes)
@@ -255,12 +281,19 @@ mod tests {
     }
 
     #[test]
-    fn refuses_when_headroom_would_be_eaten() {
-        // Exactly the projected size available — no headroom, so no.
+    fn reports_when_headroom_would_be_eaten() {
+        // Exactly the projected size available — no headroom, so the
+        // arithmetic says it does not fit, and the RA is told. It is a
+        // warning, not a refusal: nothing gates Record on this.
         let projected = LAB_STANDARD_BPS * 600;
         let e = estimate(Some(LAB_STANDARD_BPS), 600, Some(projected));
         assert!(!e.fits);
-        assert!(e.warning.unwrap().contains("Not enough space"));
+        let warning = e.warning.unwrap();
+        assert!(warning.contains("only"), "{warning}");
+        assert!(
+            warning.contains("still allowed"),
+            "a low drive must say the take can still go ahead: {warning}"
+        );
     }
 
     #[test]
@@ -300,12 +333,8 @@ mod tests {
         assert_eq!(e.sessions_remaining, None, "it cannot honestly count sessions");
         let warning = e.warning.unwrap();
         assert!(
-            warning.contains("could not be read"),
+            warning.contains("does not report"),
             "the warning must say why it is not checking: {warning}"
-        );
-        assert!(
-            !warning.contains("Not enough space"),
-            "an unreadable drive is not a full drive: {warning}"
         );
         // The size forecast is still knowable and still worth showing.
         assert!(e.projected_bytes.is_some());
@@ -315,10 +344,50 @@ mod tests {
     /// A genuinely full drive must still say so — the fix above must not have
     /// turned the space check off.
     #[test]
-    fn a_readable_full_drive_still_blocks() {
+    fn a_low_drive_warns_without_refusing() {
         let e = estimate(Some(LAB_STANDARD_BPS), 600, Some(1_000_000));
-        assert!(!e.fits);
-        assert!(e.warning.unwrap().contains("Not enough space"));
+        assert!(!e.fits, "the arithmetic is still reported honestly");
+        assert!(e.warning.unwrap().contains("still allowed"));
+    }
+
+    /// The Research Drive, 2026-09-13.
+    ///
+    /// A quota-managed share answers GetDiskFreeSpaceExW successfully with
+    /// zero bytes available, because it publishes no per-user figure. The
+    /// first fix covered "could not read" but not "read, and it said zero",
+    /// so Record stayed dead on the one drive the lab actually records to.
+    #[test]
+    fn a_drive_that_reports_zero_is_unknown_not_full() {
+        let e = estimate(Some(LAB_STANDARD_BPS), 600, Some(0));
+        assert!(e.fits, "zero free must not block recording");
+        assert_eq!(e.sessions_remaining, None, "it cannot honestly count sessions");
+        let warning = e.warning.unwrap();
+        assert!(
+            warning.contains("does not report"),
+            "zero must be explained as no answer, not as no room: {warning}"
+        );
+        // The forecast is still knowable and still worth showing.
+        assert!(e.projected_bytes.is_some());
+        assert!(e.bytes_per_minute.is_some());
+    }
+
+    /// The guarantee the lab asked for on 2026-09-13, in one line: whatever
+    /// the drive says, the app will let you record.
+    #[test]
+    fn nothing_a_drive_reports_can_stop_a_take() {
+        for available in [None, Some(0), Some(1), Some(1_000_000), Some(u64::MAX)] {
+            let e = estimate(Some(LAB_STANDARD_BPS), 600, available);
+            // `fits` may be false — that is the honest arithmetic — but it is
+            // advisory. What must always hold is that a warning explains
+            // itself rather than reading as a refusal.
+            if !e.fits {
+                let w = e.warning.clone().unwrap_or_default();
+                assert!(
+                    w.contains("still allowed"),
+                    "available={available:?} must not read as a refusal: {w}"
+                );
+            }
+        }
     }
 
     #[cfg(target_os = "windows")]

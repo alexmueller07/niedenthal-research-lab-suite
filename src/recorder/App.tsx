@@ -695,11 +695,17 @@ export default function App() {
           ? "This camera cannot record at these settings"
           : audioEnabled && !microphone
             ? "Choose a microphone, or turn audio off"
-            : estimate && !estimate.fits
-              ? "Not enough free space"
-              : codeWarning
-                ? "Fix the session code first"
-                : !cameraDelivering
+            // Free space deliberately does NOT block a take. The Research
+            // Drive is quota-managed and reports zero bytes available, so this
+            // condition was permanently true there and Record was dead on a
+            // drive with hundreds of GB free (Room B, 2026-09-11). Even on a
+            // drive the app can read, refusing a session that two participants
+            // are sitting in the room for — over a number that may be wrong —
+            // costs more than the full disk it is guarding against. The
+            // estimate is still shown and still warns; see disk.rs.
+            : codeWarning
+              ? "Fix the session code first"
+              : !cameraDelivering
                   // A camera that never produced a preview frame would record
                   // nothing. The button unlocks the moment the preview moves.
                   ? "Waiting for the camera's first frame…"
