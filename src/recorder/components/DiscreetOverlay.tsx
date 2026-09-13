@@ -22,14 +22,14 @@ interface Props {
  */
 export default function DiscreetOverlay({ message }: Props) {
   return (
-    <div className="fixed inset-0 z-50 flex cursor-default select-none items-center justify-center bg-[--color-panel]">
-      <p className="px-10 text-center text-2xl font-light text-[--color-ink-dim]">
+    <div className="fixed inset-0 z-50 flex cursor-default select-none items-center justify-center bg-(--color-panel)">
+      <p className="px-10 text-center text-2xl font-light text-(--color-ink-dim)">
         {message}
       </p>
 
       {/* Deliberately dim and in a corner: enough for an operator who knows to
           look, invisible to anyone who does not. */}
-      <p className="absolute bottom-3 right-4 text-[10px] text-[--color-panel-edge]">
+      <p className="absolute bottom-3 right-4 text-[10px] text-(--color-panel-edge)">
         Ctrl + Shift + R
       </p>
     </div>

@@ -1,6 +1,6 @@
 [package]
 name = "lab-suite"
-version = "0.1.0"
+version = "1.1.0"
 description = "Niedenthal Lab Suite — Niedenthal Emotions Lab, UW-Madison"
 authors = ["UW-Madison Psychology, Niedenthal Emotions Lab"]
 edition = "2021"

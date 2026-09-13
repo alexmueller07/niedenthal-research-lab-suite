@@ -11,13 +11,18 @@ import { invoke } from "@tauri-apps/api/core";
 export interface RemotePublic {
   roundRobinUrl: string | null;
   researchDriveRoot: string | null;
-  secretConfigured: boolean;
+  /**
+   * False when the folder above is this computer's own rather than the lab's
+   * share. A station in that state can still run a session, but it can only
+   * find a conversation recorded on this same machine.
+   */
+  driveIsShared: boolean;
+  /** Folders this machine has used before, newest first — the one-click chips. */
+  recentDriveRoots: string[];
 }
 
 export interface RemoteUpdate {
   roundRobinUrl?: string;
-  /** Empty string clears it; omitting the field leaves it untouched. */
-  roundRobinSecret?: string;
   researchDriveRoot?: string;
 }
 
@@ -66,8 +71,26 @@ export function hasTauri(): boolean {
 
 export const remoteStatus = () => invoke<RemotePublic>("remote_status");
 
+/**
+ * Research Drive folders that exist on this computer right now, probed from
+ * the places the lab mounts the share. Best-effort: an empty list only means
+ * nothing was found at a known location, never that the drive is missing.
+ */
+export const detectDriveRoots = () => invoke<string[]>("detect_drive_roots");
+
 export const remoteConfigure = (update: RemoteUpdate) =>
   invoke<RemotePublic>("remote_configure", { update });
+
+/**
+ * Closes the station window and goes back to the mode chooser, or straight
+ * into another mode. Everything the session holds must already be flushed —
+ * see flushRegistry — because this does not come back.
+ */
+export const leaveMode = (role: "record" | "station" | "control" | null = null) =>
+  invoke<void>("leave_mode", { role });
+
+/** Proves the server answers and the Research Drive is mounted, in RA words. */
+export const remoteTest = () => invoke<string>("remote_test");
 
 export const listConversationClips = (email: string) =>
   invoke<ClipsResponse>("list_conversation_clips", { email });
@@ -80,6 +103,34 @@ export const prepareConversationVideo = (
   invoke<PreparedVideo>("prepare_conversation_video", {
     request: { recordingId, storageKey, sha256 },
   });
+
+/**
+ * Where a recording sits on this computer's Research Drive, without copying it.
+ *
+ * The setup screen needs a path before the ~1 GB copy has started, so it can
+ * show the RA a frame and let them confirm the right conversation.
+ */
+export const resolveClipPath = (storageKey: string) =>
+  invoke<string>("resolve_clip_path", { storageKey });
+
+/**
+ * One frame from a video file, as a blob URL the caller owns.
+ *
+ * The caller must revokeObjectURL it — the frame is a few tens of KB, but a
+ * setup screen an RA fiddles with can produce a dozen of them.
+ */
+export async function videoThumbnailUrl(path: string, atSeconds = 2): Promise<string> {
+  const bytes = await invoke<ArrayBuffer>("video_thumbnail", { path, atSeconds });
+  return URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+}
+
+/**
+ * Copies a file the RA browsed to into the same local cache a fetched
+ * recording lands in, so it plays off local disk rather than streaming over
+ * SMB. `recordingId` must be stable per file — see fnv1aHex in utils/hash.ts.
+ */
+export const prepareLocalVideo = (recordingId: string, path: string) =>
+  invoke<PreparedVideo>("prepare_local_video", { recordingId, path });
 
 export const reportStudyProgress = (
   email: string,

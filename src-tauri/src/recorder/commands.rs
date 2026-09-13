@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use super::capture::{RecorderState, SessionKind, StopOutcome};
 use super::devices::{CameraCapabilities, Device};
@@ -262,15 +262,77 @@ pub async fn start_recording(app: tauri::AppHandle, request: StartRequest) -> Re
     // produces a file shorter than the conversation, with every frame time
     // wrong. See the note above best_encoder.
     let mut settings = request.settings;
-    settings.encoder = ffmpeg::best_encoder(&app).await;
+    settings.encoder = ffmpeg::best_encoder(&app, settings.width, settings.height).await;
 
-    let path_for_task = capture_path.clone();
-    let handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        capture::start_recording(&handle, settings, path_for_task)
-    })
-    .await
-    .map_err(|e| format!("record task failed: {e}"))??;
+    // A probe is a prediction; the take is the evidence. If the encoder dies
+    // on the real camera having written nothing, drop to the next candidate
+    // and start again rather than handing back a 0-byte file — which is what
+    // the lab was left holding on 2026-09-11. Bounded by the candidate list,
+    // and only ever triggered by a process that has already exited, so this
+    // cannot interrupt a take that is merely slow to deliver its first frame.
+    for _ in 0..ffmpeg::ENCODER_CANDIDATES.len() {
+        let path_for_task = capture_path.clone();
+        let handle = app.clone();
+        let attempt = settings.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            capture::start_recording(&handle, attempt, path_for_task)
+        })
+        .await
+        .map_err(|e| format!("record task failed: {e}"))??;
+
+        let handle = app.clone();
+        let failure = tauri::async_runtime::spawn_blocking(move || {
+            capture::watch_for_early_failure(&handle)
+        })
+        .await
+        .map_err(|e| format!("record watchdog failed: {e}"))?;
+
+        // Alive, or dead for a reason that changing the encoder cannot fix —
+        // in which case the existing died-mid-take path reports it.
+        let Some(failure) = failure else { break };
+        if !ffmpeg::stderr_blames_the_encoder(&failure.stderr) {
+            break;
+        }
+
+        // Take the corpse out of the slot and let DirectShow release the
+        // camera before trying again — see clear_dead_recording.
+        let handle = app.clone();
+        tauri::async_runtime::spawn_blocking(move || capture::clear_dead_recording(&handle))
+            .await
+            .map_err(|e| format!("record cleanup failed: {e}"))?;
+
+        let broken = settings.encoder.clone();
+        ffmpeg::forget_encoder(&broken);
+        let Some(next) =
+            ffmpeg::next_encoder_after(&app, &broken, settings.width, settings.height).await
+        else {
+            return Err(format!(
+                "The video encoder {broken} would not start on this computer, and no other \
+                 encoder here worked either, so nothing can be recorded. FFmpeg exited {} and \
+                 said: {}",
+                failure
+                    .exit_code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "without a code".into()),
+                failure
+                    .stderr
+                    .lines()
+                    .rev()
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            ));
+        };
+
+        let _ = app.emit(
+            "recording-warning",
+            format!(
+                "{broken} would not start on this computer. Switched to {next} and started again \
+                 — the recording is fine, but tell whoever maintains this app."
+            ),
+        );
+        settings.encoder = next;
+    }
 
     if let Ok(mut slot) = app.state::<RecorderState>().record_context.lock() {
         *slot = request.context;
@@ -388,7 +450,7 @@ pub async fn preflight(
     // Preflight has to measure the encoder the real take will use, or it
     // measures nothing worth knowing.
     let mut settings = settings;
-    settings.encoder = ffmpeg::best_encoder(&app).await;
+    settings.encoder = ffmpeg::best_encoder(&app, settings.width, settings.height).await;
     let args = ffmpeg::build_preflight_args(ffmpeg::CaptureBackend::current(), &settings, 5, &paths);
     let (stdout, stderr) = ffmpeg::run_tool(&app, "ffmpeg", args).await?;
 
@@ -403,23 +465,62 @@ pub async fn preflight(
 
     let mut checks: Vec<PreflightCheck> = Vec::new();
     let opened = last.frames > 0 && capture.exists();
+
+    // An encoder that refuses to start also produces zero frames, and this
+    // check used to absorb that and blame the camera — which is how a GPU
+    // driver problem in Room C read as "Camera opens ✗" on 2026-09-11 and sent
+    // everyone looking at the webcam. Ask FFmpeg which part failed.
+    let encoder_refused = !opened && ffmpeg::stderr_blames_the_encoder(&stderr);
+    let stderr_tail = |take: usize| -> String {
+        let tail: Vec<&str> = stderr
+            .lines()
+            .filter(|l| capture::is_noteworthy(l))
+            .rev()
+            .take(take)
+            .collect();
+        tail.join(" | ")
+    };
+
     checks.push(PreflightCheck {
         label: "Camera opens".into(),
-        passed: opened,
+        // Not red when it was never tested — the encoder check below carries
+        // the failure, and two red lines for one fault is how a person ends
+        // up replacing a working webcam.
+        passed: opened || encoder_refused,
         detail: if opened {
             format!("{} frames captured", last.frames)
+        } else if encoder_refused {
+            format!(
+                "Not tested — the video encoder ({}) never started, so no frame could be written. \
+                 See the encoder check below.",
+                settings.encoder
+            )
         } else {
-            let tail: Vec<&str> = stderr
-                .lines()
-                .filter(|l| capture::is_noteworthy(l))
-                .rev()
-                .take(2)
-                .collect();
+            let tail = stderr_tail(2);
             if tail.is_empty() {
                 "No frames arrived from the camera.".into()
             } else {
-                tail.join(" | ")
+                tail
             }
+        },
+    });
+
+    checks.push(PreflightCheck {
+        label: "Video encoder starts".into(),
+        passed: !encoder_refused,
+        detail: if encoder_refused {
+            format!(
+                "{} refused to open on this machine. {}",
+                settings.encoder,
+                stderr_tail(2)
+            )
+        } else if opened {
+            format!("{} encoded {} frames", settings.encoder, last.frames)
+        } else {
+            // No frames arrived and nothing blamed the encoder, so the camera
+            // is the fault and the encoder was never given anything to do.
+            // Claiming it "opened" would be inventing a result.
+            format!("Not tested — no frame reached {}", settings.encoder)
         },
     });
 
@@ -437,18 +538,33 @@ pub async fn preflight(
         && (achieved_fps - f64::from(settings.fps)).abs() <= f64::from(settings.fps) * 0.05;
     checks.push(PreflightCheck {
         label: "Frame rate holds".into(),
-        passed: rate_ok,
-        detail: format!(
-            "{achieved_fps:.1} fps delivered against {} requested, {} dropped",
-            settings.fps, last.dropped_frames
-        ),
+        // No frames is an encoder verdict, not a frame-rate one. Room C read
+        // "0.0 fps delivered against 30 requested" and looked at the camera.
+        passed: rate_ok || encoder_refused,
+        detail: if encoder_refused {
+            "Not tested — the video encoder never started, so no frame was written.".into()
+        } else {
+            format!(
+                "{achieved_fps:.1} fps delivered against {} requested, {} dropped",
+                settings.fps, last.dropped_frames
+            )
+        },
     });
 
-    let encoder_ok = last.speed >= 0.98;
+    // `speed` is meaningless without frames. An encoder that never opened
+    // finishes the five seconds of input instantly and FFmpeg dutifully
+    // reports a huge multiple of real time — which is how Room C saw
+    // "Encoder keeps up — 8.29x real time ✓" against `frame=0` while the take
+    // was being lost (2026-09-11).
+    let encoder_ok = last.frames > 0 && last.speed >= 0.98;
     checks.push(PreflightCheck {
         label: "Encoder keeps up".into(),
         passed: encoder_ok,
-        detail: if last.speed > 0.0 {
+        detail: if encoder_refused {
+            "Not measured — the encoder never started. Fix that first.".into()
+        } else if last.frames == 0 {
+            "No frames were encoded, so there was no speed to measure.".into()
+        } else if last.speed > 0.0 {
             format!("{:.2}x real time", last.speed)
         } else {
             "not measured".into()
@@ -461,22 +577,34 @@ pub async fn preflight(
             .map(|v| v.audio_present && v.audio_silent != Some(true))
             .unwrap_or(false);
         checks.push(PreflightCheck {
+            // Nothing is written when the encoder refuses, so the microphone
+            // was never actually tested. Reporting that as a dead microphone
+            // sends an RA to check cables over a GPU driver.
             label: "Microphone is live".into(),
-            passed: audible,
+            passed: audible || encoder_refused,
             detail: match verification.as_ref().and_then(|v| v.mean_volume_dbfs) {
                 Some(mean) if mean >= -60.0 => format!("{mean:.1} dBFS average"),
-                Some(mean) => format!("{mean:.1} dBFS — effectively silent"),
+                // The lab's own case: not silence, but ~60 dB below usable.
+                // Both rooms measured near this on 2026-09-11, which is a
+                // capture level turned down rather than a dead microphone.
+                Some(mean) if mean > -100.0 => format!(
+                    "{mean:.1} dBFS — far too quiet to use. Raise the microphone's level in \
+                     Windows (Settings → System → Sound → the microphone → Input volume)."
+                ),
+                Some(mean) => format!("{mean:.1} dBFS — no signal at all. Check it is plugged in, selected, and not muted."),
+                None if encoder_refused => {
+                    "Not tested — nothing was written, because the video encoder never started."
+                        .into()
+                }
                 None => "No audio reached the file.".into(),
             },
         });
     }
 
-    let available = disk::disk_for_path(Path::new(&output_dir))
-        .map(|d| d.available_bytes)
-        .unwrap_or(0);
+    let available = disk::disk_for_path(Path::new(&output_dir)).map(|d| d.available_bytes);
     let space = disk::estimate(
         settings.estimated_bytes_per_second(ffmpeg::encoder_family(
-            &ffmpeg::best_encoder(&app).await,
+            &ffmpeg::best_encoder(&app, settings.width, settings.height).await,
         )),
         duration_seconds,
         available,
@@ -487,7 +615,9 @@ pub async fn preflight(
         detail: space.warning.clone().unwrap_or_else(|| {
             format!(
                 "{} free, about {} needed",
-                disk::human_bytes(available),
+                available
+                    .map(disk::human_bytes)
+                    .unwrap_or_else(|| "an unreadable amount".into()),
                 space
                     .projected_bytes
                     .map(disk::human_bytes)
@@ -536,6 +666,37 @@ pub async fn finalize_recording(
         ));
     }
 
+    // Before blaming the conversion, check there was anything to convert.
+    //
+    // On 2026-09-11 an encoder that never opened left a 0-byte MKV, the remux
+    // failed on it with "Invalid data found when processing input", and this
+    // function told the RA "the raw capture is safe at ..." — about a file
+    // with nothing in it. Telling someone a lost take is recoverable is worse
+    // than telling them it is lost, so an empty capture now says so plainly.
+    // Is there anything in there at all?
+    //
+    // Judged on file size alone, deliberately. The frame counter would be the
+    // more precise signal, but it comes from parsing FFmpeg's -progress
+    // stream, and telling an RA "nothing was recorded" about a file that
+    // actually holds the conversation — because a counter did not parse —
+    // would be a worse bug than the one being fixed here. Size cannot lie in
+    // that direction.
+    //
+    // The threshold is not zero: an encoder that fails after the container is
+    // opened leaves a valid, empty MKV — 581 bytes in a measured case. It is
+    // far below any real take either: the lab records ~2.5 MB per second, so
+    // even a one-second accident is megabytes.
+    const MIN_PLAUSIBLE_CAPTURE_BYTES: u64 = 64 * 1024;
+    let captured_bytes = std::fs::metadata(&capture_path).map(|m| m.len()).unwrap_or(0);
+    if captured_bytes < MIN_PLAUSIBLE_CAPTURE_BYTES {
+        return Err(format!(
+            "Nothing was recorded — the file holds no video at all ({} on disk). The camera or \
+             the video encoder never produced a frame, so there is no take to recover. Run \
+             Preflight on the setup screen: it names which of the two failed.",
+            disk::human_bytes(captured_bytes)
+        ));
+    }
+
     let final_path = capture_path.with_extension("mp4");
 
     // Lossless container swap. No re-encode, so this cannot alter a single
@@ -546,11 +707,16 @@ pub async fn finalize_recording(
             &final_path.to_string_lossy(),
             request.settings.fps,
         );
-        let (_, stderr) = ffmpeg::run_tool(&app, "ffmpeg", args).await?;
-        if !final_path.exists() {
+        let (_, stderr, ok) = ffmpeg::run_tool_status(&app, "ffmpeg", args).await?;
+        // Both conditions matter: a non-zero exit with a part-written file is
+        // still a failure, and the file existing is not proof it is usable.
+        if !ok || !final_path.exists() {
+            let _ = std::fs::remove_file(&final_path);
             return Err(format!(
-                "Converting to MP4 failed, but the raw capture is safe at {}. FFmpeg said: {}",
+                "Converting to MP4 failed, but the raw capture is safe at {} ({}). Keep that file \
+                 — it holds the conversation. FFmpeg said: {}",
                 capture_path.display(),
+                disk::human_bytes(captured_bytes),
                 stderr.lines().rev().take(5).collect::<Vec<_>>().join(" | ")
             ));
         }
@@ -697,7 +863,29 @@ pub fn recorder_load_settings(app: tauri::AppHandle) -> settings::PublicSettings
     // link.
     public.round_robin_url = Some(crate::machine::server_url(&app));
     public.research_drive_root = crate::machine::drive_root(&app);
+    // A working folder, chosen for the RA rather than asked for. The recording
+    // room's real question is "which Research Drive folder do finished takes go
+    // to"; where FFmpeg writes in the meantime is an implementation detail that
+    // has to stay on local disk anyway (writing 1080p over SMB live is how
+    // frames get dropped). Leaving it blank used to block the Record button on
+    // a fresh machine with a message about a folder nobody had been shown.
+    if public
+        .output_dir
+        .as_ref()
+        .is_none_or(|d| d.trim().is_empty())
+    {
+        public.output_dir = default_capture_dir(&app);
+    }
     public
+}
+
+/// `<app data>/captures`, created on demand. None only if the directory cannot
+/// be made, in which case the frontend keeps asking for one.
+fn default_capture_dir(app: &tauri::AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().ok()?.join("captures");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -712,7 +900,6 @@ pub fn recorder_save_settings(
     if update.touches_machine() {
         let machine_update = crate::machine::MachineUpdate {
             round_robin_url: update.round_robin_url.clone(),
-            round_robin_secret: update.round_robin_secret.clone(),
             research_drive_root: update.research_drive_root.clone(),
         };
         let merged = crate::machine::merge_update(&crate::machine::load(&app), machine_update);
@@ -723,15 +910,16 @@ pub fn recorder_save_settings(
     Ok(settings::compose_public(&merged, &crate::machine::load(&app)))
 }
 
-/// Base URL plus secret, or a message explaining what is missing. Reads the
-/// machine-wide store — the same credentials every mode uses.
-pub fn round_robin_credentials(app: &tauri::AppHandle) -> Result<(String, String), String> {
+/// Base URL plus this build's device key. Reads the machine-wide store — the
+/// same credentials every mode uses. Infallible since the key stopped being
+/// something a person types (see machine::credentials).
+pub fn round_robin_credentials(app: &tauri::AppHandle) -> (String, String) {
     crate::machine::credentials(app)
 }
 
 #[tauri::command]
 pub async fn rr_sessions(app: tauri::AppHandle) -> Result<Vec<roundrobin::SessionSummary>, String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::list_sessions(&url, &secret).await
 }
 
@@ -743,7 +931,7 @@ pub async fn rr_open(
     round: Option<i32>,
     force: bool,
 ) -> Result<roundrobin::OpenedRecording, String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::open_recording(&url, &secret, &slot_id, room_index, round, force).await
 }
 
@@ -754,7 +942,7 @@ pub fn rr_pending(app: tauri::AppHandle) -> Vec<roundrobin::PendingRegistration>
 
 #[tauri::command]
 pub async fn rr_flush(app: tauri::AppHandle) -> Result<roundrobin::FlushReport, String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::flush(&app, &url, &secret).await
 }
 
@@ -857,18 +1045,7 @@ pub async fn archive_recording(
         }
     };
 
-    let (url, secret) = match round_robin_credentials(&app) {
-        Ok(pair) => pair,
-        Err(e) => {
-            roundrobin::enqueue(&app, queue_entry(true, &e))?;
-            return Ok(ArchiveReport {
-                archived: Some(outcome),
-                registered: false,
-                queued: true,
-                message: format!("Copied to the Research Drive, but {e}"),
-            });
-        }
-    };
+    let (url, secret) = round_robin_credentials(&app);
 
     match roundrobin::close_recording(&url, &secret, &recording_id, &request.payload).await {
         Ok(()) => Ok(ArchiveReport {
@@ -903,7 +1080,7 @@ pub async fn archive_recording(
 /// quietly erased. (2026-08-18)
 #[tauri::command]
 pub async fn rr_abandon(app: tauri::AppHandle, recording_id: String) -> Result<(), String> {
-    let (url, secret) = round_robin_credentials(&app)?;
+    let (url, secret) = round_robin_credentials(&app);
     roundrobin::close_recording(
         &url,
         &secret,
@@ -945,13 +1122,13 @@ pub async fn estimate_space(
     app: tauri::AppHandle,
     request: EstimateRequest,
 ) -> SpaceEstimate {
-    let available = disk::disk_for_path(Path::new(&request.path))
-        .map(|d| d.available_bytes)
-        .unwrap_or(0);
+    let available = disk::disk_for_path(Path::new(&request.path)).map(|d| d.available_bytes);
     // The encoder decides the real file size, so the forecast has to ask which
     // one will run. Probed once per process and cached thereafter, so the
     // per-keystroke recompute costs nothing after the first.
-    let family = ffmpeg::encoder_family(&ffmpeg::best_encoder(&app).await);
+    let family = ffmpeg::encoder_family(
+        &ffmpeg::best_encoder(&app, request.settings.width, request.settings.height).await,
+    );
     disk::estimate(
         request.settings.estimated_bytes_per_second(family),
         request.duration_seconds,

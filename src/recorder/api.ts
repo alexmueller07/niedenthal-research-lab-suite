@@ -32,6 +32,15 @@ import type {
 
 export const listDevices = () => invoke<DeviceList>("list_devices");
 
+/**
+ * Closes this window and goes back to the mode chooser (or straight into
+ * another mode). Recording mode holds nothing unsaved between takes, so there
+ * is no flush to do first — Rust refuses the call outright while FFmpeg is
+ * mid-take.
+ */
+export const leaveMode = (role: "record" | "station" | "control" | null = null) =>
+  invoke<void>("leave_mode", { role });
+
 export const probeCamera = (token: string) =>
   invoke<CameraCapabilities>("probe_camera", { token });
 

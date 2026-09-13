@@ -44,31 +44,31 @@ export default function PresetPicker({
             aria-pressed={selected}
             className={`rounded-lg border p-3 text-left transition-colors disabled:opacity-50 ${
               selected
-                ? "border-[--color-badger] bg-[--color-panel]"
-                : "border-[--color-panel-edge] bg-[--color-panel] hover:border-[--color-ink-faint]"
+                ? "border-(--color-badger) bg-(--color-panel)"
+                : "border-(--color-panel-edge) bg-(--color-panel) hover:border-(--color-ink-faint)"
             }`}
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-semibold">{preset.name}</span>
-              <span className="font-mono text-xs text-[--color-ink-dim]">
+              <span className="font-mono text-xs text-(--color-ink-dim)">
                 {preset.height}p{preset.fps}
               </span>
             </div>
 
-            <p className="mt-1 text-xs leading-relaxed text-[--color-ink-dim]">
+            <p className="mt-1 text-xs leading-relaxed text-(--color-ink-dim)">
               {preset.blurb}
             </p>
 
-            <p className="mt-2 font-mono text-xs text-[--color-ink]">
+            <p className="mt-2 font-mono text-xs text-(--color-ink)">
               {humanBytes(total ?? 0)}
-              <span className="text-[--color-ink-faint]">
+              <span className="text-(--color-ink-faint)">
                 {" "}
                 for {sessionMinutes} min · {humanBytes(perMinute ?? 0)}/min
               </span>
             </p>
 
             {preset.caution && (
-              <p className="mt-2 text-xs leading-relaxed text-[--color-warn]">
+              <p className="mt-2 text-xs leading-relaxed text-(--color-warn)">
                 {preset.caution}
               </p>
             )}

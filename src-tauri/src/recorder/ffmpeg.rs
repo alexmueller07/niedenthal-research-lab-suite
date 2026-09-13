@@ -40,9 +40,70 @@ use tauri_plugin_shell::ShellExt;
 // before the lab standardises.
 
 /// Candidates in preference order. All are hardware except the last.
-const ENCODER_CANDIDATES: [&str; 4] = ["h264_qsv", "h264_nvenc", "h264_amf", "libx264"];
+pub const ENCODER_CANDIDATES: [&str; 4] = ["h264_qsv", "h264_nvenc", "h264_amf", "libx264"];
 
-static DETECTED_ENCODER: Mutex<Option<String>> = Mutex::new(None);
+/// The probe's resolution matters. A driver can accept a 640x480 session and
+/// refuse 1080p, so the answer is cached per resolution rather than globally:
+/// (width, height) -> encoder name.
+static DETECTED_ENCODER: Mutex<Vec<((u32, u32), String)>> = Mutex::new(Vec::new());
+
+/// Encoders this process has seen fail for real, after the probe accepted them.
+///
+/// A probe is a prediction; a capture is evidence. When an encoder opens on
+/// synthetic frames and then dies on the actual camera — which is exactly how
+/// Room C failed on 2026-09-11 — the name goes in here and is skipped for the
+/// rest of the run, including by every later probe.
+static REJECTED_ENCODERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Mark an encoder as proven broken on this machine and forget every cached
+/// choice that named it, so the next `best_encoder` picks something else.
+pub fn forget_encoder(encoder: &str) {
+    if let Ok(mut rejected) = REJECTED_ENCODERS.lock() {
+        if !rejected.iter().any(|e| e == encoder) {
+            rejected.push(encoder.to_string());
+        }
+    }
+    if let Ok(mut cache) = DETECTED_ENCODER.lock() {
+        cache.retain(|(_, name)| name != encoder);
+    }
+}
+
+fn is_rejected(encoder: &str) -> bool {
+    REJECTED_ENCODERS
+        .lock()
+        .map(|r| r.iter().any(|e| e == encoder))
+        .unwrap_or(false)
+}
+
+/// FFmpeg lines that mean "the encoder never opened", as distinct from the
+/// camera not delivering. Room C produced the first three of these.
+///
+/// Deliberately specific. A false positive here is worse than a false
+/// negative: it makes `start_recording` cycle encoders over a fault that is
+/// really the camera's, and Preflight blame the wrong component. A miss only
+/// costs the automatic retry. So `failed to create` on its own is not in the
+/// list — dshow has its own "could not create" phrasings — and the AMF case
+/// is matched by the part of its message that names a GPU.
+const ENCODER_FAILURE_MARKERS: [&str; 6] = [
+    "error creating a mfx session",
+    "could not open encoder",
+    "error while opening encoder",
+    "hardware device context",
+    "no capable devices found",
+    "cannot load nvcuda",
+];
+
+/// Does this FFmpeg stderr name an encoder that refused to start?
+///
+/// Used to tell an encoder failure apart from a camera failure — Preflight
+/// reported the former as "Camera opens" before, which sent Randy looking at
+/// the webcam for a problem that was in the GPU driver.
+pub fn stderr_blames_the_encoder(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    ENCODER_FAILURE_MARKERS
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EncoderFamily {
@@ -77,51 +138,101 @@ pub fn bitrate_scale(family: EncoderFamily) -> f64 {
     }
 }
 
-/// The best encoder this machine can actually run, probed once per process.
+/// Does this encoder actually encode on this machine, at this size?
 ///
-/// "Listed in -encoders" is not the same as "works": a driver can be absent
-/// or refuse a session. Each candidate therefore has to encode a handful of
-/// synthetic frames to disk-nowhere before it is trusted.
-pub async fn best_encoder(app: &AppHandle) -> String {
-    if let Ok(guard) = DETECTED_ENCODER.lock() {
-        if let Some(found) = guard.as_ref() {
+/// "Listed in `-encoders`" proves nothing: `h264_qsv`, `h264_nvenc` and
+/// `h264_amf` are compiled into the pinned build and are listed on every
+/// machine on earth, working driver or not. So the candidate has to encode
+/// real frames to nowhere and **exit zero**.
+///
+/// The exit status is the whole point of this function. The version of this
+/// code shipped in v1.0.0 tested candidates with `run_tool(..).is_ok()`, which
+/// is true whenever the process merely *spawned* — so every machine chose
+/// `h264_qsv`, the first candidate, whether or not it had Intel Quick Sync.
+/// Room C did not, FFmpeg died with `Error creating a MFX session: -9` before
+/// writing a byte, and a 10-minute conversation was lost to a 0-byte file
+/// (2026-09-11). `run_tool` still ignores exit status on purpose — device
+/// enumeration depends on that — so this asks the question separately.
+///
+/// The size matters too: a driver can accept 640x480 and refuse 1080p, so the
+/// probe runs at the resolution the session will actually use.
+pub async fn probe_encoder(app: &AppHandle, encoder: &str, width: u32, height: u32) -> bool {
+    if is_rejected(encoder) {
+        return false;
+    }
+    if encoder == "libx264" {
+        // The software fallback ships inside the pinned build and has no
+        // driver to be missing. If it is broken, nothing else can be trusted
+        // either, and the capture itself will say so.
+        return true;
+    }
+
+    let args: Vec<String> = [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        &format!("nullsrc=s={width}x{height}:r=30:d=0.3"),
+        "-c:v",
+        encoder,
+        "-f",
+        "null",
+        "-",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+
+    matches!(run_tool_status(app, "ffmpeg", args).await, Ok((_, _, true)))
+}
+
+/// The best encoder this machine can actually run at this resolution.
+///
+/// Probed once per (width, height) per process, and re-probed if a capture
+/// later proves the choice wrong (see `forget_encoder`). `libx264` is the
+/// floor: it always ends the loop, so this always returns something.
+pub async fn best_encoder(app: &AppHandle, width: u32, height: u32) -> String {
+    if let Ok(cache) = DETECTED_ENCODER.lock() {
+        if let Some((_, found)) = cache.iter().find(|((w, h), _)| *w == width && *h == height) {
             return found.clone();
         }
     }
 
     let mut chosen = "libx264".to_string();
     for candidate in ENCODER_CANDIDATES {
-        if candidate == "libx264" {
-            break; // the fallback needs no proving
-        }
-        let args: Vec<String> = [
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "nullsrc=s=640x480:r=30:d=0.3",
-            "-c:v",
-            candidate,
-            "-f",
-            "null",
-            "-",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-
-        if run_tool(app, "ffmpeg", args).await.is_ok() {
+        if probe_encoder(app, candidate, width, height).await {
             chosen = candidate.to_string();
             break;
         }
     }
 
-    if let Ok(mut guard) = DETECTED_ENCODER.lock() {
-        *guard = Some(chosen.clone());
+    if let Ok(mut cache) = DETECTED_ENCODER.lock() {
+        cache.retain(|((w, h), _)| !(*w == width && *h == height));
+        cache.push(((width, height), chosen.clone()));
     }
     chosen
+}
+
+/// The next candidate after `current`, skipping anything already proven broken.
+///
+/// Drives the one automatic retry in `start_recording`: when an encoder dies on
+/// the real camera, the session moves down the list rather than handing the RA
+/// a 0-byte file.
+pub async fn next_encoder_after(
+    app: &AppHandle,
+    current: &str,
+    width: u32,
+    height: u32,
+) -> Option<String> {
+    let start = ENCODER_CANDIDATES.iter().position(|c| *c == current)?;
+    for candidate in ENCODER_CANDIDATES.iter().skip(start + 1) {
+        if probe_encoder(app, candidate, width, height).await {
+            return Some((*candidate).to_string());
+        }
+    }
+    None
 }
 
 /// Encoder selection plus rate control, which have to be decided together —
@@ -696,7 +807,24 @@ pub fn build_preflight_args(
 /// The exit status is deliberately not checked: several of the things this app
 /// asks FFmpeg to do (`-list_devices`, `-list_options`, probing an unsupported
 /// mode on purpose) exit non-zero *by design* and put the answer on stderr.
+///
+/// Callers that need "did this actually work?" must use `run_tool_status`.
+/// Treating `Ok(..)` from this function as success is what selected a
+/// non-functional encoder on every lab machine until 2026-09-12.
 pub async fn run_tool(app: &AppHandle, tool: &str, args: Vec<String>) -> Result<(String, String), String> {
+    let (stdout, stderr, _) = run_tool_status(app, tool, args).await?;
+    Ok((stdout, stderr))
+}
+
+/// `run_tool`, plus whether the process exited zero.
+///
+/// `Err` still means the sidecar could not be started at all; the third tuple
+/// field is FFmpeg's own verdict on the work it was asked to do.
+pub async fn run_tool_status(
+    app: &AppHandle,
+    tool: &str,
+    args: Vec<String>,
+) -> Result<(String, String, bool), String> {
     let cmd = app
         .shell()
         .sidecar(tool)
@@ -709,7 +837,32 @@ pub async fn run_tool(app: &AppHandle, tool: &str, args: Vec<String>) -> Result<
     Ok((
         String::from_utf8_lossy(&out.stdout).to_string(),
         String::from_utf8_lossy(&out.stderr).to_string(),
+        out.status.success(),
     ))
+}
+
+/// Same as `run_tool`, but keeps stdout as bytes.
+///
+/// `run_tool` decodes stdout with from_utf8_lossy, which is right for FFmpeg's
+/// text output and quietly destroys binary: every byte that is not valid UTF-8
+/// becomes U+FFFD, so a JPEG that came back through it is corrupt in a way
+/// nothing downstream can detect. Anything asking FFmpeg to write an image to
+/// stdout comes through here instead.
+pub async fn run_tool_bytes(
+    app: &AppHandle,
+    tool: &str,
+    args: Vec<String>,
+) -> Result<Vec<u8>, String> {
+    let cmd = app
+        .shell()
+        .sidecar(tool)
+        .map_err(|e| format!("{tool} sidecar is missing — run `npm run ffmpeg` to fetch it ({e})"))?;
+    let out = cmd
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| format!("could not start {tool}: {e}"))?;
+    Ok(out.stdout)
 }
 
 /// First line of `ffmpeg -version`, stamped into every recording manifest so a
@@ -909,5 +1062,118 @@ mod tests {
         assert_eq!(pair(&pre, "-fps_mode"), pair(&real, "-fps_mode"));
         assert_eq!(pair(&pre, "-vcodec"), pair(&real, "-vcodec"));
         assert_eq!(pre.len(), real.len() + 2, "only -t is added");
+    }
+
+    // ---- encoder selection -------------------------------------------------
+
+    #[test]
+    fn software_is_the_last_candidate_and_every_other_one_is_hardware() {
+        // `best_encoder` walks this list in order and stops at the first that
+        // passes. If libx264 were not last, a machine with no working GPU
+        // encoder would fall off the end with nothing chosen.
+        assert_eq!(*ENCODER_CANDIDATES.last().unwrap(), "libx264");
+        assert!(
+            ENCODER_CANDIDATES[..ENCODER_CANDIDATES.len() - 1]
+                .iter()
+                .all(|c| *c != "libx264"),
+            "libx264 must appear exactly once, at the end"
+        );
+    }
+
+    /// Room C's FFmpeg output, 2026-09-11.
+    ///
+    /// Preflight reported this as "Camera opens ✗", which sent everyone
+    /// looking at a webcam that was working perfectly.
+    #[test]
+    fn a_failed_mfx_session_is_recognised_as_the_encoders_fault() {
+        let room_c = concat!(
+            "[h264_qsv @ 0000] Error creating a MFX session: -9.\n",
+            "[h264_qsv @ 0000] The current mfx implementation is not supported, try next mfx implementation.\n",
+            "[vost#0:0/h264_qsv @ 0000] [enc:h264_qsv @ 0000] Error while opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.\n",
+            "[vost#0:0/h264_qsv @ 0000] [enc:h264_qsv @ 0000] Could not open encoder before EOF\n",
+            "[out#0/matroska @ 0000] Nothing was written into output file, because at least one of its streams received no packets.",
+        );
+        assert!(stderr_blames_the_encoder(room_c));
+    }
+
+    /// A real capture, not a paraphrase.
+    ///
+    /// Room C could not be borrowed to test against, so its failure was
+    /// reproduced on the development machine on 2026-09-12 by running the
+    /// app's own record arguments against the real webcam with `h264_amf` —
+    /// an encoder this machine lists and cannot run, exactly as Room C listed
+    /// and could not run `h264_qsv`. The capture produced a 0-byte MKV, and
+    /// these are the lines FFmpeg actually printed.
+    const REAL_AMF_FAILURE: &str = concat!(
+        "[AMF @ 000001f5ec7fdc00] DLL amfrt64.dll failed to open\n",
+        "[h264_amf @ 000001f5e3309100] Failed to create  hardware device context (AMF) : Unknown error occurred\n",
+        "[vost#0:0/h264_amf @ 000001f5e10e5140] [enc:h264_amf @ 000001f5e32c0f80] Error while opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.\n",
+        "[vf#0:0 @ 000001f5e0957b40] Error sending frames to consumers: Unknown error occurred\n",
+        "[vost#0:0/h264_amf @ 000001f5e10e5140] [enc:h264_amf @ 000001f5e32c0f80] Could not open encoder before EOF\n",
+        "[out#0/matroska @ 000001f5e328ac00] Nothing was written into output file, because at least one of its streams received no packets.",
+    );
+
+    #[test]
+    fn the_other_vendors_failures_are_recognised_too() {
+        assert!(stderr_blames_the_encoder(REAL_AMF_FAILURE));
+        assert!(stderr_blames_the_encoder(
+            "[h264_nvenc @ 0000] Cannot load nvcuda.dll"
+        ));
+    }
+
+    #[test]
+    fn a_camera_failure_is_not_blamed_on_the_encoder() {
+        // The distinction the preflight check turns on. These are real dshow
+        // failures and none of them should route to the encoder row. A false
+        // positive here would have start_recording cycle encoders over a
+        // camera fault, and Preflight point at the wrong component.
+        for camera in [
+            "[dshow @ 0000] Could not run graph (sync)",
+            "[dshow @ 0000] Could not create capture filter",
+            "[dshow @ 0000] Could not find video device with name",
+            "[dshow @ 0000] Could not set video options",
+            "[dshow @ 0000] real-time buffer [Logitech BRIO] [video input] too full or near too full",
+            "[in#0/dshow @ 0000] Error during demuxing: I/O error",
+            "[in#0 @ 0000] Error opening input: I/O error",
+            "frame dropped!",
+        ] {
+            assert!(
+                !stderr_blames_the_encoder(camera),
+                "{camera:?} is a camera problem, not an encoder one"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_log_blames_nobody() {
+        assert!(!stderr_blames_the_encoder(""));
+    }
+
+    #[test]
+    fn forgetting_an_encoder_stops_it_being_probed_again() {
+        // The safety net behind the record-time fallback: once a capture has
+        // proved an encoder broken, no later probe in this process may hand it
+        // back. Uses a name no machine has, so it cannot disturb a real one.
+        let fake = "h264_not_a_real_encoder_for_tests";
+        assert!(!is_rejected(fake));
+        forget_encoder(fake);
+        assert!(is_rejected(fake));
+        forget_encoder(fake);
+        assert_eq!(
+            REJECTED_ENCODERS.lock().unwrap().iter().filter(|e| *e == fake).count(),
+            1,
+            "rejecting twice must not duplicate the entry"
+        );
+        REJECTED_ENCODERS.lock().unwrap().retain(|e| e != fake);
+    }
+
+    #[test]
+    fn the_fallback_order_walks_down_the_list() {
+        // next_encoder_after needs a real AppHandle to probe, so this covers
+        // the part that is pure: where in the list each candidate sits.
+        let qsv = ENCODER_CANDIDATES.iter().position(|c| *c == "h264_qsv").unwrap();
+        let x264 = ENCODER_CANDIDATES.iter().position(|c| *c == "libx264").unwrap();
+        assert!(qsv < x264, "hardware is tried before software");
+        assert!(ENCODER_CANDIDATES.iter().position(|c| *c == "nope").is_none());
     }
 }

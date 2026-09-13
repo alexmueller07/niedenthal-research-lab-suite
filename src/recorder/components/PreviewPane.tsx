@@ -93,12 +93,12 @@ export default function PreviewPane({ active, overlay, onSignal }: Props) {
   }, [delivering]);
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-[--color-panel-edge] bg-black">
+    <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-(--color-panel-edge) bg-black">
       {url ? (
         <img src={url} alt="Camera preview" className="h-full w-full object-contain" />
       ) : (
         <div className="flex h-full w-full items-center justify-center px-8 text-center">
-          <p className="text-sm text-[--color-ink-dim]">
+          <p className="text-sm text-(--color-ink-dim)">
             {!active
               ? "Preview is off. Choose a camera to see what it sees."
               : everReceived
@@ -109,7 +109,7 @@ export default function PreviewPane({ active, overlay, onSignal }: Props) {
       )}
 
       {active && everReceived && stalled && (
-        <div className="absolute inset-x-0 top-0 bg-[--color-bad] px-3 py-1.5 text-center text-xs font-semibold text-white">
+        <div className="absolute inset-x-0 top-0 bg-(--color-bad) px-3 py-1.5 text-center text-xs font-semibold text-white">
           No frames for over 2 seconds — check the cable and that nothing else has the camera
         </div>
       )}

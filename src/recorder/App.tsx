@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import * as api from "./api";
 import DiscreetOverlay from "./components/DiscreetOverlay";
+import WindowControls from "../shared/WindowControls";
 import { fileStem, identifierWarning } from "./naming";
 import { DEFAULT_PRESET_ID, presetById, settingsFromPreset } from "./presets";
 import FinishScreen from "./screens/FinishScreen";
@@ -186,7 +187,7 @@ export default function App() {
         if (s.roomIndex) setRoomIndex(s.roomIndex);
         settingsLoaded.current = true;
         // Only reach for the network once there is something to reach with.
-        if (s.roundRobinUrl && s.roundRobinSecretConfigured) refreshSessions();
+        if (s.roundRobinUrl) refreshSessions();
       })
       .catch(() => {
         settingsLoaded.current = true;
@@ -268,6 +269,21 @@ export default function App() {
       void unlisten.then((fn) => fn());
     };
   }, [refreshPending]);
+
+  // The chooser asking this window to hand the computer over to another mode.
+  // Recording mode keeps nothing unsaved between takes — a finished take is
+  // already on disk and filed — so it can simply go. Rust refuses the call
+  // outright while FFmpeg is mid-take, which is the case that matters.
+  useEffect(() => {
+    const unlisten = listen<string>("leave-mode", (event) => {
+      void api
+        .leaveMode((event.payload as "record" | "station" | "control") ?? null)
+        .catch((e) => setError(String(e)));
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // ---- camera capabilities ------------------------------------------------
 
@@ -669,9 +685,7 @@ export default function App() {
   // ---- what blocks recording ---------------------------------------------
 
   const codeWarning = identifierWarning(sessionCode);
-  const rrConfigured = Boolean(
-    machineSettings?.roundRobinUrl && machineSettings.roundRobinSecretConfigured
-  );
+  const rrConfigured = Boolean(machineSettings?.roundRobinUrl);
   const blockedReason =
     !camera
       ? "Choose a camera first"
@@ -715,12 +729,21 @@ export default function App() {
   // ---- render -------------------------------------------------------------
 
   if (discreetActive && phase === "recording") {
+    // Deliberately bare. This screen faces a participant mid-take; a minimise
+    // or close button on it is the one control nobody should be offered.
     return <DiscreetOverlay message="Please wait for the researcher." />;
   }
+
+  // The window has no title bar any more (modes.rs), so minimise and close live
+  // in the corner of every screen that is not the discreet overlay. Close still
+  // goes through the mid-take guard and surfaces as the "close-blocked" notice.
+  const chrome = <WindowControls />;
 
   const recordingSettings = recovered?.settings ?? settings;
   if (phase === "recording" && recordingSettings) {
     return (
+      <>
+      {chrome}
       <RecordScreen
         settings={recordingSettings}
         progress={progress}
@@ -733,11 +756,14 @@ export default function App() {
         onStop={handleStop}
         onHide={() => setDiscreetActive(true)}
       />
+      </>
     );
   }
 
   if ((phase === "finishing" || phase === "done") && outcome) {
     return (
+      <>
+      {chrome}
       <FinishScreen
         outcome={outcome}
         result={result}
@@ -759,10 +785,13 @@ export default function App() {
           setRecovered(null);
         }}
       />
+      </>
     );
   }
 
   return (
+    <>
+    {chrome}
     <SetupScreen
       deviceList={deviceList}
       videoFingerprint={videoFingerprint}
@@ -839,7 +868,7 @@ export default function App() {
             .saveSettings(update)
             .then((s) => {
               setMachineSettings(s);
-              if (s.roundRobinUrl && s.roundRobinSecretConfigured) refreshSessions();
+              if (s.roundRobinUrl) refreshSessions();
             })
             .catch((e) => setError(String(e)))
             .finally(() => setSavingSettings(false));
@@ -856,6 +885,9 @@ export default function App() {
               .finally(() => setSavingSettings(false));
           }
         },
+      }}
+      onLeaveMode={() => {
+        void api.leaveMode(null).catch((e) => setError(String(e)));
       }}
       onSelectVideo={setVideoFingerprint}
       onSelectAudio={setAudioFingerprint}
@@ -892,5 +924,6 @@ export default function App() {
       onRefreshDevices={refreshDevices}
       onRecord={handleRecord}
     />
+    </>
   );
 }

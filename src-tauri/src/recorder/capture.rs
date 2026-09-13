@@ -441,6 +441,59 @@ pub fn start_recording(
     )
 }
 
+/// How long to watch a fresh take before accepting that it started.
+///
+/// An encoder that cannot open dies in well under a second — Room C's FFmpeg
+/// was gone in 0.08 s. Four seconds is generous enough to be certain and short
+/// enough that the RA experiences it as the Record button taking a moment.
+const EARLY_FAILURE_WINDOW: Duration = Duration::from_secs(4);
+const EARLY_FAILURE_POLL: Duration = Duration::from_millis(50);
+
+/// A take that died on arrival, with whatever FFmpeg said on the way out.
+pub struct EarlyFailure {
+    pub stderr: String,
+    pub exit_code: Option<i32>,
+}
+
+/// Waits briefly to see whether a just-started take died before producing a
+/// single frame.
+///
+/// Deliberately conservative: it returns `Some` only when the FFmpeg process
+/// has actually **exited** having written nothing. A take that is merely slow
+/// to deliver its first frame returns `None` and is left alone — this must
+/// never be able to interrupt a running recording, which is the mistake that
+/// killed every take at ~19 frames in August.
+pub fn watch_for_early_failure(app: &AppHandle) -> Option<EarlyFailure> {
+    let deadline = Instant::now() + EARLY_FAILURE_WINDOW;
+    loop {
+        let (finished, frames, stderr, exit_code) = {
+            let state = app.state::<RecorderState>();
+            let active = state.active.lock().ok()?;
+            let session = active.as_ref()?;
+            if session.kind != SessionKind::Record {
+                return None;
+            }
+            (
+                session.shared.finished.load(Ordering::SeqCst),
+                session.shared.progress.lock().map(|p| p.frames).unwrap_or(0),
+                session.shared.stderr_text(),
+                session.shared.exit_code.lock().ok().and_then(|c| *c),
+            )
+        };
+
+        if frames > 0 {
+            return None; // frames are arriving: the take is alive
+        }
+        if finished {
+            return Some(EarlyFailure { stderr, exit_code });
+        }
+        if Instant::now() >= deadline {
+            return None; // still running, just slow to start
+        }
+        std::thread::sleep(EARLY_FAILURE_POLL);
+    }
+}
+
 /// Result of finishing a take, before verification runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -503,6 +556,41 @@ pub fn stop_any(app: &AppHandle) -> Result<(), String> {
     // at 00:02 with 0 frames.)
     std::thread::sleep(DEVICE_RELEASE_SETTLE);
     Ok(())
+}
+
+/// Clears a take that has already died, and waits for the camera to come back.
+///
+/// Needed before retrying with a different encoder. `stop_any` deliberately
+/// refuses to touch a RECORD session — that guard is what stops a stray React
+/// cleanup killing a live take — so the corpse of a failed one would otherwise
+/// sit in the slot, and `start_recording` would return from `stop_any`
+/// immediately, skipping `DEVICE_RELEASE_SETTLE`. Respawning into that window
+/// is the documented way to get a take that opens the camera, negotiates the
+/// streams, and then dies with an empty file: the exact outcome the retry
+/// exists to avoid.
+///
+/// Only ever removes a session that has already finished, so it cannot end a
+/// running take.
+pub fn clear_dead_recording(app: &AppHandle) {
+    let state = app.state::<RecorderState>();
+    let cleared = {
+        match state.active.lock() {
+            Ok(mut slot) => {
+                let dead = slot
+                    .as_ref()
+                    .is_some_and(|s| s.shared.finished.load(Ordering::SeqCst));
+                if dead {
+                    slot.take().is_some()
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    };
+    if cleared {
+        std::thread::sleep(DEVICE_RELEASE_SETTLE);
+    }
 }
 
 /// Stops an active take and reports what happened.
@@ -706,5 +794,44 @@ mod tests {
         assert!(!jpeg_is_complete(&[0xFF, 0xD8, 0x00, 0x11]));
         assert!(!jpeg_is_complete(&[]));
         assert!(!jpeg_is_complete(&[0x00, 0x01, 0xFF, 0xD9]));
+    }
+
+    /// The progress block from a capture whose encoder never opened.
+    ///
+    /// Transcribed from a real run on 2026-09-12 that reproduced Room C's
+    /// failure with `h264_amf` against the development machine's webcam. The
+    /// shape is the whole point: **zero frames at 3.81x real time**. FFmpeg
+    /// reports a high speed precisely *because* nothing was encoded, which is
+    /// why Preflight showed "Encoder keeps up — 8.29x real time ✓" in Room C
+    /// while the session was being lost.
+    #[test]
+    fn a_high_speed_with_no_frames_is_a_failure_not_a_fast_encoder() {
+        let mut acc = ProgressAccumulator::default();
+        let mut snap = ProgressSnapshot::default();
+        for line in [
+            "frame=0",
+            "fps=0.0",
+            "total_size=0",
+            "out_time_us=2550000",
+            "dup_frames=6",
+            "drop_frames=0",
+            "speed=3.81x",
+            "progress=end",
+        ] {
+            if let Some(s) = acc.push(line) {
+                snap = s;
+            }
+        }
+
+        assert_eq!(snap.frames, 0, "nothing was encoded");
+        assert!(snap.speed >= 0.98, "and FFmpeg still reported it as fast");
+
+        // The old rule, kept here so the trap is visible rather than implied.
+        assert!(snap.speed >= 0.98, "speed alone would have passed");
+        // The rule preflight actually applies now.
+        assert!(
+            !(snap.frames > 0 && snap.speed >= 0.98),
+            "zero frames must fail the encoder check whatever the speed says"
+        );
     }
 }

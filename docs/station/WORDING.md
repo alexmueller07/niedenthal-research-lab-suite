@@ -49,37 +49,76 @@ Error, shown under the box if the address is not valid:
 
 # Part 2 — Session setup (researcher)
 
-## 2.1 Participant information
+## 2.1 Set up this station
 
-*The RA fills this in. The participant is not meant to read it, but it is on
-screen in front of them, so it is included.*
+*The RA fills this in **before** the participant sits down — since 2026-08-22
+this is the first screen in Rating Station mode, not a screen that appears after
+the participant has already signed in. The participant never sees it.*
 
-> **Please Enter the Particpant's Information**
+> **Set up this station**
 >
-> Dyad ID:
-> Participant ID:
-> Partner ID:
-> Subject Initials:
+> Researcher only. Hand the computer over once this is done.
 >
-> Computer (L/R): `[Left]` `[Right]`
+> `[Researcher dashboard]` `[← Modes]`
+
+**Research Drive** *(asked once per computer, then remembered)*
+
+> Where the recording rooms file their conversations. This station copies the
+> participant's video from here on its own, so nobody browses for a file
+> mid-session. Set it once on this computer and it is remembered.
 >
-> RA Name:
-> Session Time:
-> Session Date:
+> _(placeholder)_ R:\niedenthal\recordings `[Browse]` `[Save]`
+
+If it has not been set:
+
+> Not set yet. The station will still run, but it can only find a conversation
+> recorded on this same computer — a video from the recording room next door
+> will not appear.
+
+**Who is sitting here** *(when the head RA has filled in today's board)*
+
+> Tap the colour of this participant's nametag. The dyad and both study IDs come
+> from the board the head RA set up this morning, so both stations use the same
+> numbers.
 >
-> Save Folder: _(placeholder)_ Select folder to save ratings... `[Browse]`
+> _(one button per nametag colour: e.g.)_ **Red** — Dyad 1 · Left seat · ID 1
 >
-> `[Start Session]`
+> Not on the board — type it in instead
+
+*Once a colour is tapped, the screen shows back what it filled in:*
+
+> Dyad · This participant · Partner · Seat
+
+*When the board is empty for today:*
+
+> Nothing on the board for today ({date}). Whoever hands out the nametags can
+> add today's dyads under Researcher dashboard, and then both stations read the
+> same numbers off a colour. Until then, type them in.
+>
+> Dyad ID / Participant ID / Partner ID / Seat `[Left]` `[Right]`
+
+**This session**
+
+> Subject initials / RA name
+>
+> Session date / Session time *(both filled in from the computer's clock)*
+>
+> Data folder — _(shown, not asked)_
+> A folder for this dyad is created inside it. Set by the Research Drive above —
+> change it on the researcher dashboard if the lab ever wants it somewhere else.
+
+> `[Start — hand the computer to the participant]`
+>
+> The next screen asks the participant for their email. Nothing above is shown
+> to them.
 
 Validation messages:
 
 > Required
 >
 > Only letters, numbers, underscores, and dashes allowed (no spaces or / \ : * ? " < > |)
-
-Pop-up if a field is empty:
-
-> Please fill in all fields.
+>
+> Still needed: {list of fields}.
 
 ---
 
@@ -163,24 +202,24 @@ Footer on every instruction screen:
 
 ## 4.3 Perspective announcement
 
-*Before each of the four blocks. The screen holds for 6 seconds before any key
-will advance it.*
+*Before each of the four blocks. The screen holds for 3 seconds before any key
+will advance it. Randy, 2026-08-05: the same wait screen, in the same words, as
+the one between the two perspectives of the video task (5.3).*
 
-> FOR THIS NEXT PART OF THE VIDEO
+> You will now be rating **YOUR OWN FEELINGS** during the conversation.
+> _(partner blocks:)_ You will now be rating **YOUR PARTNER'S FEELINGS** during the conversation.
 >
-> You will be rating **YOUR OWN FEELINGS** during the conversation.
-> _(partner blocks:)_ You will be rating **YOUR PARTNER'S FEELINGS** during the conversation.
+> Think about how **YOU** were feeling, moment to moment.
+> _(partner blocks:)_ Think about how **YOUR PARTNER** was feeling, moment to moment.
 >
-> Think about how YOU were feeling, moment to moment.
-> _(partner blocks:)_ Think about how YOUR PARTNER was feeling, moment to moment.
+> Continuing in {n}…
+>
+> Press any key to continue _(appears once the countdown reaches zero)_
 
-While the 6 seconds run:
-
-> Please read the above. Continuing in {n}…
-
-Once they are up:
-
-> Press any key to continue
+*Which perspective a participant starts on is decided by the parity of their
+study ID — odd IDs (the left seat) start with their own feelings, even IDs (the
+right seat) start with their partner's — so the two members of a dyad are never
+rating the same target over the same stretch of the conversation.*
 
 ## 4.4 Watching, with the continuous slider
 
@@ -246,29 +285,33 @@ Footer:
 
 # Part 5 — Video affective-response task
 
-*Eight film clips, rated for three people. The lab can run this in one of two
-modes; **separate** is the default and is what is described here. The combined
-mode is written up in 5.7.*
+*Eight film clips. Each is watched once, then rated twice: once for the
+participant and once for their partner. Which of the two comes first is drawn
+separately for every clip.*
+
+*Restructured to Randy's specification of 2026-08-05. The average-UW-student
+perspective, the three-passes-over-the-clips structure and the 1–100 sliders are
+all gone.*
 
 ## 5.1 Instructions
 
-*Seven screens, four to a page, any key to advance.*
+*Six screens on one page, any key to advance.*
 
 1. In this part of the study, you will watch a series of short videos.
-2. After each video, you will rate how strongly it evokes three different
-   feelings, on a scale from 1 (Not at all) to 100 (Extremely).
-3. For each feeling, you will also rate how confident you are in your answer,
-   again from 1 to 100.
-4. You will make these ratings three times: once for YOURSELF, once for YOUR
-   PARTNER, and once for AN AVERAGE UW–MADISON STUDENT.
-5. The three people will be presented in random order, and you will see the same
-   videos each time.
-6. Please watch each video all the way through the first time. After that you do
-   not have to watch it again, but you can replay it whenever you want to.
-   *(If the lab turns the rewatch requirement back on, this line reads instead:
-   "Please watch each video all the way through before you make your ratings.")*
-7. We ask that you answer each question efficiently in order to keep your
+2. After each video, you will answer the same questions twice: once about how
+   YOU felt while watching it, and once about how YOUR PARTNER would feel while
+   watching it.
+3. A screen before each set of questions will tell you which of the two you are
+   answering. Please read it — it changes from video to video.
+4. Every question is answered on a scale from 1 (Not at all) to 7 (Extremely).
+5. Please watch each video all the way through. You can replay it on the
+   question pages at any time.
+6. We ask that you answer each question efficiently in order to keep your
    participation time within one hour.
+
+Footer:
+
+> Press any key to continue
 
 ## 5.2 Watch the clip
 
@@ -276,13 +319,9 @@ mode is written up in 5.7.*
 
 > Please watch the following video all the way through.
 
-On a clip already seen in an earlier block, the header reads instead:
-
-> You have seen this video before. Watch it again if you would like to.
-
 On the page:
 
-> Video {n} of 8 &nbsp;&nbsp;&nbsp; You are rating: **YOURSELF** / **YOUR PARTNER** / **AN AVERAGE UW–MADISON STUDENT**
+> Video {n} of 8
 
 Over the video before it starts:
 
@@ -309,75 +348,72 @@ Bottom-right, until the clip has been watched:
 
 > Please watch the video before continuing. `[Continue]` _(disabled)_
 
-## 5.3 Rate the clip
+## 5.3 Which perspective comes next
 
-**Page header:**
+*Between the clip and each set of questions, and again between the two sets.
+Holds for 3 seconds before any key will advance it. Same screen, same words, as
+the one in the conversation-slider task (4.3).*
 
-> For each video clip, rate how strongly it evokes each feeling, and how
-> confident you are in your answer. (1 = Not at all, 100 = Extremely)
+> You will now be reporting how **YOU** felt.
+>
+> _(the other one:)_ You will now be reporting how **YOUR PARTNER** would feel.
+>
+> Continuing in {n}…
+>
+> Press any key to continue _(appears once the countdown reaches zero)_
+
+## 5.4 Rate the clip
+
+*The clip is on the page, at the same size on both perspectives, and can be
+replayed from there. Three questions, one per emotion for that clip, in a random
+order held constant across the two perspectives of the same clip.*
 
 On the page:
 
-> Video {n} of 8 &nbsp;&nbsp;&nbsp; You are rating: **{PERSON}** &nbsp;&nbsp;&nbsp; `[Replay video]`
+> Video {n} of 8 &nbsp;&nbsp;&nbsp; Rating: **YOU** / **YOUR PARTNER**
 
-**First block of sliders.** When rating for yourself:
+**When reporting their own feelings**, one question per emotion:
 
-> How strongly did this video make YOU feel each of the following?
-
-When rating for anyone else:
-
-> How strongly do you think this video would make YOUR PARTNER feel each of the following?
+> To what extent did you feel {emotion} while watching this video?
 >
-> How strongly do you think this video would make AN AVERAGE UW-MADISON STUDENT feel each of the following?
+> 1 … 7, anchored **Not at all** (under 1) and **Extremely** (under 7)
 
-Three sliders, one per emotion for that clip, 1 to 100, anchored **Not at all**
-(left) and **Extremely** (right).
+**When reporting their partner's:**
 
-**Second block of sliders:**
+> To what extent would your partner feel {emotion} while watching this video?
+>
+> 1 … 7, anchored **Not at all** and **Extremely**
 
-> How confident are you in each of your answers above?
+*and then, once, at the bottom of the partner page only:*
 
-Three sliders, 1 to 100, anchored **Not at all confident** and
-**Extremely confident**.
-
-In the replay pop-up: `[Back to the ratings]`
+> How confident are you in your ratings of your partner?
+>
+> 1 … 7, anchored **Not at all** and **Extremely**
 
 Bottom-right: `[Continue]`
 
-*5.2 and 5.3 repeat for all eight clips.*
+*5.2 → 5.3 → 5.4 → 5.3 → 5.4 repeats for all eight clips.*
 
-## 5.4 Between people
+## 5.5 Which videos would you share
 
-*After all eight clips have been rated for one person.*
-
-> **Phase Complete!**
->
-> You have completed all video ratings for **{YOURSELF / YOUR PARTNER / AN AVERAGE UW–MADISON STUDENT}**.
->
-> You will now rate the same videos for **{the next person}**.
->
-> `[Continue]`
-
-*Then 5.2 and 5.3 run again for the next person. Three passes in total.*
-
-## 5.5 Who would like these videos
-
-*Once, after all three passes.*
+*Once, after all eight clips.*
 
 **Page header:**
 
-> For each video below, who do you think would like it?
+> If you could share these videos, which ones do you think your partner would be
+> interested in seeing, and which would you pick for yourself?
 
 On the page:
 
-> These are the videos you just rated. Tick every box that applies — as many or
-> as few as you like. Click a video to watch it again.
+> Tick every box that applies — as many or as few as you like. Click a video to
+> watch it again.
 
-The table:
+The table — **the two columns swap places at random, per participant**, and
+which order was shown is written to the data file:
 
-| Video | My partner would like this | I would like this | The average UW–Madison student would like this |
-|---|---|---|---|
-| Video 1 … Video 8 | ☐ | ☐ | ☐ |
+| Video | I would be interested | My conversation partner would be interested |
+|---|---|---|
+| Video 1 … Video 8 | ☐ | ☐ |
 
 Over each thumbnail:
 
@@ -385,7 +421,7 @@ Over each thumbnail:
 
 Under the table:
 
-> Selected &nbsp;&nbsp;&nbsp; {n} of 8 &nbsp;&nbsp;&nbsp; {n} of 8 &nbsp;&nbsp;&nbsp; {n} of 8
+> Selected &nbsp;&nbsp;&nbsp; {n} of 8 &nbsp;&nbsp;&nbsp; {n} of 8
 
 In the replay pop-up: `[Back to the list]`
 
@@ -402,37 +438,6 @@ If nothing at all is ticked:
 *Briefly, while the app reads its settings.*
 
 > **Loading...**
-
-## 5.7 Combined mode — currently switched OFF
-
-*Built at Randy's request on 2026-07-30 but not enabled. If the lab switches it
-on, 5.2 and 5.3 are replaced by one pass over the clips with this page, and
-instruction screens 4–6 above are replaced by the two lines quoted at the end.*
-
-**Page header:**
-
-> For each feeling, rate how strongly the video evokes it for each person, and
-> how confident you are in your answer. (1 = Not at all, 100 = Extremely)
-
-Then, for each of the three emotions in turn:
-
-> **{EMOTION}**
->
-> How strongly does this video make each of the following feel **{emotion}**?
->
-> _(three sliders, labelled)_ YOU · YOUR PARTNER · THE AVERAGE UW–MADISON STUDENT
->
-> How confident are you in each of the three ratings above?
->
-> _(the same three sliders again)_
-
-Replaced instruction lines:
-
-> You will make each of these ratings for three people: for YOURSELF, for YOUR
-> PARTNER, and for AN AVERAGE UW–MADISON STUDENT — all on the same screen.
->
-> Please watch each video all the way through before you make your ratings. You
-> can replay a video at any time.
 
 ---
 

@@ -3,303 +3,944 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="robots" content="noindex" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="color-scheme" content="light dark" />
 <title>Lab Suite — Niedenthal Emotions Lab</title>
+<meta name="description" content="Install and run the Niedenthal Emotions Lab suite: recording rooms, rating stations, and the session board." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23c5050c'/><circle cx='16' cy='16' r='6' fill='white'/></svg>" />
 <style>
+  /* ------------------------------------------------------------------
+     Light is the base palette. The dark blocks below redefine tokens
+     only — nothing is styled inside a media query, so the page holds
+     together whichever theme the machine is set to.
+     ------------------------------------------------------------------ */
   :root {
-    --badger: #c5050c;
-    --ink: #1a1a1a;
-    --dim: #5a5a5a;
-    --line: #d8d8d8;
-    --panel: #f6f6f4;
-    --warn-bg: #fff8e6;
-    --warn-line: #e6c86a;
+    --paper:     #fcfbfa;
+    --panel:     #f4f1ef;
+    --panel-2:   #ece8e5;
+    --ink:       #191b1d;
+    --ink-dim:   #5c6165;
+    --ink-faint: #8a8f93;
+    --rule:      #e3ded9;
+    --rule-firm: #cbc4be;
+    --accent:    #c5050c;
+    --accent-ink:#ffffff;
+    --warn:      #8a5900;
+    --warn-bg:   #fbf3e2;
+    --warn-edge: #ecd9a8;
+    --good:      #1c6b42;
+    --good-bg:   #eaf3ed;
+    --shadow:    0 1px 2px rgba(25,27,29,.05), 0 10px 30px rgba(25,27,29,.06);
   }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:     #131416;
+      --panel:     #1b1d20;
+      --panel-2:   #232629;
+      --ink:       #e9e9e8;
+      --ink-dim:   #a1a6aa;
+      --ink-faint: #787d82;
+      --rule:      #2c2f33;
+      --rule-firm: #3e4247;
+      --accent:    #ff5a62;
+      --accent-ink:#1a0406;
+      --warn:      #e0ab4d;
+      --warn-bg:   #241e11;
+      --warn-edge: #4a3d20;
+      --good:      #5ac98d;
+      --good-bg:   #10201a;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.32);
+    }
+  }
+
   * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; animation: none !important; }
+  }
+
   body {
     margin: 0;
-    padding: 0 20px 80px;
-    background: #fff;
+    background: var(--paper);
     color: var(--ink);
-    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font: 400 16.5px/1.62 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  main { max-width: 760px; margin: 0 auto; }
-  header { border-bottom: 3px solid var(--badger); padding: 36px 0 20px; margin-bottom: 32px; }
-  .eyebrow { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--badger); font-weight: 700; margin: 0; }
-  h1 { font-size: 30px; margin: 8px 0 6px; letter-spacing: -.01em; }
-  header p { margin: 0; color: var(--dim); }
-  h2 { font-size: 20px; margin: 40px 0 12px; padding-top: 8px; }
-  h3 { font-size: 16px; margin: 24px 0 6px; }
-  p, li { margin: 8px 0; }
-  code { background: var(--panel); padding: 1px 6px; border-radius: 3px; font-size: 14px; font-family: ui-monospace, Consolas, monospace; }
-  kbd { background: #fff; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
-  a { color: var(--badger); }
 
-  .download { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px; margin: 28px 0; text-align: center; }
+  .wrap { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  .col  { max-width: 700px; }
+
+  h1, h2, h3 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-weight: 600;
+    letter-spacing: -.012em;
+    text-wrap: balance;
+  }
+
+  p, li { margin: 0 0 14px; }
+  a { color: var(--accent); text-underline-offset: .18em; }
+  strong { font-weight: 650; }
+
+  code, kbd, .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  code {
+    font-size: .86em;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: .08em .38em;
+    overflow-wrap: anywhere;
+  }
+  kbd {
+    font-size: .8em;
+    background: var(--paper);
+    border: 1px solid var(--rule-firm);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: .1em .42em;
+    white-space: nowrap;
+  }
+
+  :where(a, button, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  /* ---------------- top bar ---------------- */
+  .bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: saturate(1.6) blur(10px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .bar .wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px 26px;
+    min-height: 56px;
+    flex-wrap: wrap;
+  }
+  .bar .mark {
+    font: 600 14px/1 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: .01em;
+    margin-right: auto;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .bar .mark span[aria-hidden] {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent);
+    flex: none;
+  }
+  .bar nav {
+    display: flex;
+    gap: 6px 22px;
+    flex-wrap: wrap;
+    font-size: 14.5px;
+  }
+  .bar nav a { color: var(--ink-dim); text-decoration: none; }
+  .bar nav a:hover { color: var(--ink); text-decoration: underline; }
+
+  /* ---------------- hero ---------------- */
+  header.hero { padding: 64px 0 8px; }
+  .eyebrow {
+    font: 600 11.5px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 16px;
+  }
+  header.hero h1 {
+    font-size: clamp(38px, 6vw, 60px);
+    line-height: 1.04;
+    margin: 0 0 18px;
+  }
+  header.hero .standfirst {
+    font-size: 19.5px;
+    line-height: 1.55;
+    color: var(--ink-dim);
+    max-width: 620px;
+    margin: 0;
+  }
+
+  /* ---------------- download ---------------- */
+  .download {
+    margin: 40px 0 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+    gap: 18px;
+    max-width: 720px;
+  }
+  .pick {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 22px 22px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .pick.primary {
+    background: var(--paper);
+    border-color: var(--rule-firm);
+    box-shadow: var(--shadow);
+  }
+  .pick .os {
+    font: 600 11.5px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .pick.primary .os { color: var(--accent); }
+  .pick .os .tag {
+    font-size: 10px;
+    letter-spacing: .1em;
+    border: 1px solid currentColor;
+    border-radius: 20px;
+    padding: 1px 7px;
+  }
   .btn {
-    display: inline-block; background: var(--badger); color: #fff; text-decoration: none;
-    font-size: 18px; font-weight: 700; padding: 15px 38px; border-radius: 8px;
+    display: block;
+    text-align: center;
+    background: var(--panel-2);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 16.5px;
+    font-weight: 650;
+    padding: 13px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--rule-firm);
+    transition: background .15s ease, transform .06s ease;
   }
-  .btn:hover { background: #a80409; }
-  .download .meta { color: var(--dim); font-size: 14px; margin: 12px 0 0; }
+  .btn:hover { background: var(--rule); }
+  .btn:active { transform: translateY(1px); }
+  .pick.primary .btn {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: transparent;
+  }
+  .pick.primary .btn:hover { filter: brightness(1.08); }
+  .pick .meta {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink-faint);
+  }
+  .note.skew { max-width: 720px; margin: 20px 0 0; }
+  .pick.unpublished { opacity: .55; }
+  .pick.unpublished .btn { cursor: not-allowed; }
+  .pick.unpublished .rel { color: var(--warn); font-weight: 650; }
+  .relnote {
+    max-width: 720px;
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--ink-faint);
+  }
 
-  /* Two platforms, side by side on a desktop and stacked on a narrow window.
-     Each keeps its own size line so nobody has to guess which is theirs. */
-  .picks { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; }
-  .pick { flex: 1 1 240px; max-width: 320px; }
-  .pick .meta { margin-top: 10px; }
+  /* ---------------- mode cards ---------------- */
+  .modes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 26px 0 0;
+  }
+  .mode {
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 20px 20px 18px;
+    background: var(--panel);
+  }
+  .mode h3 { font-size: 18px; margin: 0 0 4px; }
+  .mode .where {
+    font: 600 11px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+  .mode p:last-child { margin: 0; font-size: 15px; color: var(--ink-dim); }
 
+  /* ---------------- sections ---------------- */
+  section { padding-top: 76px; }
+  section > .wrap > h2, h2 {
+    font-size: 30px;
+    line-height: 1.18;
+    margin: 0 0 8px;
+  }
+  .section-lede {
+    font-size: 18px;
+    color: var(--ink-dim);
+    max-width: 640px;
+    margin: 0 0 28px;
+  }
+  h3 { font-size: 19px; margin: 30px 0 8px; }
+  .rolelabel {
+    font: 600 11.5px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 34px 0 4px;
+  }
+
+  /* ---------------- numbered steps ---------------- */
   ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
-  ol.steps > li { counter-increment: s; position: relative; padding: 0 0 4px 46px; margin: 0 0 26px; }
-  ol.steps > li::before {
-    content: counter(s); position: absolute; left: 0; top: 0;
-    width: 30px; height: 30px; border-radius: 50%; background: var(--badger); color: #fff;
-    font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center;
+  ol.steps > li {
+    counter-increment: s;
+    position: relative;
+    padding: 0 0 4px 56px;
+    margin: 0 0 40px;
   }
-  ol.steps h3 { margin-top: 2px; }
+  ol.steps > li::before {
+    content: counter(s);
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 650 15px/34px ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+    text-align: center;
+  }
+  ol.steps > li > h3:first-child { margin-top: 0; font-size: 21px; }
+  ol.steps ol { padding-left: 1.25em; margin: 10px 0 0; }
+  ol.steps ol li { margin-bottom: 7px; }
+  li::marker { color: var(--ink-faint); }
 
-  .note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
-  .note strong { display: block; margin-bottom: 2px; }
+  /* ---------------- callouts ---------------- */
+  .note, .fine {
+    border-radius: 10px;
+    padding: 15px 17px;
+    margin: 16px 0;
+    font-size: 15.5px;
+    line-height: 1.55;
+  }
+  .note {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-edge);
+  }
+  .note > strong:first-child { display: block; color: var(--warn); margin-bottom: 3px; }
+  .note p:last-child, .fine p:last-child { margin-bottom: 0; }
+  .fine {
+    background: var(--good-bg);
+    border: 1px solid color-mix(in srgb, var(--good) 28%, transparent);
+  }
+  .fine > strong:first-child { display: block; color: var(--good); margin-bottom: 3px; }
+  .aside {
+    font-size: 14.5px;
+    color: var(--ink-faint);
+    margin: 14px 0 0;
+  }
 
-  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 15px; }
-  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-  th { background: var(--panel); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+  /* ---------------- browser accordions ---------------- */
+  details.browser {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    margin: 10px 0;
+    background: var(--panel);
+    overflow: hidden;
+  }
+  details.browser + details.browser { margin-top: 8px; }
+  details.browser > summary {
+    cursor: pointer;
+    padding: 13px 17px;
+    font-weight: 600;
+    font-size: 15.5px;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  details.browser > summary::-webkit-details-marker { display: none; }
+  details.browser > summary::before {
+    content: "";
+    width: 0; height: 0;
+    border: 5px solid transparent;
+    border-left-color: var(--accent);
+    transition: transform .18s ease;
+    flex: none;
+  }
+  details.browser[open] > summary::before { transform: rotate(90deg) translateX(-1px); }
+  details.browser > summary:hover { background: var(--panel-2); }
+  details.browser > .body {
+    padding: 4px 17px 16px 34px;
+    border-top: 1px solid var(--rule);
+    font-size: 15.5px;
+  }
+  details.browser > .body > p:first-child { margin-top: 12px; }
 
-  .modes { border: 1px solid var(--line); border-radius: 8px; padding: 4px 18px; margin: 14px 0; }
-  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px; }
+  /* ---------------- copy-a-path ---------------- */
+  .path {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 3px 4px 3px 9px;
+    font-size: 14px;
+    max-width: 100%;
+  }
+  .path code { background: none; border: 0; padding: 0; }
+  .path button {
+    font: 600 11.5px/1 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: .04em;
+    color: var(--ink-dim);
+    background: var(--paper);
+    border: 1px solid var(--rule-firm);
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    flex: none;
+  }
+  .path button:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+  /* ---------------- symptom list ---------------- */
+  .symptoms { display: grid; gap: 2px; margin: 4px 0 0; }
+  .symptom {
+    display: grid;
+    grid-template-columns: minmax(200px, 300px) 1fr;
+    gap: 4px 28px;
+    padding: 17px 0;
+    border-top: 1px solid var(--rule);
+    align-items: start;
+  }
+  .symptom:last-child { border-bottom: 1px solid var(--rule); }
+  .symptom dt { font-weight: 650; }
+  .symptom dd { margin: 0; color: var(--ink-dim); }
+  @media (max-width: 660px) {
+    .symptom { grid-template-columns: 1fr; gap: 6px; }
+  }
+
+  footer {
+    margin-top: 96px;
+    border-top: 2px solid var(--accent);
+  }
+  footer .wrap { padding-top: 26px; padding-bottom: 72px; }
+  footer p { font-size: 15px; color: var(--ink-dim); }
+  footer .who { font-size: 14px; color: var(--ink-faint); }
+
+  @media (max-width: 560px) {
+    header.hero { padding-top: 44px; }
+    section { padding-top: 58px; }
+    ol.steps > li { padding-left: 46px; }
+    ol.steps > li::before { width: 30px; height: 30px; line-height: 30px; font-size: 14px; }
+  }
 </style>
 </head>
-<body>
-<main>
+<body data-documents="1.0.0">
 
-<header>
-  <p class="eyebrow">Niedenthal Emotions Lab · UW–Madison</p>
-  <h1>Lab Suite</h1>
-  <p>The recording rooms, the rating stations, and the session board — one app, one install.</p>
-</header>
-
-<div class="download">
-  <div class="picks">
-    <div class="pick">
-      <a class="btn" href="/NiedenthalLabSuite-Setup.exe" download>
-        Download for Windows
-      </a>
-      <p class="meta">Version 0.1.0 · 83 MB · Windows 10 or 11</p>
-    </div>
-    <div class="pick">
-      <a class="btn" href="/NiedenthalLabSuite.dmg" download>
-        Download for Mac
-      </a>
-      <p class="meta">Version 0.1.0 · 159 MB · macOS 11 or newer<br>Intel and Apple Silicon</p>
-    </div>
+<div class="bar">
+  <div class="wrap">
+    <a class="mark" href="#top"><span aria-hidden></span>Lab Suite</a>
+    <nav aria-label="Sections">
+      <a href="#download">Download</a>
+      <a href="#setup">Set it up</a>
+      <a href="#session">Run a session</a>
+      <a href="#wrong">Something looks wrong</a>
+    </nav>
   </div>
 </div>
 
-<p>
-  Install the same app on every lab computer. Each time you open it, you choose
-  what that computer is doing right now — nothing is locked to one job.
-</p>
+<main id="top">
 
-<div class="modes">
-  <h3>Recording room</h3>
-  <p>Records the conversation. For the room computers with the webcam.</p>
-  <h3>Rating station</h3>
-  <p>Runs the PPS study a participant sits down to. It finds their conversation video by itself.</p>
-  <h3>Control Center</h3>
-  <p>The live session board — who is present, how far along they are, which recordings are in.</p>
-</div>
-
-<h2>Setting it up</h2>
-
-<ol class="steps">
-
-  <li>
-    <h3>Install it</h3>
-    <p>
-      <strong>Windows:</strong> download and double-click it. Accept the
-      defaults; it takes about a minute.
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Niedenthal Emotions Lab · UW–Madison</p>
+    <h1>One app for every lab computer</h1>
+    <p class="standfirst">
+      The recording rooms, the rating stations, and the session board. Install
+      it once; each time you open it, you choose what that computer is doing
+      right now.
     </p>
-    <div class="note">
-      <strong>Windows will show a blue “Windows protected your PC” box.</strong>
-      This is expected — the app isn’t signed with a paid certificate. Click
-      <strong>More info</strong>, then <strong>Run anyway</strong>.
+
+    <div class="download" id="download">
+      <div class="pick" data-os="win" data-asset="NiedenthalLabSuite-Setup.exe">
+        <p class="os">Windows <span class="tag" hidden>Your computer</span></p>
+        <a class="btn" href="/NiedenthalLabSuite-Setup.exe" download>Download for Windows</a>
+        <p class="meta"><span class="rel">Version 1.0.0 · 83 MB</span> · Windows 10 or 11</p>
+      </div>
+      <div class="pick" data-os="mac" data-asset="NiedenthalLabSuite.dmg">
+        <p class="os">macOS <span class="tag" hidden>Your computer</span></p>
+        <a class="btn" href="/NiedenthalLabSuite.dmg" download>Download for Mac</a>
+        <p class="meta"><span class="rel">Version 1.0.0 · 159 MB</span> · macOS 11 or newer<br />Intel and Apple Silicon</p>
+      </div>
     </div>
-    <p>
-      <strong>Mac:</strong> open the downloaded <code>.dmg</code> and drag
-      <strong>Niedenthal Lab Suite</strong> into <strong>Applications</strong>.
-      Then <strong>right-click the app and choose Open</strong> the first time —
-      not a double-click.
+    <p class="relnote">
+      Same installer for every job — recording room, rating station, control
+      screen. Nothing is locked to one computer.
     </p>
-    <div class="note">
-      <strong>macOS will say the app “cannot be opened because Apple cannot
-      check it for malicious software.”</strong>
-      Expected, for the same reason: the lab has no paid Apple developer
-      certificate. Right-click the app, choose <strong>Open</strong>, then
-      <strong>Open</strong> again in the dialog. If you only get a
-      <strong>Cancel</strong> button, go to
-      <strong>System Settings → Privacy &amp; Security</strong>, scroll down,
-      and click <strong>Open Anyway</strong>. You only do this once.
+
+    <!-- Shown only while the released installer is older than the version this
+         page describes. It clears itself the moment the newer one is uploaded,
+         so nobody has to remember to come back and delete it. -->
+    <div class="note skew" id="skew" hidden>
+      <strong>Heads up: this page is ahead of the download</strong>
+      <p>
+        The steps below describe <strong>version <span id="skew-doc"></span></strong>,
+        which is built and tested but not published yet. The button above gives
+        you <strong>version <span id="skew-rel"></span></strong>, which still asks
+        for a shared secret and does not have the session board. Ask Alex before
+        setting up a new machine.
+      </p>
     </div>
-    <div class="note">
-      <strong>Mac recording rooms: say yes to Camera and Microphone.</strong>
-      macOS asks the first time the app records. If you say no by accident,
-      turn it back on in <strong>System Settings → Privacy &amp; Security →
-      Camera</strong> — the app cannot ask twice.
+
+    <div class="modes">
+      <div class="mode">
+        <h3>Recording room</h3>
+        <p class="where">Room 386</p>
+        <p>Records the conversation. For the room computers with the webcam.</p>
+      </div>
+      <div class="mode">
+        <h3>Rating station</h3>
+        <p class="where">Room 385</p>
+        <p>Runs the PPS study a participant sits down to. It finds their conversation video by itself.</p>
+      </div>
+      <div class="mode">
+        <h3>Control Center</h3>
+        <p class="where">Any RA machine</p>
+        <p>The live session board — who is present, how far along they are, which recordings are in.</p>
+      </div>
     </div>
-  </li>
+  </div>
+</header>
 
-  <li>
-    <h3>Paste the shared secret — once per computer</h3>
-    <p>
-      Open <strong>Niedenthal Lab Suite</strong> from the Start menu. It opens
-      on Settings the first time. There is exactly one box to fill in: the
-      lab’s <strong>shared secret</strong>. Paste it and click
-      <strong>Save &amp; test connection</strong>, which answers in plain words.
+<!-- ==================== SET IT UP ==================== -->
+<section id="setup">
+  <div class="wrap"><div class="col">
+    <h2>Setting it up</h2>
+    <p class="section-lede">
+      Four steps, about five minutes, once per computer. Only the second one
+      asks you for anything.
     </p>
-    <div class="note">
-      <strong>Ask Alex or Randy for the shared secret.</strong>
-      It is deliberately not written on this page — it is the one thing
-      standing between the internet and participant names, emails and
-      schedules. You type it once per machine and never see it again.
+
+    <ol class="steps">
+
+      <li>
+        <h3>Install it</h3>
+        <p>
+          Two things get in the way, and both are expected: your browser holds
+          the file back because it is a program, and then Windows shows a blue
+          box before it runs. The lab has no paid code-signing certificate,
+          which is the only reason either happens.
+        </p>
+
+        <p><strong>The browser step is worded differently in every browser</strong>, so find yours:</p>
+
+        <details class="browser">
+          <summary>Microsoft Edge</summary>
+          <div class="body">
+            <p>The download bar says <em>“NiedenthalLabSuite-Setup.exe was blocked”</em> or <em>“can’t be downloaded securely”</em>.</p>
+            <ol>
+              <li>Open the downloads list (<kbd>Ctrl</kbd>+<kbd>J</kbd>, or the ↓ arrow by the address bar).</li>
+              <li>Hover the blocked file and click the <strong>⋯</strong> (More actions) button.</li>
+              <li>Choose <strong>Keep</strong>.</li>
+              <li>If a second box says the file may harm your device, click <strong>Show more</strong>, then <strong>Keep anyway</strong>.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="browser">
+          <summary>Google Chrome</summary>
+          <div class="body">
+            <p>Chrome says <em>“NiedenthalLabSuite-Setup.exe is not commonly downloaded”</em> or <em>“may be dangerous”</em>.</p>
+            <ol>
+              <li>Open the downloads list (<kbd>Ctrl</kbd>+<kbd>J</kbd>, or the ↓ arrow by the address bar).</li>
+              <li>Click the <strong>⋯</strong> next to the file, or the warning text itself.</li>
+              <li>Choose <strong>Keep</strong> → <strong>Keep anyway</strong> (older Chrome: <strong>Download insecure file</strong>).</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="browser">
+          <summary>Firefox</summary>
+          <div class="body">
+            <p>The downloads panel shows the file with a warning triangle.</p>
+            <ol>
+              <li>Open the downloads panel (the ↓ arrow, or <kbd>Ctrl</kbd>+<kbd>J</kbd>).</li>
+              <li>Right-click the file and choose <strong>Allow download</strong>.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="browser">
+          <summary>Safari, or any browser not listed</summary>
+          <div class="body">
+            <p>
+              Safari does not block the Mac <code>.dmg</code> — download it and
+              follow the Mac steps below. In any other browser that does block
+              the file, look for <strong>Keep</strong>, <strong>Allow</strong>
+              or <strong>Download anyway</strong> beside it in the downloads
+              list. Every browser has one; only the wording changes.
+            </p>
+          </div>
+        </details>
+
+        <p class="aside">
+          None of this is a virus warning. The browser cannot tell who made an
+          unsigned installer, so it warns about every one of them.
+        </p>
+
+        <div class="note">
+          <strong>Windows: “Windows protected your PC”</strong>
+          The same blue box in every browser. Click <strong>More info</strong>,
+          then <strong>Run anyway</strong>. Accept the installer’s defaults; it
+          takes about a minute.
+        </div>
+
+        <div class="note">
+          <strong>Mac: “Apple cannot check it for malicious software”</strong>
+          Drag the app into <strong>Applications</strong>, then
+          <strong>right-click it and choose Open</strong> the first time — not a
+          double-click — and <strong>Open</strong> again in the dialog. If you
+          only get <strong>Cancel</strong>, go to <strong>System Settings →
+          Privacy &amp; Security</strong>, scroll down, and click
+          <strong>Open Anyway</strong>. Once per machine.
+        </div>
+
+        <div class="note">
+          <strong>Mac recording rooms: say yes to Camera and Microphone</strong>
+          macOS asks the first time the app records. If you say no by accident,
+          turn it back on in <strong>System Settings → Privacy &amp; Security →
+          Camera</strong> — the app cannot ask twice.
+        </div>
+      </li>
+
+      <li>
+        <h3>Point it at the Research Drive</h3>
+        <p>
+          Open <strong>Niedenthal Lab Suite</strong> from the Start menu. There
+          is exactly one thing to set, and it is a folder: the Research Drive as
+          <em>this</em> computer sees it.
+        </p>
+        <p>
+          <span class="path"><code>R:\niedenthal\recordings</code><button type="button" data-copy="R:\niedenthal\recordings">Copy</button></span>
+          — or the full <code>\\research.drive.wisc.edu\niedenthal\…</code> path
+          if the drive is not mapped to a letter.
+          <strong>Browse</strong> finds it, and <strong>Save &amp; test
+          connection</strong> answers in plain words.
+        </p>
+        <p>
+          That folder is what makes the pipeline work across machines: recording
+          rooms write conversations into it, rating stations read them back out.
+          A computer without it still records and still runs the study — but only
+          its own recordings are ever findable, and nothing is backed up.
+        </p>
+        <div class="fine">
+          <strong>There is no password to ask anyone for</strong>
+          The app authenticates itself to the lab’s server — that has not
+          changed — but the credential ships inside the installer instead of
+          being typed. If you used an earlier build and pasted a “shared
+          secret”, you can forget it. It still works, and nothing will ask for
+          it again.
+        </div>
+      </li>
+
+      <li>
+        <h3>Press “Check everything”</h3>
+        <p>
+          On the home screen. It checks the server, the recordings database, the
+          Research Drive folder (including whether it is actually
+          <em>writable</em>), the video encoder, the camera, the microphone, and
+          anything still waiting to upload — and names whichever one is wrong.
+        </p>
+        <p>
+          <strong>Do this before every session.</strong> Fifteen seconds, and
+          much cheaper than finding out halfway through one.
+        </p>
+      </li>
+
+      <li>
+        <h3>Pick what the computer is doing</h3>
+        <p>
+          Click one of the three cards, or press <kbd>1</kbd>, <kbd>2</kbd>,
+          <kbd>3</kbd>. <kbd>Enter</kbd> reopens whatever it did last time.
+        </p>
+        <div class="fine">
+          <strong>You can change your mind without restarting</strong>
+          Every mode has a <strong>← Modes</strong> button, closing a mode
+          window lands you back on the chooser, and
+          <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> opens it
+          from anywhere. If a mode is already running, picking a different card
+          asks it to save and hand the computer over.
+        </div>
+      </li>
+
+    </ol>
+  </div></div>
+</section>
+
+<!-- ==================== RUN A SESSION ==================== -->
+<section id="session">
+  <div class="wrap"><div class="col">
+    <h2>Running a session</h2>
+    <p class="section-lede">
+      In the order the day happens.
+    </p>
+
+    <p class="rolelabel">Before anyone arrives</p>
+    <h3>Fill in the session board</h3>
+    <p>
+      Whoever hands out the nametags opens <strong>Rating station → Researcher
+      dashboard</strong> and enters today’s dyads: a colour for each seat, and
+      the study ID that goes with it. The app suggests both IDs from the dyad
+      number and warns if the left seat comes out even — which is the one thing
+      in the protocol that must not be got wrong.
+    </p>
+    <p>
+      Do it once, on one computer. Both rating stations read the same numbers
+      for the rest of the day, so no study ID is ever typed twice.
+    </p>
+
+    <p class="rolelabel">Room 386</p>
+    <h3>In the recording room</h3>
+    <p>
+      Choose the camera and microphone the first time. <strong>Talk and watch
+      the microphone bar move</strong> — a silent recording looks completely
+      normal until someone needs the audio. Today’s session and this room’s
+      number are filled in for you.
+    </p>
+    <p>
+      Press <strong>RECORD</strong>. The screen immediately shows only “Please
+      wait for the researcher,” so nothing on it distracts the participants.
+      When you come back, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> to
+      bring the controls up, then <strong>STOP</strong>, and wait a few seconds
+      while it finishes the file.
+    </p>
+    <p>
+      Three things should go right: the recording verified, filed to the
+      Research Drive, and registered with Round Robin. That third one is what
+      lets the rating stations find it.
+    </p>
+
+    <p class="rolelabel">Room 385</p>
+    <h3>At a rating station</h3>
+    <p>
+      Set the station up <em>before</em> the participant sits down: tap the
+      colour of their nametag, and the dyad, both study IDs and the seat fill
+      in. Date, time and the data folder are already filled in. Press
+      <strong>Start</strong> and hand the computer over.
+    </p>
+    <p>
+      From there the participant signs in with their email and works through the
+      study. While they answer the first questionnaire, the app is already
+      fetching their conversation video off the Research Drive and checking it
+      arrived intact — so the rating task starts with the video ready. Nobody
+      browses for files.
+    </p>
+    <p>
+      Researcher save-and-quit is still
+      <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>, and that box now also
+      offers <em>save and go back to the mode chooser</em>, for turning a
+      station into a recording room without quitting.
+    </p>
+
+    <p class="rolelabel">Anywhere</p>
+    <h3>At the control machine</h3>
+    <p>
+      Control Center opens the session board directly — no password to type. You
+      see who is present, how far each station has got, anyone who has asked for
+      help, and which recordings are in.
+    </p>
+  </div></div>
+</section>
+
+<!-- ==================== TROUBLESHOOTING ==================== -->
+<section id="wrong">
+  <div class="wrap"><div class="col">
+    <h2>If something looks wrong</h2>
+    <p class="section-lede">
+      Find what you are seeing on the left.
+    </p>
+
+    <dl class="symptoms">
+      <div class="symptom">
+        <dt>A red chip on the home screen</dt>
+        <dd>Press <strong>Check everything</strong> — it names the problem in plain words.</dd>
+      </div>
+      <div class="symptom">
+        <dt>“Research Drive not set”</dt>
+        <dd>Open <strong>⚙ Settings</strong> and pick the folder. Until you do, recordings made on this computer are invisible to every other one.</dd>
+      </div>
+      <div class="symptom">
+        <dt>“Did not accept this copy of the app”</dt>
+        <dd>The installer is out of date, or it was built by hand rather than downloaded from this page. Install the copy from the button at the top.</dd>
+      </div>
+      <div class="symptom">
+        <dt>You want this computer to do a different job</dt>
+        <dd>Press <strong>← Modes</strong>, or just close the mode window. No need to quit and relaunch.</dd>
+      </div>
+      <div class="symptom">
+        <dt>“NOT capturing” while recording</dt>
+        <dd>No frames are reaching the file. Stop, and check the webcam is plugged in and that nothing else (Zoom, Teams, the Camera app) is using it. A laptop’s built-in camera often cannot record at all.</dd>
+      </div>
+      <div class="symptom">
+        <dt>No cameras in the list</dt>
+        <dd>Plug in a USB webcam. Windows hides some built-in cameras from recording software.</dd>
+      </div>
+      <div class="symptom">
+        <dt>“N recordings waiting to be filed”</dt>
+        <dd>Nothing is lost. The network or the drive was unavailable; it retries by itself, and there is a Retry button in the recording screen.</dd>
+      </div>
+      <div class="symptom">
+        <dt>The rating station can’t find the video</dt>
+        <dd>It offers the conversations recorded recently so you can pick one, and the manual file picker is always there. Nothing blocks the session.</dd>
+      </div>
+      <div class="symptom">
+        <dt>“This take was not linked to a Round Robin session”</dt>
+        <dd>The conversation is recorded and safe, but the rating stations will not find it by themselves — so deal with it now rather than later. Press <strong>Record another</strong> and read the Round Robin panel; it says why. If it says a recording is already open for the room, and no other computer is recording that room, press <strong>Take over this room</strong>.</dd>
+      </div>
+      <div class="symptom">
+        <dt>“This dyad already has data on disk”</dt>
+        <dd>Usually a mistyped study ID or the wrong nametag colour. Check the IDs before you continue — starting anyway appends to the same files, and the two participants cannot be separated afterwards.</dd>
+      </div>
+      <div class="symptom">
+        <dt>Lots of “duplicated frames” after a recording</dt>
+        <dd>The room is too dim — the webcam slows itself down in low light. Turn the lights up and the picture gets smoother.</dd>
+      </div>
+    </dl>
+
+    <div class="note" style="margin-top:26px">
+      <strong>Never delay a session over a technical problem</strong>
+      The app is built so that recording always works even when the network or
+      the Research Drive is unavailable — it saves locally and files everything
+      later. Note what happened in the session log and email Randy afterwards.
     </div>
-    <p>
-      Everything else is already set: the app knows where the lab’s server is,
-      and it keeps recordings in a folder it manages itself. (An admin can
-      later point it at the Research Drive under <em>Advanced</em>, which is
-      what lets a rating station on a <em>different</em> computer reach a
-      recording.)
-    </p>
-  </li>
-
-  <li>
-    <h3>Press “Check everything”</h3>
-    <p>
-      On the home screen. It checks the server, the secret, the recordings
-      database, the recordings folder, the video encoder, the camera, the
-      microphone, and anything still waiting to upload — and tells you which
-      one is wrong if any is.
-    </p>
-    <p>
-      <strong>Do this before every session.</strong> It takes about fifteen
-      seconds and it is much cheaper than finding out mid-session.
-    </p>
-  </li>
-
-  <li>
-    <h3>Pick what the computer is doing</h3>
-    <p>
-      Click one of the three cards (or press <kbd>1</kbd>, <kbd>2</kbd>,
-      <kbd>3</kbd>). Close that window when you’re done and you land back on
-      the chooser next time. From inside any mode,
-      <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> brings the
-      home screen back.
-    </p>
-  </li>
-
-</ol>
-
-<h2>Running a session</h2>
-
-<h3>In the recording room</h3>
-<p>
-  Choose the camera and microphone the first time, and a folder to save to.
-  <strong>Talk and watch the microphone bar move</strong> — a silent recording
-  looks completely normal until someone needs the audio. Today’s session and
-  this room’s number are filled in for you.
-</p>
-<p>
-  Press <strong>RECORD</strong>. The screen immediately shows only “Please wait
-  for the researcher,” so nothing on it distracts the participants. When you
-  come back, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> to bring the
-  controls up, then press <strong>STOP</strong> and wait a few seconds while it
-  finishes the file.
-</p>
-<p>
-  You should see three things go right: the recording verified, it was filed
-  to the recordings folder, and it was registered with Round Robin. That third one
-  is what lets the rating stations find it.
-</p>
-
-<h3>At a rating station</h3>
-<p>
-  The participant signs in with their email and works through the study. While
-  they answer the first questionnaire, the app is already fetching their
-  conversation video in the background and checking it arrived intact, so the
-  rating task starts with the video ready. Nobody browses for files.
-</p>
-<p>
-  Researcher save-and-quit is still <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>.
-</p>
-
-<h3>At the control machine</h3>
-<p>
-  Control Center opens the session board directly — no password to type. You
-  see who is present, how far each station has got, anyone who has asked for
-  help, and which recordings are in.
-</p>
-
-<h2>If something looks wrong</h2>
-
-<table>
-  <tr><th>What you see</th><th>What to do</th></tr>
-  <tr>
-    <td>A red chip on the home screen</td>
-    <td>Press <strong>Check everything</strong> — it names the problem in plain words.</td>
-  </tr>
-  <tr>
-    <td>“NOT capturing” while recording</td>
-    <td>No frames are reaching the file. Stop, and check the webcam is plugged in and nothing else (Zoom, Teams, the Camera app) is using it. A laptop’s built-in camera often cannot record at all.</td>
-  </tr>
-  <tr>
-    <td>No cameras in the list</td>
-    <td>Plug in a USB webcam. Windows hides some built-in cameras from recording software.</td>
-  </tr>
-  <tr>
-    <td>“N recordings waiting to be filed”</td>
-    <td>Nothing is lost. The network or the drive was unavailable; it retries automatically, and there is a Retry button in the recording screen.</td>
-  </tr>
-  <tr>
-    <td>The rating station can’t find the video</td>
-    <td>It will offer the conversations recorded recently so you can pick one, and the manual file picker is always available. Nothing blocks the session.</td>
-  </tr>
-  <tr>
-    <td>“This take was not linked to a Round Robin session”</td>
-    <td>The conversation is recorded and safe, but the rating stations will not find it by themselves — so deal with it now rather than later. Press <strong>Record another</strong>, look at the Round Robin panel, and it will say why. If it says a recording is already open for the room, and no other computer is recording that room, press <strong>Take over this room</strong>.</td>
-  </tr>
-  <tr>
-    <td>Lots of “duplicated frames” after a recording</td>
-    <td>The room is too dim — the webcam slows itself down in low light. Turn the lights up and the picture gets smoother.</td>
-  </tr>
-</table>
-
-<div class="note">
-  <strong>Never delay a session over a technical problem.</strong>
-  The app is built so that recording always works even when the network or the
-  Research Drive is unavailable — it saves locally and files everything later.
-  Note what happened in the session log and email Randy afterwards.
-</div>
-
-<h2>A few things worth knowing</h2>
-<ul>
-  <li>Recordings are participant data under <strong>IRB 2020-1657</strong>. They belong on the Research Drive — never a personal folder, never cloud storage.</li>
-  <li>The app records at high quality on purpose: about <strong>1.5 GB per 10-minute conversation</strong>. The study measures facial expression, so detail matters more than disk space. The recording screen tells you how many more sessions the drive has room for.</li>
-  <li>The participant screens are identical to the app the lab used before. Nothing a participant sees or does has changed.</li>
-  <li>The macOS version has <strong>not been run on the lab Mac yet</strong>. It builds, it is signed, and it installs — but nobody has recorded a real session with it. Ask Alex or Randy before using a Mac for anything that counts.</li>
-  <li>A Mac currently records with a <strong>different FFmpeg build (7.1) than Windows (9.0)</strong>. For a rating station that makes no difference. For a <em>recording</em> room it does: the whole point of pinning one encoder is that every machine produces comparable video. Until those match, prefer Windows for recording.</li>
-</ul>
-
-<footer>
-  <p>
-    Questions, or something behaving oddly: Alexander Mueller
-    (<a href="mailto:admueller3@wisc.edu">admueller3@wisc.edu</a>), CC Randy Lee
-    (<a href="mailto:randy.lee@wisc.edu">randy.lee@wisc.edu</a>).
-  </p>
-  <p>
-    Source and release notes:
-    <a href="https://github.com/alexmueller07/niedenthal-research-lab-suite">github.com/alexmueller07/niedenthal-research-lab-suite</a>
-  </p>
-</footer>
+  </div></div>
+</section>
 
 </main>
+
+<footer>
+  <div class="wrap"><div class="col">
+    <p>
+      Questions, or something behaving oddly: <strong>Alexander Mueller</strong>
+      (<a href="mailto:admueller3@wisc.edu">admueller3@wisc.edu</a>), CC Randy
+      Lee (<a href="mailto:randy.lee@wisc.edu">randy.lee@wisc.edu</a>).
+    </p>
+    <p class="who">
+      Source and release notes:
+      <a href="https://github.com/alexmueller07/niedenthal-research-lab-suite">github.com/alexmueller07/niedenthal-research-lab-suite</a>
+    </p>
+  </div></div>
+</footer>
+
+<script>
+  // Emphasise the download the visitor can actually use. Progressive
+  // enhancement only: with JavaScript off, both cards stay equal and both
+  // links work.
+  (function () {
+    var ua = navigator.userAgent || "";
+    var plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+    var mac = /Mac/i.test(plat) || /Mac OS X/i.test(ua);
+    var win = /Win/i.test(plat) || /Windows/i.test(ua);
+    if (!mac && !win) return;                       // Linux, a phone: leave it alone
+    var mine = document.querySelector('.pick[data-os="' + (mac ? "mac" : "win") + '"]');
+    if (!mine) return;
+    mine.classList.add("primary");
+    var tag = mine.querySelector(".tag");
+    if (tag) tag.hidden = false;
+    // Put it first, so the eye lands on the right one before reading a word.
+    mine.parentNode.prepend(mine);
+  })();
+
+  // Read the version and size off the actual GitHub release, so this page
+  // cannot quietly advertise a build that is not there. The buttons already
+  // point at releases/latest via vercel.json; this only relabels them, and
+  // every failure path leaves the text that was typed into the HTML.
+  //
+  // It also catches the case that matters: an installer that has not been
+  // uploaded yet. Better to say so than to hand an RA a 404.
+  // Numeric compare, part by part: "0.1.0" is behind "1.0.0", and "1.0.0" is
+  // not behind itself. Anything unparseable compares as not-behind, so a
+  // surprise tag name never invents a warning.
+  function olderThan(a, b) {
+    var x = String(a).split("."), y = String(b).split(".");
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var p = parseInt(x[i], 10) || 0, q = parseInt(y[i], 10) || 0;
+      if (p !== q) return p < q;
+    }
+    return false;
+  }
+
+  (function () {
+    var API = "https://api.github.com/repos/alexmueller07/niedenthal-research-lab-suite/releases/latest";
+    if (!window.fetch) return;
+    fetch(API, { headers: { Accept: "application/vnd.github+json" } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (rel) {
+        var version = String(rel.tag_name || "").replace(/^v/, "");
+
+        // If the release is behind what these instructions describe, say so
+        // rather than letting an RA follow steps their download cannot do.
+        var documented = document.body.getAttribute("data-documents") || "";
+        if (version && documented && olderThan(version, documented)) {
+          document.getElementById("skew-doc").textContent = documented;
+          document.getElementById("skew-rel").textContent = version;
+          document.getElementById("skew").hidden = false;
+        }
+
+        var assets = rel.assets || [];
+        document.querySelectorAll(".pick[data-asset]").forEach(function (card) {
+          var want = card.getAttribute("data-asset");
+          var found = null;
+          for (var i = 0; i < assets.length; i++) {
+            if (assets[i].name === want) { found = assets[i]; break; }
+          }
+          var line = card.querySelector(".rel");
+          if (!line) return;
+          if (!found) {
+            card.classList.add("unpublished");
+            line.textContent = "Not published yet";
+            var btn = card.querySelector(".btn");
+            if (btn) {
+              btn.setAttribute("aria-disabled", "true");
+              btn.addEventListener("click", function (e) { e.preventDefault(); });
+            }
+            return;
+          }
+          var mb = Math.round(found.size / 1048576);
+          line.textContent = (version ? "Version " + version + " \u00b7 " : "") + mb + " MB";
+        });
+      })
+      .catch(function () { /* keep the typed text */ });
+  })();
+
+  // Copy the Research Drive path rather than retyping backslashes.
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = btn.getAttribute("data-copy");
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = was; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var el = document.createElement("textarea");
+        el.value = text;
+        document.body.appendChild(el);
+        el.select();
+        try { document.execCommand("copy"); done(); } catch (e) {}
+        document.body.removeChild(el);
+      }
+    });
+  });
+</script>
+
 </body>
 </html>

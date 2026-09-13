@@ -8,6 +8,13 @@ name: Build installers
 # scripts/ffmpeg-manifest.json — the thing that keeps every lab machine on one
 # encoder. If upstream rotates the build, this job fails rather than quietly
 # shipping a different one.
+#
+# LAB_SUITE_DEVICE_KEY is compiled into the binary here and is what lets an
+# installed copy authenticate to Round Robin without anyone typing anything
+# (src-tauri/src/machine.rs). It must equal PPS_SHARED_SECRET on the Round
+# Robin deployment. A build without it falls back to a development key that
+# the production server refuses — deliberately, and with a message that says
+# so, rather than silently half-working.
 
 on:
   workflow_dispatch:
@@ -46,6 +53,8 @@ jobs:
         run: npm ci
 
       - name: Build Windows installers
+        env:
+          LAB_SUITE_DEVICE_KEY: ${{ secrets.LAB_SUITE_DEVICE_KEY }}
         run: npm run tauri build
 
       - name: Upload installers
@@ -102,6 +111,7 @@ jobs:
       - name: Build macOS app (universal, ad-hoc signed)
         env:
           APPLE_SIGNING_IDENTITY: "-"
+          LAB_SUITE_DEVICE_KEY: ${{ secrets.LAB_SUITE_DEVICE_KEY }}
         run: npm run tauri build -- --target universal-apple-darwin
 
       - name: Confirm the sidecars are signed and inside the bundle

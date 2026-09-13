@@ -58,7 +58,7 @@ export default function RecordScreen(props: Props) {
         <div className="flex items-center gap-3">
           <span
             className={`block h-3.5 w-3.5 rounded-full ${
-              capturing ? "rec-pulse bg-[--color-record]" : "bg-[--color-warn]"
+              capturing ? "rec-pulse bg-(--color-record)" : "bg-(--color-warn)"
             }`}
             aria-hidden
           />
@@ -78,7 +78,7 @@ export default function RecordScreen(props: Props) {
         <div className="flex flex-col items-center gap-2">
           <StopButton onClick={props.onStop} busy={props.stopping} />
           {remainingMs !== null && (
-            <p className="text-xs text-[--color-ink-dim]">
+            <p className="text-xs text-(--color-ink-dim)">
               Stops itself in {humanDuration(remainingMs)}
             </p>
           )}
@@ -86,7 +86,7 @@ export default function RecordScreen(props: Props) {
       </div>
 
       {noSignalAlarm && (
-        <p className="rounded-lg bg-[--color-bad] px-4 py-3 text-sm font-semibold leading-relaxed text-white">
+        <p className="rounded-lg bg-(--color-bad) px-4 py-3 text-sm font-semibold leading-relaxed text-white">
           No frames have reached the recording. The camera is not delivering —
           this take is empty so far. Press Stop, then check that the webcam is
           plugged in and nothing else (Zoom, Teams, the Camera app) is using
@@ -101,7 +101,7 @@ export default function RecordScreen(props: Props) {
           active
           overlay={
             <div className="absolute left-3 top-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5">
-              <span className="rec-pulse block h-2.5 w-2.5 rounded-full bg-[--color-record]" />
+              <span className="rec-pulse block h-2.5 w-2.5 rounded-full bg-(--color-record)" />
               <span className="font-mono text-sm font-semibold tabular-nums text-white">
                 {humanDuration(props.elapsedMs)}
               </span>
@@ -111,7 +111,7 @@ export default function RecordScreen(props: Props) {
       ) : (
         !noSignalAlarm && (
           <div className="card flex aspect-video w-full items-center justify-center p-6">
-            <p className="text-sm text-[--color-ink-dim]">
+            <p className="text-sm text-(--color-ink-dim)">
               Waiting for the first frame from the camera…
             </p>
           </div>
@@ -124,14 +124,14 @@ export default function RecordScreen(props: Props) {
 
       {/* ---- put the cover back before leaving the room ---- */}
       <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
-        <p className="text-sm text-[--color-ink-dim]">
+        <p className="text-sm text-(--color-ink-dim)">
           Leaving the room with the take running? Put the participant screen
           back up.
         </p>
         <button
           type="button"
           onClick={props.onHide}
-          className="rounded-lg border border-[--color-panel-edge] px-4 py-2 text-sm hover:border-[--color-ink-faint]"
+          className="rounded-lg border border-(--color-panel-edge) px-4 py-2 text-sm hover:border-(--color-ink-faint)"
         >
           Hide the screen again
         </button>
@@ -172,7 +172,7 @@ export default function RecordScreen(props: Props) {
       {/* Drops are a data-quality event, not a log line. Surfaced while there
           is still time to do something about it. */}
       {dropped > 0 && (
-        <p className="rounded-lg bg-[--color-bad]/10 px-3 py-2.5 text-sm leading-relaxed text-[--color-bad]">
+        <p className="rounded-lg bg-(--color-bad)/10 px-3 py-2.5 text-sm leading-relaxed text-(--color-bad)">
           <strong>{dropped.toLocaleString()} frames dropped.</strong> That material is gone
           from the recording. If this keeps climbing, note it in the session log.
         </p>
@@ -183,7 +183,7 @@ export default function RecordScreen(props: Props) {
           frame time in it is wrong, which is exactly what this app exists to
           prevent. */}
       {encoderStruggling && (
-        <p className="rounded-lg bg-[--color-bad] px-4 py-3 text-sm font-semibold leading-relaxed text-white">
+        <p className="rounded-lg bg-(--color-bad) px-4 py-3 text-sm font-semibold leading-relaxed text-white">
           This machine is encoding at {speed.toFixed(2)}× real time — slower than the
           conversation is happening. If it stays here, the video will come out about{" "}
           {(1 / Math.max(speed, 0.05)).toFixed(1)}× too fast and its timing will be
@@ -197,7 +197,7 @@ export default function RecordScreen(props: Props) {
           <div className="field-label">FFmpeg messages</div>
           <ul className="max-h-40 space-y-1 overflow-y-auto">
             {props.warnings.slice(-8).map((w, i) => (
-              <li key={i} className="font-mono text-[11px] leading-relaxed text-[--color-warn]">
+              <li key={i} className="font-mono text-[11px] leading-relaxed text-(--color-warn)">
                 {w}
               </li>
             ))}
@@ -207,8 +207,8 @@ export default function RecordScreen(props: Props) {
 
       <section className="card p-4">
         <div className="field-label">Writing to</div>
-        <p className="break-all font-mono text-xs text-[--color-ink-dim]">{props.outputPath}</p>
-        <p className="mt-2 text-xs text-[--color-ink-faint]">
+        <p className="break-all font-mono text-xs text-(--color-ink-dim)">{props.outputPath}</p>
+        <p className="mt-2 text-xs text-(--color-ink-faint)">
           {props.settings.width} × {props.settings.height} · {props.settings.fps} fps ·
           constant frame rate
           {props.settings.inputFormat ? ` · ${props.settings.inputFormat} input` : ""}

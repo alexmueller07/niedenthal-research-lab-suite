@@ -187,8 +187,11 @@ export interface PublicSettings {
   roomIndex: number | null;
   roundRobinUrl: string | null;
   researchDriveRoot: string | null;
-  /** Whether a shared secret exists. The secret itself never leaves Rust. */
-  roundRobinSecretConfigured: boolean;
+  /**
+   * False when the folder above is this computer's own rather than the lab's
+   * share — recordings still save, but no other machine can reach them.
+   */
+  driveIsShared: boolean;
 }
 
 export interface SettingsUpdate {
@@ -198,8 +201,6 @@ export interface SettingsUpdate {
   discreet?: boolean;
   roomIndex?: number;
   roundRobinUrl?: string;
-  /** Empty string clears it; omitting the field leaves it untouched. */
-  roundRobinSecret?: string;
   researchDriveRoot?: string;
 }
 

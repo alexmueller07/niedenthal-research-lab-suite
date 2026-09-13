@@ -117,25 +117,29 @@ around; Randy and Alex dropped that on 2026-08-04.) The flow you'll see:
    Drive** — participant data must not live anywhere else.
 
    The **Dyad ID** matters more than it looks: it decides which of the five clip
-   sets the pair gets. Both machines must have the same Dyad ID typed in, or the
-   two partners will rate different videos.
+   sets the pair gets. Both machines must have the same Dyad ID, or the two
+   partners will rate different videos — which is why the dyad now comes off
+   the session board rather than being typed at each station.
 3. **Post-conversation questions** — ten items about the conversation they just
    had, on 0–10 scales. This is the first thing the participant does, before any
    video, on purpose: watching the conversation back changes how they remember
    it.
 4. **Dyad task** — it asks for the conversation video file (`.mp4`/`.mov`), then
    runs the continuous rating blocks automatically. Before each block a screen
-   says whose feelings they're rating and **holds itself open for six seconds**,
-   and a reminder stays in the top-right corner while they watch. However long
+   says whose feelings they're rating and **holds itself open for three
+   seconds**, and a reminder stays in the top-right corner while they watch.
+   Whether a participant starts on their own feelings or their partner's is set
+   by the parity of their study ID — odd (the left seat) starts with their own. However long
    the video is, the writing box and the rating always come at the end.
 5. **Video task** — eight short clips. For each clip: a page where they watch it
    (Continue stays greyed out until the clip has played all the way through),
-   then a page with six sliders — how strongly it evoked each of three feelings,
-   and how confident they are in each answer. They go through all eight clips
-   three times: once for themselves, once for their partner, once for an average
-   UW student — **the second and third time they don't have to watch the clip
-   again** unless you turn that back on (section 3.1). It ends with a page asking
-   who would like each clip: them, their partner, or the average UW student.
+   then a short screen naming a perspective, then three questions on 1–7 scales
+   — "to what extent did you feel {emotion} while watching this video?" — then
+   the other perspective screen and the same three questions about their
+   partner, plus one about how confident they are in those partner ratings.
+   **Which perspective comes first is drawn separately for every clip.** It ends
+   with a page asking which clips they would share with their partner and which
+   they would pick for themselves.
 6. **Questionnaires** — all the questionnaire pages. The question header stays
    pinned while the page scrolls and the Continue button is always bottom-right.
 
@@ -230,7 +234,7 @@ the build as the fallback used when no stimulus folder is set.
 
 `npm run dev` also serves **http://localhost:1420/preview.html** — a dev-only
 screen picker that jumps straight to the post-conversation questions, the
-perspective screen, any page of the video task (separate or combined), the
+perspective screen, any page of the video task, the
 selection page, or the dashboard, and prints the rows that would go to
 `transitions.csv`.
 Useful for showing a screen to Randy without sitting through a whole session. It
