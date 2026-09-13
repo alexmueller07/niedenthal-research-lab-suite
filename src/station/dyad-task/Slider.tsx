@@ -23,21 +23,23 @@ import { useEffect, useRef, useState } from "react";
 //
 // Layout (Randy, 2026-07-30: "the words on the slider still aren't centered").
 // The track spans the same width as the labels above it, so the anchors sit at
-// the true ends of the track and the midpoint label at the true middle — and
-// since the value is measured against that same track, they also sit at the
-// true 0, 50 and 100 of the recorded scale.
+// the true ends of the track — and since the value is measured against that
+// same track, they also sit at the true 0 and 100 of the recorded scale.
+//
+// The track is bare as of 2026-08-29, at the lab's request: the tick marks at
+// 0/25/50/75/100 and the "Neutral" label at the midpoint are both gone. They
+// were landmarks on a scale that is meant to be judged continuously, and a
+// participant who aims for a mark is answering a different question than the
+// one being asked. The ends stay labelled because the scale still needs a
+// direction.
 //
 // The pointer is hidden while this runs (`cursor-none`), so the handle is the
-// participant's only feedback: it is drawn large, with a centre tick to make
-// "neutral" findable without looking away from the video.
+// participant's only feedback: it is drawn large.
 
 interface SliderProps {
   resetTrigger?: number;
   onSample?: (value: number) => void;
 }
-
-/** Where the tick marks go, as a percentage across the track. */
-const TICKS = [0, 25, 50, 75, 100];
 
 function Slider({ resetTrigger, onSample }: SliderProps) {
   const [sliderPosition, setSliderPosition] = useState(50);
@@ -99,20 +101,10 @@ function Slider({ resetTrigger, onSample }: SliderProps) {
     <div className="w-full">
       <div className="relative mb-5 h-8">
         <span className="absolute left-0 top-0 text-white text-2xl">Very Negative</span>
-        <span className="absolute left-1/2 top-0 -translate-x-1/2 text-gray-400 text-xl">
-          Neutral
-        </span>
         <span className="absolute right-0 top-0 text-white text-2xl">Very Positive</span>
       </div>
 
       <div ref={trackRef} className="relative h-3 w-full rounded-full bg-white cursor-none">
-        {TICKS.map((tick) => (
-          <span
-            key={tick}
-            className="absolute top-1/2 h-5 w-0.5 -translate-x-1/2 -translate-y-1/2 bg-gray-500"
-            style={{ left: `${tick}%` }}
-          />
-        ))}
         <div
           className="absolute top-1/2 h-9 w-6 rounded-full border-2 border-black bg-white cursor-none"
           style={{

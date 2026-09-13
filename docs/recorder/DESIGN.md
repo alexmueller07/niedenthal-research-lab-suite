@@ -71,7 +71,24 @@ A few decisions worth knowing about:
 | Stop by writing `q` to stdin | A kill signal leaves the container unfinalized. Killing is the escalation after a timeout, not the mechanism. |
 | `-progress pipe:1` | Machine-readable `drop_frames` / `dup_frames`. Scraping stderr is brittle across FFmpeg versions. |
 | Preview fed by FFmpeg, not `getUserMedia` | On Windows a DirectShow camera is usually exclusive-access — a webview holding it would stop FFmpeg opening it at all. |
-| `libx264` on both platforms | Hardware encoders differ per GPU vendor, which would defeat cross-machine consistency. |
+| Hardware encoder where one proves itself, `libx264` otherwise | Software x264 cannot hold 1080p30 in real time on the lab laptops (measured: x264 veryfast 0.34x, Intel QSV 0.99x), and falling behind does not drop frames — it produces a file *shorter than the conversation* with every frame time wrong. Consistency loses to that. |
+| The encoder is chosen by a test encode, not by `-encoders` | `h264_qsv`, `h264_nvenc` and `h264_amf` are compiled into the pinned build and are listed on every machine, working driver or not. Each candidate has to encode real frames and exit zero. A candidate that then fails on the actual camera is struck off and the take restarts one rung down the list. |
+
+This is a change from the original design, which specified `libx264` everywhere
+for cross-machine consistency, and it costs something real: **two machines with
+different GPUs no longer produce the same profile hash.** Timing semantics,
+resolution, frame rate and bitrate are unchanged, and the encoder that actually
+ran is recorded in every recording's manifest — but a hash from the Intel laptop
+will not match one from the gaming PC. Randy needs to know that before the lab
+standardises on a comparison that assumes they match.
+
+The reason the policy is worth the cost is what happened on 2026-09-11: the
+selection code tested candidates with `run_tool(..).is_ok()`, which is true
+whenever FFmpeg merely *starts*, so every machine silently chose `h264_qsv`.
+The gaming PC has no Quick Sync, FFmpeg died on `Error creating a MFX session:
+-9` before writing a byte, and the session was lost to a 0-byte file while the
+readiness screen showed "Video encoder — h264_qsv (hardware)" in green. A policy
+nothing verifies is not a policy.
 
 ### Any webcam, tuned for the BRIO
 

@@ -1,4 +1,5 @@
 import PressKeyPrompt from "../components/PressKeyPrompt";
+import { useScrollToTop } from "../utils/scroll";
 
 interface InstructionsProps {
   instructionIndex: number;
@@ -15,6 +16,11 @@ function Instructions({
   groupSize = 3,
   onBack,
 }: InstructionsProps) {
+  // This screen advances in place rather than remounting, so the reset is
+  // keyed on the index — a long instruction followed by a short one would
+  // otherwise open scrolled down.
+  useScrollToTop(instructionIndex);
+
   const getVisibleInstructions = () => {
     const currentGroup = Math.floor(instructionIndex / groupSize);
     const startIndex = currentGroup * groupSize;

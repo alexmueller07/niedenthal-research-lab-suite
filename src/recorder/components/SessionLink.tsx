@@ -35,10 +35,10 @@ export default function SessionLink(props: Props) {
     return (
       <section className="card p-4">
         <h2 className="text-sm font-semibold">Round Robin</h2>
-        <p className="mt-1 text-xs leading-relaxed text-[--color-ink-dim]">
-          Not configured. Recordings save to the folder above and stay on this computer.
-          Add the Round Robin address and shared secret in Settings to file them
-          automatically.
+        <p className="mt-1 text-xs leading-relaxed text-(--color-ink-dim)">
+          No server address is set, so recordings save to the folder above and
+          stay on this computer. Add the Round Robin address in Settings to
+          file them automatically.
         </p>
       </section>
     );
@@ -52,7 +52,7 @@ export default function SessionLink(props: Props) {
           type="button"
           onClick={props.onRefresh}
           disabled={props.loading}
-          className="text-xs text-[--color-ink-dim] underline hover:text-[--color-ink] disabled:opacity-50"
+          className="text-xs text-(--color-ink-dim) underline hover:text-(--color-ink) disabled:opacity-50"
         >
           {props.loading ? "Loading…" : "Refresh"}
         </button>
@@ -99,7 +99,7 @@ export default function SessionLink(props: Props) {
           </select>
 
           {selected.currentRound === 0 && (
-            <p className="mt-2 text-xs leading-relaxed text-[--color-warn]">
+            <p className="mt-2 text-xs leading-relaxed text-(--color-warn)">
               This session has not started a round yet. Generate the rotation in the Control
               Center first, or the recording will not route to anyone.
             </p>
@@ -108,23 +108,23 @@ export default function SessionLink(props: Props) {
       )}
 
       {props.opened && (
-        <div className="mt-3 rounded-md bg-[--color-panel] px-2.5 py-2">
-          <p className="text-xs text-[--color-good]">
+        <div className="mt-3 rounded-md bg-(--color-panel) px-2.5 py-2">
+          <p className="text-xs text-(--color-good)">
             Linked — round {props.opened.round}, room {props.opened.roomIndex}
           </p>
           {props.opened.unassigned && (
-            <p className="mt-1 text-xs leading-relaxed text-[--color-warn]">
+            <p className="mt-1 text-xs leading-relaxed text-(--color-warn)">
               The rotation has nobody in this room for this round, so the recording will not
               route to a rating station. Check the session and room.
             </p>
           )}
-          <p className="mt-1 break-all font-mono text-[10px] text-[--color-ink-faint]">
+          <p className="mt-1 break-all font-mono text-[10px] text-(--color-ink-faint)">
             {props.opened.storageKey}
           </p>
           <button
             type="button"
             onClick={props.onClear}
-            className="mt-1.5 text-xs text-[--color-ink-dim] underline hover:text-[--color-ink]"
+            className="mt-1.5 text-xs text-(--color-ink-dim) underline hover:text-(--color-ink)"
           >
             Unlink
           </button>
@@ -132,14 +132,14 @@ export default function SessionLink(props: Props) {
       )}
 
       {props.error && (
-        <div className="mt-2 rounded-md bg-[--color-warn]/10 px-2.5 py-2">
-          <p className="text-xs leading-relaxed text-[--color-warn]">{props.error}</p>
+        <div className="mt-2 rounded-md bg-(--color-warn)/10 px-2.5 py-2">
+          <p className="text-xs leading-relaxed text-(--color-warn)">{props.error}</p>
           {/* The blanket "it will be filed when the connection comes back"
               that used to sit here was reassuring and, for anything other than
               a network blip, wrong: a room whose row is already open never
               recovers on its own, and the take stays unlinked forever. Say the
               part that is always true, and offer the way out. */}
-          <p className="mt-1 text-xs leading-relaxed text-[--color-ink-dim]">
+          <p className="mt-1 text-xs leading-relaxed text-(--color-ink-dim)">
             Recording is not blocked by this — press Record and the conversation
             is captured either way. Only the automatic hand-off to the rating
             stations needs the link.
@@ -149,7 +149,7 @@ export default function SessionLink(props: Props) {
               type="button"
               onClick={props.onTakeOver}
               disabled={props.disabled}
-              className="mt-2 rounded-md border border-[--color-warn]/40 px-2.5 py-1 text-xs text-[--color-warn] hover:bg-[--color-warn]/10 disabled:opacity-50"
+              className="mt-2 rounded-md border border-(--color-warn)/40 px-2.5 py-1 text-xs text-(--color-warn) hover:bg-(--color-warn)/10 disabled:opacity-50"
             >
               Take over this room
             </button>
@@ -158,15 +158,15 @@ export default function SessionLink(props: Props) {
       )}
 
       {props.pendingCount > 0 && (
-        <div className="mt-3 flex items-center justify-between gap-2 rounded-md bg-[--color-warn]/10 px-2.5 py-2">
-          <span className="text-xs text-[--color-warn]">
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-md bg-(--color-warn)/10 px-2.5 py-2">
+          <span className="text-xs text-(--color-warn)">
             {props.pendingCount} recording{props.pendingCount === 1 ? "" : "s"} waiting to be
             filed
           </span>
           <button
             type="button"
             onClick={props.onFlush}
-            className="shrink-0 text-xs font-semibold text-[--color-warn] underline"
+            className="shrink-0 text-xs font-semibold text-(--color-warn) underline"
           >
             Retry now
           </button>

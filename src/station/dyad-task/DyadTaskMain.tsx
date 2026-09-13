@@ -4,6 +4,7 @@ import type { ConversationPrep, FormData } from "../App";
 import { describeClip } from "../remote/api";
 import type { RemoteClip } from "../remote/api";
 import { csvEscape } from "../utils/csv";
+import { startingTarget } from "../utils/counterbalance";
 import { registerFlush } from "../utils/flushRegistry";
 
 import VideoPlayer from "./VideoPlayer";
@@ -12,7 +13,13 @@ import Instructions from "./Instructions";
 import RatingOverlay from "./RatingOverlay";
 import TransitionScreen from "./TransitionScreen";
 
-const SOFTWARE_VERSION = "2.0.0";
+// Stamped into every data row. Bumped to 3.0.0 on 2026-08-22, when Randy
+// restructured the video task (two perspectives instead of three, an order
+// drawn per clip, 1-7 scales) and the continuous-rating task started
+// honouring the seat/parity counterbalancing the protocol describes. It is
+// the one column that tells an analyst, from the file alone, which version
+// of the study a row came from.
+const SOFTWARE_VERSION = "3.1.0";
 
 const DYAD_BLOCKS = 4;
 
@@ -71,7 +78,20 @@ function DyadTaskMain({
   const [resetTrigger, setResetTrigger] = useState(0);
   const [textInput, setTextInput] = useState("");
   const [numberScale, setNumberScale] = useState<number | undefined>(undefined);
-  const [currentRatingTarget, setCurrentRatingTarget] = useState<"self" | "partner">("self");
+  // Which perspective this participant starts on. Yoked to the seat through
+  // the parity of the study ID, so the two members of a dyad are never rating
+  // the same target over the same seconds — see utils/counterbalance.ts.
+  //
+  // Until 2026-08-22 this was hardcoded to "self" for everybody, which quietly
+  // undid the counterbalancing the protocol describes. Drawn once, on mount:
+  // re-deriving it mid-task would change the perspective under a participant
+  // who is already rating.
+  const [startingRating] = useState(() =>
+    startingTarget(formData.participantId, formData.computer)
+  );
+  const [currentRatingTarget, setCurrentRatingTarget] = useState<"self" | "partner">(
+    startingRating.target
+  );
   const [instructionsDone, setInstructionsDone] = useState(false);
   const [instructionIndex, setInstructionIndex] = useState(0);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
@@ -257,6 +277,8 @@ function DyadTaskMain({
       description,
       trialNumber.current,
       SOFTWARE_VERSION,
+      // Last column on purpose — see FormData.groupId in App.tsx.
+      formData.groupId,
     ]
       .map(csvEscape)
       .join(",");
@@ -551,7 +573,9 @@ function DyadTaskMain({
             ) : !manualMode && prep && prep.status === "copying" ? (
               <>
                 <h1 className="text-white text-2xl mb-4">Preparing the conversation video…</h1>
-                <p className="text-gray-400 mb-2">{describeClip(prep.clip)}</p>
+                <p className="text-gray-400 mb-2">
+                  {prep.clip ? describeClip(prep.clip) : "A file chosen by the researcher"}
+                </p>
                 <p className="text-gray-400 mb-4">
                   Copying from the Research Drive and verifying the recorder&rsquo;s
                   checksum. This can take a minute for a full conversation.

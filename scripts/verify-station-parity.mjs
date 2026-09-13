@@ -1,10 +1,15 @@
-// Enforces the suite's core promise: the participant-facing PPS frontend is
-// byte-identical with the standalone app it was imported from.
+// Change detection for the participant-facing study code.
+//
+// This started as a byte-identity check against the standalone PPS app it was
+// imported from. That promise ended on 2026-08-22, when Randy restructured the
+// post-conversation video task; what the manifest guards now is weaker but
+// still worth having — nobody edits a study screen by accident, or as a
+// side-effect of a refactor, without the diff saying so out loud.
 //
 // Every file under src/station/ — EXCEPT src/station/remote/ (the Round Robin
 // client added 2026-08-13, which is ours to adapt) — is hashed and compared
 // against the committed manifest. CI runs this on every push; a mismatch
-// means someone edited frozen study code, deliberately or not.
+// means someone edited study code, deliberately or not.
 //
 //   node scripts/verify-station-parity.mjs            # verify (CI)
 //   node scripts/verify-station-parity.mjs --update   # regenerate manifest
@@ -36,10 +41,31 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * Hash a study file by its content, with line endings normalised.
+ *
+ * Raw bytes were hashed until 2026-09-12, which made the check depend on the
+ * checking machine's git config: with core.autocrlf=true the working copy is
+ * CRLF, without it LF, and the same unmodified file hashes two different ways.
+ * So the manifest only ever matched on a machine configured like the one that
+ * generated it — this failed in CI while passing locally on the same commit,
+ * and would fail for anyone on a Mac.
+ *
+ * Normalising is the right weakening. What this check guards, since byte
+ * identity with the standalone PPS app ended on 2026-08-22, is that nobody
+ * edits a participant-facing screen by accident or as a side effect of a
+ * refactor. A line ending is not a study change, and a check that cries wolf
+ * over one is a check people learn to regenerate without reading.
+ */
+function hashContent(file) {
+  const text = readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
 function currentManifest() {
   return walk(STATION)
     .map((file) => {
-      const hash = createHash("sha256").update(readFileSync(file)).digest("hex");
+      const hash = hashContent(file);
       const rel = relative(STATION, file).replaceAll("\\", "/");
       return `${hash}  ${rel}`;
     })
@@ -64,7 +90,7 @@ try {
 }
 
 if (committed === manifest) {
-  console.log(`Station parity OK (${manifest.trimEnd().split("\n").length} frozen files).`);
+  console.log(`Station parity OK (${manifest.trimEnd().split("\n").length} study files unchanged).`);
   process.exit(0);
 }
 
@@ -85,8 +111,11 @@ for (const file of want.keys()) {
   if (!have.has(file)) console.error(`DELETED frozen file: src/station/${file}`);
 }
 console.error(
-  "\nThe station frontend is frozen: it must stay byte-identical with the standalone" +
-    "\nPPS app (participant-facing study code). If this change is intentional and" +
-    "\napproved, regenerate with: node scripts/verify-station-parity.mjs --update"
+  "\nThese are participant-facing study screens. A change to one alters what a" +
+    "\nparticipant sees or what gets recorded, so it has to be deliberate and it has" +
+    "\nto be said out loud — that is what this check is for." +
+    "\n\nIf the change is intentional and approved, regenerate the manifest with:" +
+    "\n  node scripts/verify-station-parity.mjs --update" +
+    "\nand describe the study change in the commit and in docs/station/CHANGELOG.md."
 );
 process.exit(1);

@@ -13,8 +13,8 @@
 //
 // Same architecture as lab-recorder's roundrobin.rs, for the same reasons:
 //
-// - The shared secret lives in a Rust-only config file (remote.json) and is
-//   never sent to the webview. The frontend learns only whether one exists.
+// - The device key lives in Rust only and is never sent to the webview. Since
+//   2026-08-22 it is compiled into the build rather than typed (machine.rs).
 // - Round Robin being unreachable degrades to the manual file picker the RA
 //   uses today — it must never block a session.
 // - The cache holds at most one conversation at a time: preparing a new one
@@ -47,7 +47,8 @@ const COPY_CHUNK_BYTES: usize = 1024 * 1024;
 pub struct RemoteSettings {
     /// Base URL of the Round Robin deployment, e.g. https://roundrobin.example.
     pub round_robin_url: Option<String>,
-    /// The PPS shared secret. Never leaves this process.
+    /// A device key typed on this machine before the built-in one existed.
+    /// Never leaves this process.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub round_robin_secret: Option<String>,
     /// Local mount of the Research Drive share that RECORDING_DIR points at on
@@ -61,29 +62,20 @@ pub struct RemoteSettings {
 pub struct RemotePublic {
     pub round_robin_url: Option<String>,
     pub research_drive_root: Option<String>,
-    /// Whether a secret exists — never the secret itself.
-    pub secret_configured: bool,
-}
-
-impl From<&RemoteSettings> for RemotePublic {
-    fn from(s: &RemoteSettings) -> Self {
-        RemotePublic {
-            round_robin_url: s.round_robin_url.clone(),
-            research_drive_root: s.research_drive_root.clone(),
-            secret_configured: s
-                .round_robin_secret
-                .as_ref()
-                .is_some_and(|v| !v.trim().is_empty()),
-        }
-    }
+    /// True when the Research Drive folder was chosen deliberately rather than
+    /// falling back to this computer's own folder. The station shows the
+    /// difference: only a real share lets a *different* computer's recording
+    /// be found.
+    pub drive_is_shared: bool,
+    /// Folders this machine has used before, newest first — the one-click
+    /// chips on the setup screen. See machine::remember_drive_root.
+    pub recent_drive_roots: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RemoteUpdate {
     pub round_robin_url: Option<String>,
-    /// Empty string clears it; omitting the field leaves it untouched.
-    pub round_robin_secret: Option<String>,
     pub research_drive_root: Option<String>,
 }
 
@@ -107,26 +99,30 @@ pub fn load_config(app: &AppHandle) -> RemoteSettings {
 
 #[tauri::command]
 pub fn remote_status(app: AppHandle) -> RemotePublic {
-    RemotePublic::from(&load_config(&app))
+    RemotePublic {
+        round_robin_url: Some(crate::machine::server_url(&app)),
+        research_drive_root: crate::machine::drive_root(&app),
+        drive_is_shared: !crate::machine::drive_is_local_fallback(&app),
+        recent_drive_roots: crate::machine::load(&app).recent_drive_roots,
+    }
 }
 
 #[tauri::command]
 pub fn remote_configure(app: AppHandle, update: RemoteUpdate) -> Result<RemotePublic, String> {
     let machine_update = crate::machine::MachineUpdate {
         round_robin_url: update.round_robin_url,
-        round_robin_secret: update.round_robin_secret,
         research_drive_root: update.research_drive_root,
     };
     let merged = crate::machine::merge_update(&crate::machine::load(&app), machine_update);
     crate::machine::save(&app, &merged)?;
-    Ok(RemotePublic::from(&load_config(&app)))
+    Ok(remote_status(app))
 }
 
 // ---------------------------------------------------------------------------
 // Round Robin API
 // ---------------------------------------------------------------------------
 
-fn credentials(app: &AppHandle) -> Result<(String, String), String> {
+fn credentials(app: &AppHandle) -> (String, String) {
     crate::machine::credentials(app)
 }
 
@@ -236,7 +232,7 @@ pub async fn list_conversation_clips(
     app: AppHandle,
     email: String,
 ) -> Result<ClipsResponse, String> {
-    let (url, secret) = credentials(&app)?;
+    let (url, secret) = credentials(&app);
 
     // First choice: this participant's own conversations, keyed on the email
     // they signed in with.
@@ -337,7 +333,7 @@ pub async fn report_study_progress(
     percent: Option<u32>,
     needs_help: Option<bool>,
 ) -> Result<(), String> {
-    let (url, secret) = credentials(&app)?;
+    let (url, secret) = credentials(&app);
     let mut body = serde_json::json!({ "email": email, "stage": stage });
     if let Some(percent) = percent {
         body["percent"] = serde_json::json!(percent);
@@ -360,12 +356,12 @@ pub async fn report_study_progress(
     Ok(())
 }
 
-/// One-shot health check for the dashboard: proves the URL resolves, the
-/// secret is accepted, and the Research Drive mount is reachable, in words an
-/// RA can read back over the phone.
+/// One-shot health check for the dashboard: proves the URL resolves, this
+/// build's device key is accepted, and the Research Drive mount is reachable,
+/// in words an RA can read back over the phone.
 #[tauri::command]
 pub async fn remote_test(app: AppHandle) -> Result<String, String> {
-    let (url, secret) = credentials(&app)?;
+    let (url, secret) = credentials(&app);
     let response = client()?
         .get(endpoint(&url, "api/pps/sessions"))
         .bearer_auth(&secret)
@@ -516,6 +512,49 @@ pub async fn prepare_conversation_video(
     .map_err(|e| format!("copy task failed: {e}"))?
 }
 
+/// Copies a file the RA browsed to into the same local cache.
+///
+/// The manual escape hatch used to hand the task a path and let the <video>
+/// element stream it — over SMB, if the RA browsed to the share, which is the
+/// normal case. That is exactly what this pipeline exists to avoid: the dyad
+/// task samples the slider against video time every 100 ms, and a network stall
+/// mid-playback puts a hole straight into the measurement. A hand-picked file
+/// now gets the same treatment as a fetched one.
+///
+/// No checksum, because there is no manifest behind a file someone browsed to
+/// and nothing to check it against. `verified` comes back false and the
+/// interface says so rather than implying a guarantee it did not make.
+///
+/// The caller supplies the id (station/setup derives it from the path with
+/// fnv1a) so re-picking the same file reuses the copy instead of moving the
+/// gigabyte again.
+#[tauri::command]
+pub async fn prepare_local_video(
+    app: AppHandle,
+    recording_id: String,
+    path: String,
+) -> Result<PreparedVideo, String> {
+    if !is_safe_id(&recording_id) {
+        return Err("Unusable recording id.".into());
+    }
+    let source = PathBuf::from(&path);
+    if !source.is_file() {
+        return Err(format!("There is no file at {path}."));
+    }
+    let destination = cache_dir(&app)?.join(format!("{recording_id}.mp4"));
+    let request = PrepareRequest {
+        recording_id,
+        storage_key: String::new(),
+        sha256: None,
+    };
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        copy_into_cache(&handle, &source, &destination, request)
+    })
+    .await
+    .map_err(|e| format!("copy task failed: {e}"))?
+}
+
 fn copy_into_cache(
     app: &AppHandle,
     source: &Path,
@@ -639,6 +678,85 @@ fn copy_into_cache(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Confirming the video before the session starts
+// ---------------------------------------------------------------------------
+
+/// Where a Round Robin storage key lands on this computer's Research Drive.
+///
+/// The setup screen needs the path before anything has been copied: it shows
+/// the RA a frame from the recording so a wrong pick is caught while they are
+/// still standing at the machine, and a single frame can be read straight off
+/// the share. Same traversal guard as the copy path, for the same reason — the
+/// key arrives over the network.
+#[tauri::command]
+pub fn resolve_clip_path(app: AppHandle, storage_key: String) -> Result<String, String> {
+    let root = crate::machine::drive_root(&app)
+        .ok_or_else(|| "No Research Drive folder is set on this computer.".to_string())?;
+    Ok(resolve_storage_path(Path::new(&root), &storage_key)?
+        .to_string_lossy()
+        .to_string())
+}
+
+/// One frame from a video file, as JPEG bytes.
+///
+/// This is the RA's "is that the right conversation?" check, and the whole
+/// reason it is affordable is the argument order: `-ss` *before* `-i` makes
+/// FFmpeg seek to the timestamp rather than decode forward to it, so this reads
+/// a few hundred KB off the share instead of the ~1 GB the copy will later
+/// move. Fast enough to run while the RA is still filling in the form, and
+/// cheap enough to re-run every time they change their mind.
+///
+/// Raw bytes rather than base64, like the recorder's preview_frame: the webview
+/// turns them into a blob URL and never decodes anything.
+#[tauri::command]
+pub async fn video_thumbnail(
+    app: AppHandle,
+    path: String,
+    at_seconds: f64,
+) -> Result<tauri::ipc::Response, String> {
+    if !Path::new(&path).is_file() {
+        return Err(format!("There is no file at {path}."));
+    }
+    // Clamped because both ends are real failures rather than edge cases: a
+    // negative seek is an error, and seeking past the end of a short clip
+    // returns no frame at all with a zero exit status.
+    let seek = at_seconds.clamp(0.0, 3600.0);
+    let args: Vec<String> = vec![
+        // Never wait on stdin: with none attached, a prompt (an existing output
+        // file, a stream question) would hang this call forever.
+        "-nostdin".into(),
+        "-ss".into(),
+        format!("{seek:.3}"),
+        "-i".into(),
+        path,
+        "-frames:v".into(),
+        "1".into(),
+        // -2 rather than -1 on the height: MJPEG wants even dimensions, and a
+        // source with an odd aspect ratio would otherwise fail to encode.
+        "-vf".into(),
+        "scale=480:-2".into(),
+        "-f".into(),
+        "image2".into(),
+        "-vcodec".into(),
+        "mjpeg".into(),
+        "-".into(),
+    ];
+
+    let bytes = crate::recorder::ffmpeg::run_tool_bytes(&app, "ffmpeg", args).await?;
+    if bytes.is_empty() {
+        // FFmpeg exits zero having written nothing when the file is truncated
+        // or still being copied, which is exactly the case worth telling the RA
+        // about — it means the recording room has not finished filing it.
+        return Err(
+            "No frame could be read. The recording may still be copying to the Research Drive."
+                .into(),
+        );
+    }
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,16 +815,18 @@ mod tests {
     // implementation.
 
     #[test]
-    fn the_secret_never_reaches_the_frontend() {
-        let settings = RemoteSettings {
+    fn the_public_shape_has_nowhere_to_put_a_device_key() {
+        // Not a formality: the whole reason the key stays in Rust is that a
+        // rendering bug cannot leak a value the wire shape has no field for.
+        let public = RemotePublic {
             round_robin_url: Some("https://rr.example".into()),
-            round_robin_secret: Some("s3cret".into()),
-            research_drive_root: None,
+            research_drive_root: Some("R:/niedenthal/recordings".into()),
+            recent_drive_roots: Vec::new(),
+            drive_is_shared: true,
         };
-        let public = RemotePublic::from(&settings);
-        assert!(public.secret_configured);
         let json = serde_json::to_string(&public).unwrap();
-        assert!(!json.contains("s3cret"), "serialised settings leaked the secret");
+        assert!(!json.contains("secret"), "the public shape grew a secret field");
+        assert!(!json.contains("Key"), "the public shape grew a key field");
     }
 
     #[test]

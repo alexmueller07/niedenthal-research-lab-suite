@@ -41,8 +41,9 @@ pub struct PublicSettings {
     pub room_index: Option<u32>,
     pub round_robin_url: Option<String>,
     pub research_drive_root: Option<String>,
-    /// Whether a secret exists — never the secret itself.
-    pub round_robin_secret_configured: bool,
+    /// True when the Research Drive folder was chosen deliberately rather
+    /// than falling back to this computer's own folder.
+    pub drive_is_shared: bool,
 }
 
 pub fn compose_public(recorder: &AppSettings, machine: &MachineSettings) -> PublicSettings {
@@ -54,8 +55,8 @@ pub fn compose_public(recorder: &AppSettings, machine: &MachineSettings) -> Publ
         room_index: recorder.room_index,
         round_robin_url: machine.round_robin_url.clone(),
         research_drive_root: machine.research_drive_root.clone(),
-        round_robin_secret_configured: machine
-            .round_robin_secret
+        drive_is_shared: machine
+            .research_drive_root
             .as_ref()
             .is_some_and(|v| !v.trim().is_empty()),
     }
@@ -121,16 +122,13 @@ pub struct SettingsUpdate {
     pub discreet: Option<bool>,
     pub room_index: Option<u32>,
     pub round_robin_url: Option<String>,
-    pub round_robin_secret: Option<String>,
     pub research_drive_root: Option<String>,
 }
 
 impl SettingsUpdate {
     /// True when the update touches any machine-wide field.
     pub fn touches_machine(&self) -> bool {
-        self.round_robin_url.is_some()
-            || self.round_robin_secret.is_some()
-            || self.research_drive_root.is_some()
+        self.round_robin_url.is_some() || self.research_drive_root.is_some()
     }
 }
 
@@ -151,6 +149,8 @@ mod tests {
     fn machine_with_secret() -> MachineSettings {
         MachineSettings {
             round_robin_url: Some("https://sc.psych.wisc.edu".into()),
+            // A key typed on this machine before the built-in one existed.
+            // Still read, still never serialised anywhere a webview can see.
             round_robin_secret: Some("s3cret".into()),
             research_drive_root: Some("Z:/round-robin/recordings".into()),
             ..Default::default()
@@ -158,26 +158,26 @@ mod tests {
     }
 
     #[test]
-    fn the_secret_never_reaches_the_frontend() {
+    fn the_device_key_never_reaches_the_frontend() {
         let public = compose_public(&existing(), &machine_with_secret());
-        assert!(public.round_robin_secret_configured);
         let json = serde_json::to_string(&public).unwrap();
-        assert!(!json.contains("s3cret"), "serialised settings leaked the secret");
+        assert!(!json.contains("s3cret"), "serialised settings leaked the device key");
     }
 
     #[test]
-    fn an_absent_secret_reports_as_unconfigured() {
+    fn a_local_folder_does_not_report_as_the_shared_drive() {
         let mut machine = machine_with_secret();
-        machine.round_robin_secret = None;
-        assert!(!compose_public(&existing(), &machine).round_robin_secret_configured);
-        machine.round_robin_secret = Some("   ".into());
-        assert!(!compose_public(&existing(), &machine).round_robin_secret_configured);
+        assert!(compose_public(&existing(), &machine).drive_is_shared);
+        machine.research_drive_root = None;
+        assert!(!compose_public(&existing(), &machine).drive_is_shared);
+        machine.research_drive_root = Some("   ".into());
+        assert!(!compose_public(&existing(), &machine).drive_is_shared);
     }
 
     #[test]
     fn the_public_shape_carries_the_machine_fields() {
         // The recorder frontend's PublicSettings type is unchanged from the
-        // standalone app; the shared trio now arrives from machine.json.
+        // standalone app; the shared fields now arrive from machine.json.
         let public = compose_public(&existing(), &machine_with_secret());
         assert_eq!(public.round_robin_url.as_deref(), Some("https://sc.psych.wisc.edu"));
         assert_eq!(
@@ -195,7 +195,7 @@ mod tests {
         };
         assert!(!plain.touches_machine());
         let shared = SettingsUpdate {
-            round_robin_secret: Some("fresh".into()),
+            research_drive_root: Some("R:/niedenthal/recordings".into()),
             ..Default::default()
         };
         assert!(shared.touches_machine());

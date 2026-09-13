@@ -1,21 +1,24 @@
-// The machine profile: which role this machine plays, and the three shared
-// settings every role consumes — Round Robin URL, shared secret, Research
-// Drive root — entered once in the first-run wizard and stored in one place.
+// The machine profile: which role this machine plays, and the two settings
+// every role consumes — the Round Robin URL and the Research Drive folder.
 //
 // In the standalone apps these lived in two files with two editing surfaces
 // (the recorder's settings.json and the PPS app's remote.json), which meant
-// the same secret typed twice per machine and two ways for them to disagree.
+// the same values typed twice per machine and two ways for them to disagree.
 // Here machine.json is the single store; the recorder settings panel and the
 // PPS dashboard panel both write through to it.
 //
-// The secret follows the pattern proven in the standalone recorder: it lives
-// in the JSON like everything else but is never serialized to any webview —
-// the frontend learns only whether one exists. A secret that only travels
-// inwards cannot be leaked by a rendering bug.
+// Device authentication (2026-08-22): the Round Robin API still requires a
+// bearer token — it serves participant names, emails and schedules, and IRB
+// 2020-1657 does not allow that to sit open on the public internet. What
+// changed is who supplies it. It used to be an RA, pasting a "shared secret"
+// into Settings on every machine; the lab's feedback was, reasonably, that
+// nobody knew what it was. It is now baked into the installer at build time
+// (see device_key) and never appears in any interface. Nothing to paste,
+// nothing to lose, same authentication on the wire.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -46,10 +49,20 @@ pub struct MachineSettings {
     pub version: u32,
     pub role: Option<String>,
     pub round_robin_url: Option<String>,
-    /// Never leaves this process.
+    /// A device key typed by hand on this machine before the built-in one
+    /// existed. Read so an already-configured lab machine keeps working
+    /// across the upgrade; no interface writes it any more, and it never
+    /// leaves this process.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub round_robin_secret: Option<String>,
     pub research_drive_root: Option<String>,
+    /// Research Drive folders this machine has been pointed at before, newest
+    /// first. Kept so setting one is a click rather than a walk through a
+    /// folder tree: an RA re-mapping the share after a reboot, or a machine
+    /// that alternates between the real share and a local test folder, would
+    /// otherwise browse for it every time. Capped — this is a convenience,
+    /// not a history.
+    pub recent_drive_roots: Vec<String>,
     pub configured_at: Option<String>,
     /// Which standalone app's settings seeded this profile, if any.
     pub migrated_from: Option<String>,
@@ -62,31 +75,19 @@ pub struct MachinePublic {
     pub role: Option<String>,
     pub round_robin_url: Option<String>,
     pub research_drive_root: Option<String>,
-    pub secret_configured: bool,
+    /// True when the Research Drive folder was chosen deliberately rather
+    /// than falling back to this computer's own folder.
+    pub drive_is_shared: bool,
+    /// Previously used folders, newest first, for the one-click chips. Never
+    /// includes the one currently in use — it is already on screen.
+    pub recent_drive_roots: Vec<String>,
     pub migrated_from: Option<String>,
-}
-
-impl From<&MachineSettings> for MachinePublic {
-    fn from(s: &MachineSettings) -> Self {
-        MachinePublic {
-            role: s.role.clone(),
-            round_robin_url: s.round_robin_url.clone(),
-            research_drive_root: s.research_drive_root.clone(),
-            secret_configured: s
-                .round_robin_secret
-                .as_ref()
-                .is_some_and(|v| !v.trim().is_empty()),
-            migrated_from: s.migrated_from.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MachineUpdate {
     pub round_robin_url: Option<String>,
-    /// Empty string clears it; omitting the field leaves it untouched.
-    pub round_robin_secret: Option<String>,
     pub research_drive_root: Option<String>,
 }
 
@@ -118,22 +119,133 @@ pub(crate) fn save(app: &AppHandle, settings: &MachineSettings) -> Result<(), St
     std::fs::write(&path, text).map_err(|e| format!("could not write {}: {e}", path.display()))
 }
 
-/// The frontend never receives the secret, so it cannot echo it back; without
-/// this merge, saving any other field would erase it.
+/// An update carries only the fields the caller touched, so every other field
+/// — including the legacy device key, which no interface can see — has to be
+/// carried across rather than defaulted away.
 pub fn merge_update(existing: &MachineSettings, update: MachineUpdate) -> MachineSettings {
+    let research_drive_root = update
+        .research_drive_root
+        .or_else(|| existing.research_drive_root.clone());
     MachineSettings {
         round_robin_url: update
             .round_robin_url
             .or_else(|| existing.round_robin_url.clone()),
-        research_drive_root: update
-            .research_drive_root
-            .or_else(|| existing.research_drive_root.clone()),
-        round_robin_secret: match update.round_robin_secret {
-            Some(s) if s.trim().is_empty() => None,
-            Some(s) => Some(s),
-            None => existing.round_robin_secret.clone(),
-        },
+        recent_drive_roots: remember_drive_root(
+            &existing.recent_drive_roots,
+            existing.research_drive_root.as_deref(),
+            research_drive_root.as_deref(),
+        ),
+        research_drive_root,
         ..existing.clone()
+    }
+}
+
+/// How many previous folders are offered as chips. Four fits on one line next
+/// to the label and is more than any lab machine has ever needed.
+const MAX_RECENT_DRIVE_ROOTS: usize = 4;
+
+/// Research Drive folders that exist on this computer right now.
+///
+/// The share is mounted at the same handful of places on every lab machine, so
+/// a machine that has never been configured can still offer a click instead of
+/// a folder tree. Existence is the whole test — a path that is there is worth
+/// offering, and one that is not is silently skipped.
+///
+/// `async` so it never runs on the UI thread: probing a mapped letter whose
+/// server has gone away can block for seconds, and this is called while an RA
+/// is looking at a settings screen.
+#[tauri::command]
+pub async fn detect_drive_roots(app: AppHandle) -> Vec<String> {
+    let current = load(&app)
+        .research_drive_root
+        .map(|r| r.trim().to_lowercase())
+        .filter(|r| !r.is_empty());
+
+    let mut candidates: Vec<String> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        // A mapped letter is how the lab reaches the share day to day.
+        for letter in b'D'..=b'Z' {
+            let letter = letter as char;
+            candidates.push(format!("{letter}:\\niedenthal\\recordings"));
+            candidates.push(format!("{letter}:\\recordings"));
+        }
+        // And the UNC path, for a machine that never mapped one.
+        candidates.push("\\\\research.drive.wisc.edu\\niedenthal\\recordings".into());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        candidates.push("/Volumes/niedenthal/recordings".into());
+        candidates.push("/Volumes/niedenthal".into());
+    }
+
+    let mut found: Vec<String> = Vec::new();
+    for candidate in candidates {
+        if found.len() >= MAX_RECENT_DRIVE_ROOTS {
+            break;
+        }
+        if Some(candidate.to_lowercase()) == current {
+            continue;
+        }
+        if std::path::Path::new(&candidate).is_dir() {
+            found.push(candidate);
+        }
+    }
+    found
+}
+
+/// Folds the folder being replaced into the recents list.
+///
+/// The one being *set* is deliberately not added: it is about to be displayed
+/// as the current folder, and a chip offering to switch to the folder you are
+/// already using is noise. The one being replaced is what an RA might want
+/// back.
+fn remember_drive_root(
+    existing: &[String],
+    previous: Option<&str>,
+    next: Option<&str>,
+) -> Vec<String> {
+    let mut recents: Vec<String> = existing.to_vec();
+    if let Some(previous) = previous.map(str::trim).filter(|p| !p.is_empty()) {
+        if next.map(str::trim) != Some(previous) {
+            recents.insert(0, previous.to_string());
+        }
+    }
+    // Dedupe case-insensitively, keeping the newest occurrence: Windows paths
+    // differ only by case all the time (r:\ vs R:\) and are the same folder.
+    let mut seen: Vec<String> = Vec::new();
+    recents.retain(|path| {
+        let key = path.to_lowercase();
+        if seen.contains(&key) {
+            false
+        } else {
+            seen.push(key);
+            true
+        }
+    });
+    // And never offer the folder that is currently in use.
+    if let Some(next) = next.map(str::trim).filter(|n| !n.is_empty()) {
+        let key = next.to_lowercase();
+        recents.retain(|path| path.to_lowercase() != key);
+    }
+    recents.truncate(MAX_RECENT_DRIVE_ROOTS);
+    recents
+}
+
+/// The machine profile as a webview sees it: effective values, not raw stored
+/// ones. Both the server address and the recordings folder have working
+/// defaults, and a screen that reads them empty concludes the machine is
+/// unconfigured when it is not.
+pub fn public_view(app: &AppHandle) -> MachinePublic {
+    let stored = load(app);
+    MachinePublic {
+        role: stored.role.clone(),
+        round_robin_url: Some(server_url(app)),
+        research_drive_root: drive_root(app),
+        drive_is_shared: !drive_is_local_fallback(app),
+        recent_drive_roots: stored.recent_drive_roots.clone(),
+        migrated_from: stored.migrated_from,
     }
 }
 
@@ -156,24 +268,63 @@ pub fn server_url(app: &AppHandle) -> String {
         .unwrap_or_else(|| DEFAULT_ROUND_ROBIN_URL.to_string())
 }
 
-/// Base URL plus secret, or a message explaining what is missing. Every
-/// Round Robin call in every mode funnels through this.
-pub fn credentials(app: &AppHandle) -> Result<(String, String), String> {
-    let s = load(app);
-    let url = s
+/// The device key this build authenticates to Round Robin with, compiled in
+/// from `LAB_SUITE_DEVICE_KEY` at build time (the release workflow passes the
+/// repository secret, which holds the same value as the server's
+/// `PPS_SHARED_SECRET`).
+///
+/// Why compiled in rather than typed: the previous design asked an RA to
+/// paste a "shared secret" into Settings on every machine. It authenticated
+/// correctly and nobody understood it, which made it the single most common
+/// reason a fresh install could not see a session. Installers only ever go to
+/// lab staff, so binding the key to the build costs nothing an RA can
+/// mishandle and removes the whole concept from the interface.
+///
+/// A build made without the variable — a local `npm run tauri build`, a fork —
+/// gets the development value, which authenticates against a locally run
+/// server and nothing else. `machine_self_test` names that case in words
+/// rather than reporting a bare 401.
+const BUILT_IN_DEVICE_KEY: &str = match option_env!("LAB_SUITE_DEVICE_KEY") {
+    Some(key) => key,
+    None => DEV_DEVICE_KEY,
+};
+
+/// What a build with no key compiled in uses. Matches the default in the
+/// Round Robin repo's `.env.example`, so a local server and a local build
+/// talk to each other with no setup.
+const DEV_DEVICE_KEY: &str = "dev-local-only";
+
+/// True when this build fell back to the development key. The self-test says
+/// so plainly: against the lab's real server it is the difference between "the
+/// server is down" and "this copy was built on someone's laptop".
+pub fn is_dev_build_key() -> bool {
+    option_env!("LAB_SUITE_DEVICE_KEY").is_none()
+}
+
+/// This machine's Round Robin credentials: the server address and the device
+/// key. Every Round Robin call in every mode funnels through this.
+///
+/// Infallible by design. It used to return an error meaning "no secret was
+/// pasted on this machine", and every caller had to render that sentence; the
+/// key now always exists, so the only failures left are real ones — the
+/// server being down, or refusing the key.
+///
+/// Precedence: a key typed on this machine before the built-in one existed
+/// (so an already-working lab machine keeps working), then a key set in the
+/// environment (an escape hatch for the day the server's key is rotated and
+/// nobody wants to wait for a release), then the built-in one.
+pub fn credentials(app: &AppHandle) -> (String, String) {
+    let stored = load(app);
+    let url = stored
         .round_robin_url
         .filter(|u| !u.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_ROUND_ROBIN_URL.to_string());
-    let secret = s
+    let key = stored
         .round_robin_secret
         .filter(|v| !v.trim().is_empty())
-        .ok_or(
-            "This machine has no shared secret yet. Open Settings (Ctrl+Alt+Shift+L), paste the \
-             lab's shared secret, and press Save & test connection. Ask Alex or Randy for it — \
-             it is the one thing that cannot be filled in automatically, because it is what keeps \
-             participant data private.",
-        )?;
-    Ok((url, secret))
+        .or_else(|| std::env::var("LAB_SUITE_DEVICE_KEY").ok().filter(|v| !v.trim().is_empty()))
+        .unwrap_or_else(|| BUILT_IN_DEVICE_KEY.to_string());
+    (url, key)
 }
 
 /// Where recordings are read and written.
@@ -361,11 +512,7 @@ pub fn migrate_if_fresh(app: &AppHandle) {
 pub async fn control_url(app: &AppHandle) -> String {
     let base = server_url(app).trim_end_matches('/').to_string();
     let fallback = format!("{base}/admin");
-    // Without a secret there is nothing to trade for a token, but the board
-    // is still reachable — the RA just meets the password page.
-    let Ok((_, secret)) = credentials(app) else {
-        return fallback;
-    };
+    let (_, secret) = credentials(app);
 
     let Ok(client) = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
@@ -402,6 +549,14 @@ fn urlencoding_minimal(token: &str) -> String {
     token.replace('%', "%25").replace('+', "%2B")
 }
 
+/// Resolution the readiness screen probes the encoder at.
+///
+/// The lab records every conversation at 1080p (the Lab Quality preset), and a
+/// driver can accept a small frame and refuse a large one — so a probe at any
+/// other size would answer a question nobody asked.
+const PROBE_WIDTH: u32 = 1920;
+const PROBE_HEIGHT: u32 = 1080;
+
 /// One line of the self-test.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -423,100 +578,128 @@ pub struct CheckResult {
 #[tauri::command]
 pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
     let mut out: Vec<CheckResult> = Vec::new();
-    let settings = load(&app);
 
-    // ---- server + secret ----
-    let creds = credentials(&app);
-    match &creds {
-        Err(e) => out.push(CheckResult {
+    // ---- which build is this ----
+    // First, because it explains half the ways the next check can fail. An RA
+    // reading "the server did not accept this copy" needs to know whether they
+    // are holding the lab's installer or something built on a laptop.
+    let has_stored_key = load(&app)
+        .round_robin_secret
+        .is_some_and(|v| !v.trim().is_empty());
+    out.push(CheckResult {
+        label: "This copy of the app".into(),
+        // None renders as a tick with the detail beside it: a local build on a
+        // machine that was set up under the old scheme works fine, and calling
+        // that a failure would teach RAs to ignore a red mark.
+        passed: match (is_dev_build_key(), has_stored_key) {
+            (false, _) => Some(true),
+            (true, true) => None,
+            (true, false) => Some(false),
+        },
+        detail: match (is_dev_build_key(), has_stored_key) {
+            (false, _) => format!(
+                "Version {} from the lab's build — nothing to configure for the server.",
+                env!("CARGO_PKG_VERSION")
+            ),
+            (true, true) =>
+                "Built locally rather than downloaded, but this machine still holds a key from \
+                 an earlier setup, so the server accepts it."
+                    .into(),
+            (true, false) =>
+                "Built locally, so it carries the development key and the lab's server will \
+                 refuse it. Fine against a server running on this machine; install the copy \
+                 from the lab's download page for anything real."
+                    .into(),
+        },
+    });
+
+    // ---- server ----
+    let (url, secret) = credentials(&app);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok();
+    match client {
+        None => out.push(CheckResult {
             label: "Round Robin server".into(),
             passed: Some(false),
-            detail: e.clone(),
+            detail: "Could not create a network client on this machine.".into(),
         }),
-        Ok((url, secret)) => {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(10))
-                .build()
-                .ok();
-            match client {
-                None => out.push(CheckResult {
+        Some(client) => {
+            let sessions_url =
+                format!("{}/api/pps/sessions", url.trim_end_matches('/'));
+            match client.get(&sessions_url).bearer_auth(&secret).send().await {
+                Err(e) => out.push(CheckResult {
                     label: "Round Robin server".into(),
                     passed: Some(false),
-                    detail: "Could not create a network client on this machine.".into(),
+                    detail: format!(
+                        "Cannot reach {url}. Is the server running? ({e})"
+                    ),
                 }),
-                Some(client) => {
-                    let sessions_url =
-                        format!("{}/api/pps/sessions", url.trim_end_matches('/'));
-                    match client.get(&sessions_url).bearer_auth(secret).send().await {
-                        Err(e) => out.push(CheckResult {
-                            label: "Round Robin server".into(),
+                Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
+                    out.push(CheckResult {
+                        label: "Round Robin server".into(),
+                        passed: Some(false),
+                        detail: if is_dev_build_key() {
+                            "The server is up but does not accept this copy of the app. It was built locally, so it carries the development key rather than the lab's. Install the copy from the lab's download page.".into()
+                        } else {
+                            "The server is up but did not accept this copy of the app. Its key may have been rotated — tell Alex, and a new installer fixes it.".to_string()
+                        },
+                    })
+                }
+                Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
+                    out.push(CheckResult {
+                        label: "Round Robin server".into(),
+                        passed: Some(false),
+                        detail: "The address answers but has no API. It is serving a stale build — restart it (START-TEST-SERVER.bat rebuilds cleanly).".into(),
+                    })
+                }
+                Ok(r) if !r.status().is_success() => out.push(CheckResult {
+                    label: "Round Robin server".into(),
+                    passed: Some(false),
+                    detail: format!("The server answered {}.", r.status()),
+                }),
+                Ok(r) => {
+                    #[derive(Deserialize)]
+                    struct W {
+                        sessions: Vec<serde_json::Value>,
+                    }
+                    let n = r.json::<W>().await.map(|w| w.sessions.len()).unwrap_or(0);
+                    out.push(CheckResult {
+                        label: "Round Robin server".into(),
+                        passed: Some(true),
+                        detail: format!(
+                            "Connected, {n} upcoming session(s) on the schedule."
+                        ),
+                    });
+
+                    // ---- database schema ----
+                    // The integrity columns were missing from the live
+                    // database once, and the only symptom was every
+                    // recording silently failing to register.
+                    let probe = format!(
+                        "{}/api/pps/session-clips",
+                        url.trim_end_matches('/')
+                    );
+                    match client.get(&probe).bearer_auth(&secret).send().await {
+                        Ok(r) if r.status().is_success() => out.push(CheckResult {
+                            label: "Recording database".into(),
+                            passed: Some(true),
+                            detail: "The server can read recordings and their checksums.".into(),
+                        }),
+                        Ok(r) => out.push(CheckResult {
+                            label: "Recording database".into(),
                             passed: Some(false),
                             detail: format!(
-                                "Cannot reach {url}. Is the server running? ({e})"
+                                "The server could not read its recordings table ({}). Its database may need `npm run db:setup`.",
+                                r.status()
                             ),
                         }),
-                        Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
-                            out.push(CheckResult {
-                                label: "Round Robin server".into(),
-                                passed: Some(false),
-                                detail: "The server is up but rejected this machine's shared secret. Re-enter it in Settings.".into(),
-                            })
-                        }
-                        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
-                            out.push(CheckResult {
-                                label: "Round Robin server".into(),
-                                passed: Some(false),
-                                detail: "The address answers but has no API. It is serving a stale build — restart it (START-TEST-SERVER.bat rebuilds cleanly).".into(),
-                            })
-                        }
-                        Ok(r) if !r.status().is_success() => out.push(CheckResult {
-                            label: "Round Robin server".into(),
+                        Err(e) => out.push(CheckResult {
+                            label: "Recording database".into(),
                             passed: Some(false),
-                            detail: format!("The server answered {}.", r.status()),
+                            detail: format!("Could not check: {e}"),
                         }),
-                        Ok(r) => {
-                            #[derive(Deserialize)]
-                            struct W {
-                                sessions: Vec<serde_json::Value>,
-                            }
-                            let n = r.json::<W>().await.map(|w| w.sessions.len()).unwrap_or(0);
-                            out.push(CheckResult {
-                                label: "Round Robin server".into(),
-                                passed: Some(true),
-                                detail: format!(
-                                    "Connected, secret accepted, {n} upcoming session(s)."
-                                ),
-                            });
-
-                            // ---- database schema ----
-                            // The integrity columns were missing from the live
-                            // database once, and the only symptom was every
-                            // recording silently failing to register.
-                            let probe = format!(
-                                "{}/api/pps/session-clips",
-                                url.trim_end_matches('/')
-                            );
-                            match client.get(&probe).bearer_auth(secret).send().await {
-                                Ok(r) if r.status().is_success() => out.push(CheckResult {
-                                    label: "Recording database".into(),
-                                    passed: Some(true),
-                                    detail: "The server can read recordings and their checksums.".into(),
-                                }),
-                                Ok(r) => out.push(CheckResult {
-                                    label: "Recording database".into(),
-                                    passed: Some(false),
-                                    detail: format!(
-                                        "The server could not read its recordings table ({}). Its database may need `npm run db:setup`.",
-                                        r.status()
-                                    ),
-                                }),
-                                Err(e) => out.push(CheckResult {
-                                    label: "Recording database".into(),
-                                    passed: Some(false),
-                                    detail: format!("Could not check: {e}"),
-                                }),
-                            }
-                        }
                     }
                 }
             }
@@ -552,13 +735,14 @@ pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
                             passed: Some(true),
                             detail: if local_fallback {
                                 format!(
-                                    "Using this computer's own folder ({root}). Everything works \
-                                     on this machine. Point it at the Research Drive in Settings \
-                                     when you want a rating station on a *different* computer to \
-                                     reach these recordings."
+                                    "NOT the Research Drive — this computer's own folder \
+                                     ({root}). Recording and rating both work on this one \
+                                     machine, but a rating station on a different computer \
+                                     cannot reach these files. Set the Research Drive folder \
+                                     in Settings."
                                 )
                             } else {
-                                format!("{root} is mounted and writable.")
+                                format!("Research Drive at {root} — mounted and writable.")
                             },
                         });
                     }
@@ -573,15 +757,35 @@ pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
     }
 
     // ---- encoder ----
-    let encoder = crate::recorder::ffmpeg::best_encoder(&app).await;
+    //
+    // This row used to read `passed: Some(true)` unconditionally and assert
+    // "this machine can encode in real time" from nothing but the encoder's
+    // name. On 2026-09-11 it showed green for `h264_qsv` on a machine with no
+    // Quick Sync, half an hour before that machine recorded a 0-byte file. It
+    // now reports what the functional probe accepted, and claims real-time
+    // capability only where Preflight can measure it — which is Recording
+    // mode, not here.
+    let encoder =
+        crate::recorder::ffmpeg::best_encoder(&app, PROBE_WIDTH, PROBE_HEIGHT).await;
     let hardware = encoder != "libx264";
+    let software_works =
+        crate::recorder::ffmpeg::probe_encoder(&app, "libx264", PROBE_WIDTH, PROBE_HEIGHT).await;
     out.push(CheckResult {
         label: "Video encoder".into(),
-        passed: Some(true),
+        passed: Some(hardware || software_works),
         detail: if hardware {
-            format!("{encoder} (hardware) — this machine can encode in real time.")
+            format!(
+                "{encoder} (hardware), tested at {PROBE_WIDTH}x{PROBE_HEIGHT}. Run Preflight in \
+                 Recording mode to confirm it keeps up with the camera."
+            )
+        } else if software_works {
+            "libx264 (software). No hardware encoder on this machine passed a test encode; run \
+             Preflight in Recording mode before a session to confirm this machine keeps up."
+                .into()
         } else {
-            "libx264 (software). No hardware encoder found; run Preflight in Recording mode before a session to confirm this machine keeps up.".into()
+            "No encoder on this machine could be made to work, so recording will fail. Send the \
+             FFmpeg log from Preflight to whoever maintains this app."
+                .into()
         },
     });
 
@@ -637,7 +841,7 @@ pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
 
 #[tauri::command]
 pub fn machine_status(app: AppHandle) -> MachinePublic {
-    MachinePublic::from(&load(&app))
+    public_view(&app)
 }
 
 /// Which windows may rewrite the machine profile. The recorder window shows
@@ -660,15 +864,15 @@ pub fn machine_configure(
     caller_may_configure(&window)?;
     let merged = merge_update(&load(&app), update);
     save(&app, &merged)?;
-    Ok(MachinePublic::from(&merged))
+    Ok(public_view(&app))
 }
 
-/// One-shot health check in RA words: the URL resolves, the secret is
+/// One-shot health check in RA words: the URL resolves, this build is
 /// accepted, the drive mount is reachable. Same probe the PPS app's
 /// remote_test performs, reading the shared store.
 #[tauri::command]
 pub async fn machine_test(app: AppHandle) -> Result<String, String> {
-    let (url, secret) = credentials(&app)?;
+    let (url, secret) = credentials(&app);
     let response = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
         .build()
@@ -685,7 +889,8 @@ pub async fn machine_test(app: AppHandle) -> Result<String, String> {
     if !response.status().is_success() {
         let status = response.status();
         return Err(match status.as_u16() {
-            401 => "Round Robin rejected the shared secret. Check it and save again.".into(),
+            401 if is_dev_build_key() => "Round Robin did not accept this copy of the app. It was built locally, so it carries the development key rather than the lab's. Install the copy from the lab's download page.".into(),
+            401 => "Round Robin did not accept this copy of the app. Its key may have been rotated — tell Alex, and a new installer fixes it.".into(),
             _ => format!("Round Robin returned {status}."),
         });
     }
@@ -711,7 +916,7 @@ pub async fn machine_test(app: AppHandle) -> Result<String, String> {
     };
 
     Ok(format!(
-        "Connected — the secret was accepted. {sessions} upcoming session(s) on the schedule. {drive}"
+        "Connected to Round Robin. {sessions} upcoming session(s) on the schedule. {drive}"
     ))
 }
 
@@ -724,7 +929,12 @@ pub async fn machine_test(app: AppHandle) -> Result<String, String> {
 /// processed. An async command runs off the main thread, so the creation
 /// request round-trips through a live event loop.
 #[tauri::command]
-pub async fn launch_mode(app: AppHandle, window: tauri::Window, role: String) -> Result<(), String> {
+pub async fn launch_mode(
+    app: AppHandle,
+    window: tauri::Window,
+    role: String,
+    force: Option<bool>,
+) -> Result<(), String> {
     caller_may_configure(&window)?;
     let parsed = parse_role(&role).ok_or_else(|| format!("unknown role: {role}"))?;
     if parsed == Role::Setup {
@@ -732,15 +942,38 @@ pub async fn launch_mode(app: AppHandle, window: tauri::Window, role: String) ->
     }
 
     // One mode window at a time: a rating station quietly also being a
-    // recorder is exactly the confusion this app exists to prevent.
-    for label in [
-        crate::modes::RECORDER_LABEL,
-        crate::modes::STATION_LABEL,
-        crate::modes::CONTROL_LABEL,
-    ] {
-        if let Some(existing) = app.get_webview_window(label) {
-            let _ = existing.set_focus();
-            return Err("A mode is already running in another window — close it first.".into());
+    // recorder is exactly the confusion this app exists to prevent. What
+    // changed (2026-08-22) is what happens when one is already open — it used
+    // to be a dead end that said "close it first" without offering a way to.
+    if let Some(label) = crate::modes::running_mode_label(&app) {
+        if !force.unwrap_or(false) {
+            if let Some(existing) = app.get_webview_window(label) {
+                let _ = existing.set_focus();
+            }
+            return Err(format!("__MODE_RUNNING__{label}"));
+        }
+        if crate::modes::recording_in_progress(&app) {
+            return Err(
+                "A recording is running on this machine. Stop the take before switching modes."
+                    .into(),
+            );
+        }
+        let Some(existing) = app.get_webview_window(label) else {
+            // It closed itself between the two checks. Nothing to do.
+            return Ok(());
+        };
+        if label == crate::modes::CONTROL_LABEL {
+            // Control mode is a browsing window on the Round Robin site with
+            // no IPC and no local state, so there is nothing to ask it to
+            // save — and nothing there to ask, either.
+            let _ = existing.destroy();
+        } else {
+            // Ask the mode to leave under its own power: it knows what it is
+            // holding (buffered slider samples, an open settings draft) and
+            // calls leave_mode once that is on disk. The launcher watches
+            // running_mode() and offers a hard close if nothing happens.
+            let _ = existing.emit("leave-mode", parsed.as_str());
+            return Ok(());
         }
     }
 
@@ -781,6 +1014,97 @@ pub async fn launch_mode(app: AppHandle, window: tauri::Window, role: String) ->
     Ok(())
 }
 
+/// Which mode is open right now, as the launcher's own name for it. `None`
+/// means nothing but the chooser is up.
+#[tauri::command]
+pub fn running_mode(app: AppHandle) -> Option<String> {
+    crate::modes::running_mode_label(&app).map(|label| {
+        match label {
+            crate::modes::RECORDER_LABEL => "record",
+            crate::modes::STATION_LABEL => "station",
+            _ => "control",
+        }
+        .to_string()
+    })
+}
+
+/// Called by a mode that is done: go to another mode, or back to the chooser.
+///
+/// The caller has already flushed whatever it was holding — that is the whole
+/// reason this is the mode's decision to make rather than something done to
+/// it from outside.
+#[tauri::command]
+pub async fn leave_mode(
+    app: AppHandle,
+    window: tauri::Window,
+    role: Option<String>,
+) -> Result<(), String> {
+    if !crate::modes::MODE_LABELS.contains(&window.label()) {
+        return Err(format!("window '{}' is not a mode", window.label()));
+    }
+    if crate::modes::recording_in_progress(&app) {
+        return Err("A recording is running. Stop the take first.".into());
+    }
+    let target = match role.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+        Some(r) => Some(parse_role(r).ok_or_else(|| format!("unknown role: {r}"))?),
+        None => None,
+    };
+    if let Some(role) = target {
+        let mut settings = load(&app);
+        settings.role = Some(role.as_str().to_string());
+        save(&app, &settings)?;
+    }
+    let Some(handle) = app.get_webview_window(window.label()) else {
+        return Ok(());
+    };
+    // A chooser opened over the mode (Ctrl+Alt+Shift+L) would otherwise be
+    // left behind the new window with a stale "a mode is running" banner.
+    if target.is_some() {
+        if let Some(launcher) = app.get_webview_window(crate::modes::LAUNCHER_LABEL) {
+            let _ = launcher.destroy();
+        }
+    }
+    crate::modes::leave_mode(&app, &handle, target)
+        .await
+        .map_err(|e| format!("could not leave the mode: {e}"))
+}
+
+/// The launcher's fallback when a mode was asked to leave and did not.
+///
+/// Only ever reached after the polite request, and the button that calls it
+/// says what it costs. A running recording still refuses.
+#[tauri::command]
+pub fn force_close_mode(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    caller_may_configure(&window)?;
+    if crate::modes::recording_in_progress(&app) {
+        return Err(
+            "A recording is running on this machine. Stop the take before closing Recording mode."
+                .into(),
+        );
+    }
+    if let Some(label) = crate::modes::running_mode_label(&app) {
+        if let Some(existing) = app.get_webview_window(label) {
+            let _ = existing.destroy();
+        }
+    }
+    Ok(())
+}
+
+/// Quits the whole app from the chooser. Nothing is running at that point —
+/// the chooser refuses to show this while a mode is open — but the shutdown
+/// flag still has to be set, or the last window's Destroyed event reopens the
+/// chooser on the way out.
+#[tauri::command]
+pub fn quit_suite(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    caller_may_configure(&window)?;
+    if crate::modes::recording_in_progress(&app) {
+        return Err("A recording is running on this machine. Stop the take first.".into());
+    }
+    crate::modes::begin_shutdown();
+    app.exit(0);
+    Ok(())
+}
+
 /// Structured health for the launcher's status chips — same probes as
 /// machine_test, but as data rather than prose, and cheap enough to run on
 /// every launcher load.
@@ -804,39 +1128,37 @@ pub async fn machine_health(app: AppHandle) -> MachineHealth {
         .map(|root| std::path::Path::new(root).is_dir())
         .unwrap_or(false);
 
-    let (configured, server_ok, session_count, server_detail) = match credentials(&app) {
-        Err(_) => (false, false, None, None),
-        Ok((url, secret)) => {
-            let probe = async {
-                let response = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(5))
-                    .build()
-                    .map_err(|e| e.to_string())?
-                    .get(format!("{}/api/pps/sessions", url.trim_end_matches('/')))
-                    .bearer_auth(&secret)
-                    .send()
-                    .await
-                    .map_err(|e| format!("unreachable: {e}"))?;
-                if !response.status().is_success() {
-                    return Err(match response.status().as_u16() {
-                        401 => "the secret was rejected".to_string(),
-                        s => format!("server returned {s}"),
-                    });
-                }
-                #[derive(Deserialize)]
-                struct Wrapper {
-                    sessions: Vec<serde_json::Value>,
-                }
-                response
-                    .json::<Wrapper>()
-                    .await
-                    .map(|w| w.sessions.len())
-                    .map_err(|e| e.to_string())
-            };
-            match probe.await {
-                Ok(count) => (true, true, Some(count), None),
-                Err(e) => (true, false, None, Some(e)),
+    let (configured, server_ok, session_count, server_detail) = {
+        let (url, secret) = credentials(&app);
+        let probe = async {
+            let response = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+                .map_err(|e| e.to_string())?
+                .get(format!("{}/api/pps/sessions", url.trim_end_matches('/')))
+                .bearer_auth(&secret)
+                .send()
+                .await
+                .map_err(|e| format!("unreachable: {e}"))?;
+            if !response.status().is_success() {
+                return Err(match response.status().as_u16() {
+                    401 => "this copy of the app was not accepted".to_string(),
+                    s => format!("server returned {s}"),
+                });
             }
+            #[derive(Deserialize)]
+            struct Wrapper {
+                sessions: Vec<serde_json::Value>,
+            }
+            response
+                .json::<Wrapper>()
+                .await
+                .map(|w| w.sessions.len())
+                .map_err(|e| e.to_string())
+        };
+        match probe.await {
+            Ok(count) => (true, true, Some(count), None),
+            Err(e) => (true, false, None, Some(e)),
         }
     };
 
@@ -872,13 +1194,18 @@ mod tests {
             round_robin_url: Some("https://sc.psych.wisc.edu".into()),
             round_robin_secret: Some("s3cret".into()),
             research_drive_root: Some("Z:/recordings".into()),
+            recent_drive_roots: Vec::new(),
             configured_at: None,
             migrated_from: None,
         }
     }
 
     #[test]
-    fn saving_another_field_does_not_erase_the_secret() {
+    fn saving_a_folder_does_not_erase_a_machines_legacy_device_key() {
+        // A lab machine set up before the key was built in still holds one in
+        // machine.json, and it wins over the built-in value. No interface can
+        // see the field any more, so nothing can echo it back — which is
+        // exactly why the merge has to carry it across untouched.
         let updated = merge_update(
             &existing(),
             MachineUpdate {
@@ -892,28 +1219,33 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_secret_clears_it_deliberately() {
-        let updated = merge_update(
-            &existing(),
-            MachineUpdate {
-                round_robin_secret: Some("".into()),
-                ..Default::default()
-            },
-        );
-        assert!(updated.round_robin_secret.is_none());
-    }
-
-    #[test]
-    fn the_secret_never_reaches_the_frontend() {
-        let public = MachinePublic::from(&existing());
-        assert!(public.secret_configured);
+    fn the_public_shape_has_nowhere_to_put_a_device_key() {
+        let public = MachinePublic {
+            role: Some("station".into()),
+            round_robin_url: Some("https://rr.example".into()),
+            research_drive_root: Some("R:/niedenthal/recordings".into()),
+            recent_drive_roots: Vec::new(),
+            drive_is_shared: true,
+            migrated_from: None,
+        };
         let json = serde_json::to_string(&public).unwrap();
-        assert!(!json.contains("s3cret"), "serialised machine profile leaked the secret");
+        assert!(!json.contains("secret"), "the public machine shape grew a secret field");
     }
 
     #[test]
-    fn machine_json_with_secret_omits_it_from_public_but_keeps_it_on_disk() {
+    fn a_legacy_device_key_stays_on_disk() {
         let disk = serde_json::to_string(&existing()).unwrap();
-        assert!(disk.contains("s3cret"), "the store itself must keep the secret");
+        assert!(disk.contains("s3cret"), "the store itself must keep the key");
+    }
+
+    #[test]
+    fn a_build_without_a_compiled_key_falls_back_to_the_development_one() {
+        // The self-test leans on this to tell "the server is down" apart from
+        // "this copy was built on somebody's laptop".
+        if is_dev_build_key() {
+            assert_eq!(BUILT_IN_DEVICE_KEY, DEV_DEVICE_KEY);
+        } else {
+            assert_ne!(BUILT_IN_DEVICE_KEY, DEV_DEVICE_KEY);
+        }
     }
 }

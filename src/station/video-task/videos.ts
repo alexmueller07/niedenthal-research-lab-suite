@@ -3,8 +3,9 @@
 // The task replaces the situational emotion-rating ("scenarios") task, which in
 // turn replaced the original emotion-transition task. Instead of reading a
 // written situation, the participant watches a short film clip and rates how
-// strongly it evokes each of three emotions — for themselves, for their
-// partner, and for an average UW-Madison student.
+// strongly it evokes each of three emotions — once for themselves and once for
+// their partner. (The average-UW-student perspective was removed by Randy on
+// 2026-08-05; see VideoTaskMain for the shape of the task now.)
 //
 // Clips live in the lab's `mp4_noname` library and are referenced by their
 // four-digit stem (`1615` → `1615.mp4`). The eight proof-of-concept clips are
@@ -27,10 +28,10 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { fnv1a } from "../utils/hash";
 
-/** Number of emotions probed per clip. The rating page renders 2 × this many questions. */
+/** Number of emotions probed per clip. Each rating page asks this many questions. */
 export const EMOTIONS_PER_VIDEO = 3;
 
-/** Clips per set. Each participant rates this many clips per target. */
+/** Clips per set. Each participant watches this many clips, rating each twice. */
 export const VIDEOS_PER_SET = 8;
 
 export interface StimulusVideo {

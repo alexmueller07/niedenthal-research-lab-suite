@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { useScrollElementToTop } from "../utils/scroll";
 
 // The writing + elicitation screen shown whenever the video pauses, and once
 // more after the video runs out.
@@ -43,8 +45,13 @@ function RatingOverlay({
   onConfirmIncomplete,
   onDismissIncomplete,
 }: RatingOverlayProps) {
+  // This overlay is its own scroll container (it is drawn over the video),
+  // so #root is not what needs resetting here — see utils/scroll.ts.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useScrollElementToTop(scrollRef);
+
   return (
-    <div className="h-full w-full overflow-y-auto bg-black cursor-auto">
+    <div ref={scrollRef} className="h-full w-full overflow-y-auto bg-black cursor-auto">
       <div className="min-h-full flex flex-col justify-center max-w-2xl mx-auto px-8 py-12 pb-32">
         {isFinal && (
           <p className="text-gray-400 text-lg uppercase tracking-widest mb-4">

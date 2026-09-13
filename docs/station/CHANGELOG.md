@@ -6,6 +6,157 @@ to collect real participant data.
 
 ---
 
+## 2026-08-22 — The video task Randy specified, and the setup an RA can actually run
+
+Two sources: Randy's "Post convo feedback" email of 2026-08-05, and Alex's notes
+from walking the suite through with the lab.
+
+⚠️ **This session changes what is collected.** Sections 1–4 below alter the
+video task's structure, scale and item wording. Data collected before and after
+are not directly comparable on those measures. Randy specified the change; it
+still needs his sign-off against real participant data before the fall runs.
+
+### 1. The average-UW-student perspective is gone
+
+Every clip is now judged for two people, not three: the participant, and their
+partner. The third pass, its transition screen, its column on the sharing page
+and the "combined mode" that put all three on one page are all removed.
+
+- **Removed:** `video-task/CombinedRatingPage.tsx`, the `videoRatingMode` and
+  `requireRewatch` settings, `classification-task/scenarios.ts` and
+  `components/ScenarioRating.tsx` (the retired scenario task, unreferenced since
+  the video task replaced it).
+- **Data:** `ratingPerson` can now only be `yourself` or `your partner`.
+
+### 2. Each clip is watched once and rated twice, in an order drawn per clip
+
+The old shape was three passes over the eight clips, one perspective per pass,
+with the perspective order drawn once per participant. It is now one pass: watch
+a clip, rate it for one perspective, rate it for the other — with **which comes
+first drawn separately for every clip**.
+
+Why that matters beyond following the instruction: with one draw per
+participant, any first-versus-second position effect sat on top of the
+self-partner difference for that whole participant, which is the quantity the
+study is about. Drawn per clip, it varies within participant and averages out.
+
+Watching once rather than once per perspective also means both ratings come from
+the same viewing, so a difference between them cannot come from having seen the
+clip a different number of times.
+
+- **Data:** new `video_task / perspective_order` rows, one per clip, recording
+  the drawn order; new `video_affect / perspective_position` rows (1 or 2) on
+  every rating.
+
+### 3. 1–7 scales, and the question names the emotion
+
+Sliders from 1–100 are replaced by the seven-point circle scale the lab's paper
+questionnaires use, anchored **Not at all** and **Extremely**. The emotion is
+named in the sentence instead of down the side of a matrix:
+
+> To what extent did you feel *surprise* while watching this video?
+> To what extent would your partner feel *surprise* while watching this video?
+
+Confidence is now asked **once, about the partner ratings as a whole** — "How
+confident are you in your ratings of your partner?" — instead of once per
+emotion, and is not asked about the participant's own feelings at all.
+
+- **Data:** intensity values are 1–7 instead of 1–100. A single
+  `video_affect / confidence` row per clip replaces three per clip, and only for
+  the partner perspective. A `video_task / scale` row records the bounds.
+
+### 4. The sharing page, and its column order
+
+Two columns, and they swap places at random per participant:
+
+> If you could share these videos, which ones do you think your partner would be
+> interested in seeing, and which would you pick for yourself?
+>
+> I would be interested · My conversation partner would be interested
+
+A fixed left-right order is a thumb on a forced comparison; whichever column is
+read first tends to be the one answered most carefully. Which order was shown is
+written to the data file (`video_selection / column_order`), so the effect is
+testable rather than assumed away.
+
+### 5. One wait screen, three seconds, everywhere
+
+The perspective announcement is now a single component used by both the
+conversation-slider task and the video task, in the words Randy sent, with the
+countdown at 3 seconds rather than 6:
+
+> You will now be reporting how **YOU** felt.
+> Continuing in {3}…
+> Press any key to continue
+
+- **New:** `components/PerspectiveNotice.tsx`.
+
+### 6. Counterbalancing that was documented but not implemented
+
+⚠️ **Research integrity.** The protocol says the left seat takes the odd study
+ID and starts the continuous-rating task on their own feelings; the right seat
+starts on their partner's. The app started **every** participant on "self"
+regardless — the yoking the design depends on was not happening.
+
+Now derived from the parity of the study ID, falling back to the seat when the
+ID is not a number. Both members of a dyad are therefore never rating the same
+target over the same seconds, which is what makes their two traces comparable at
+all.
+
+- **New:** `utils/counterbalance.ts`, with the property tested directly rather
+  than by example.
+- **Randy: this one needs a decision.** Every session run before today started
+  on "self", so pilot data and fall data differ in this respect.
+
+### 7. Setup happens before the participant sits down
+
+The RA's session form used to appear *after* the participant had signed in with
+their email — they sat down, typed their address, and then watched an RA lean
+over them to type study IDs. Setup is now the first screen in Rating Station
+mode; the sign-in is the first thing the *participant* sees.
+
+- **New:** `setup/StationSetup.tsx`. **Removed:** `components/ParticipantForm.tsx`.
+- The conversation-video fetch, which used to start on form submit, now starts
+  on sign-in — it was keyed on the participant's email anyway.
+
+### 8. Nametag colours: the numbers are typed once, by one person
+
+New **session board** on the researcher dashboard: whoever hands out the
+nametags fills in today's dyads — a colour per seat, and the study ID that goes
+with it. Both IDs are suggested from the dyad number (2n−1 and 2n, left odd),
+and the board warns if the left seat ends up even.
+
+At a station the RA taps the colour the participant is wearing; the dyad, both
+study IDs and the seat arrive with it. Nobody types a study ID twice, and the
+two stations cannot disagree about who is in which dyad — which, when it
+happened, silently unyoked the pair and was invisible until analysis.
+
+- **New:** `roundrobin/sessionBoard.ts`, `roundrobin/SessionBoardPanel.tsx`,
+  Rust commands `load_session_board` / `save_session_board`. Stored beside
+  `roundrobin.json` in the shared tracking folder. It holds study IDs, no names
+  or emails.
+
+### 9. Smaller things from the walkthrough
+
+- **The Research Drive is asked for, once, on the setup screen** — and the data
+  folder is derived from it (`pps-data` beside the recordings), so no RA browses
+  for a folder mid-session.
+- **Session date and time fill themselves in** from the computer's clock. They
+  were free text, typed every session, and a typo in them was permanent.
+- **The RA's name is remembered** between sessions.
+- **A way out of the mode.** Station mode has a `← Modes` button on the setup
+  screen and the dashboard, and the save-and-quit box offers "save and go back
+  to the mode chooser" alongside quitting.
+- **The end-of-session screen shows the data folder** in small grey type — for
+  the RA who comes over, not the participant. A session that landed somewhere
+  other than the Research Drive is worth catching while everyone is still in the
+  room.
+- **The replay cover on a rating page says "Watch again"**, not "Play video —
+  the clip plays once through", which read as a contradiction to someone who had
+  just watched it.
+
+---
+
 ## 2026-08-04 — Phase E: scale alignment, the unreachable rating page, un-kiosking
 
 Three items from Alex's walkthrough, plus the full wording export Randy asked

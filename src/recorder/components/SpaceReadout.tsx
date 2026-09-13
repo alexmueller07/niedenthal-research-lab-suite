@@ -17,7 +17,7 @@ interface Props {
 export default function SpaceReadout({ estimate, disk, sessionMinutes }: Props) {
   if (!estimate) {
     return (
-      <p className="text-sm text-[--color-ink-faint]">
+      <p className="text-sm text-(--color-ink-faint)">
         Choose a save folder to see how much space this will use.
       </p>
     );
@@ -40,7 +40,7 @@ export default function SpaceReadout({ estimate, disk, sessionMinutes }: Props) 
             ? "unpredictable"
             : humanBytes(estimate.projectedBytes)}
         </span>
-        <span className="text-xs text-[--color-ink-dim]">
+        <span className="text-xs text-(--color-ink-dim)">
           for {sessionMinutes} minutes
           {estimate.bytesPerMinute !== null &&
             ` · ${humanBytes(estimate.bytesPerMinute)}/min`}
@@ -49,25 +49,25 @@ export default function SpaceReadout({ estimate, disk, sessionMinutes }: Props) 
 
       {disk && (
         <>
-          <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-[--color-panel]">
+          <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-(--color-panel)">
             <div
-              className="h-full bg-[--color-ink-faint]"
+              className="h-full bg-(--color-ink-faint)"
               style={{ width: `${Math.min(100, usedFraction * 100)}%` }}
               title="Already used"
             />
             <div
-              className={`h-full ${estimate.fits ? "bg-[--color-good]" : "bg-[--color-bad]"}`}
+              className={`h-full ${estimate.fits ? "bg-(--color-good)" : "bg-(--color-bad)"}`}
               style={{ width: `${Math.min(100, projectedFraction * 100)}%` }}
               title="This recording"
             />
           </div>
 
-          <p className="mt-2 text-xs text-[--color-ink-dim]">
+          <p className="mt-2 text-xs text-(--color-ink-dim)">
             {humanBytes(disk.availableBytes)} free on {disk.mountPoint}
             {estimate.sessionsRemaining !== null && (
               <>
                 {" · room for about "}
-                <span className="font-semibold text-[--color-ink]">
+                <span className="font-semibold text-(--color-ink)">
                   {estimate.sessionsRemaining}
                 </span>
                 {" more at these settings"}
@@ -81,8 +81,8 @@ export default function SpaceReadout({ estimate, disk, sessionMinutes }: Props) 
         <p
           className={`mt-2 rounded-md px-2.5 py-2 text-xs leading-relaxed ${
             estimate.fits
-              ? "bg-[--color-warn]/10 text-[--color-warn]"
-              : "bg-[--color-bad]/10 font-semibold text-[--color-bad]"
+              ? "bg-(--color-warn)/10 text-(--color-warn)"
+              : "bg-(--color-bad)/10 font-semibold text-(--color-bad)"
           }`}
         >
           {estimate.warning}

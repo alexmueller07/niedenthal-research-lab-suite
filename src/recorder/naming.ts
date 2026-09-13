@@ -59,3 +59,24 @@ export function identifierWarning(code: string): string | null {
   }
   return null;
 }
+
+/**
+ * Is this path on a network drive rather than on this computer?
+ *
+ * A UNC path (`\\research.drive.wisc.edu\niedenthal`) is unambiguous. A mapped
+ * letter is not — `Z:` looks exactly like `C:` — so the rule is a heuristic:
+ * the lab's local disks are C: and D:, and every letter the Research Drive has
+ * been mapped to (R:, Z:) is further down the alphabet.
+ *
+ * Used for a warning only. Recording onto a share works; it just risks dropped
+ * frames, so the RA is told rather than stopped. (Room B had its working folder
+ * on `Z:\UW_Fall2026` on 2026-09-11, which is what prompted this.)
+ */
+export function isNetworkPath(path: string): boolean {
+  const p = path.trim();
+  if (!p) return false;
+  if (p.startsWith("\\\\") || p.startsWith("//")) return true;
+  const drive = /^([A-Za-z]):[\\/]/.exec(p);
+  if (!drive) return false;
+  return !"CD".includes(drive[1].toUpperCase());
+}

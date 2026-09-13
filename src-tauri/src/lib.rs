@@ -124,6 +124,7 @@ pub fn run() {
             station::commands::write_csv_ratings,
             station::commands::write_csv_transitions,
             station::commands::setup_rating_directory,
+            station::commands::rating_directory_files,
             station::commands::exit_app,
             station::commands::load_roundrobin,
             station::commands::save_roundrobin,
@@ -131,19 +132,40 @@ pub fn run() {
             station::commands::save_settings,
             station::commands::load_progress,
             station::commands::save_progress,
+            station::commands::load_session_board,
+            station::commands::save_session_board,
             station::remote::remote_status,
             station::remote::remote_configure,
             station::remote::remote_test,
             station::remote::list_conversation_clips,
+            station::remote::resolve_clip_path,
+            station::remote::video_thumbnail,
+            station::remote::prepare_local_video,
             station::remote::report_study_progress,
             station::remote::prepare_conversation_video,
             machine::machine_status,
+            machine::detect_drive_roots,
             machine::machine_configure,
             machine::machine_test,
             machine::machine_health,
             machine::machine_self_test,
             machine::launch_mode,
+            machine::running_mode,
+            machine::leave_mode,
+            machine::force_close_mode,
+            machine::quit_suite,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Niedenthal Lab Suite");
+        .build(tauri::generate_context!())
+        .expect("error while building Niedenthal Lab Suite")
+        // Closing the last window normally ends the process. It should not,
+        // when the window that closed was a mode: an RA who finishes recording
+        // wants the chooser, not a dead app they have to launch again. The
+        // decision — and the reopen — live in modes.rs.
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if !modes::handle_exit_requested(app) {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

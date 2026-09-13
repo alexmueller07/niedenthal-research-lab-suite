@@ -1,8 +1,8 @@
-// Dev-only screen preview: http://localhost:1420/preview.html
+// Dev-only screen preview: http://localhost:1440/preview.html
 //
-// Jumps straight to any screen of the video task without running a whole
-// session, so a screen can be shown to Randy, or checked after an edit, in a
-// couple of seconds instead of forty minutes. Rows that would be written to
+// Jumps straight to any screen of the study without running a whole session, so
+// a screen can be shown to Randy, or checked after an edit, in a couple of
+// seconds instead of forty minutes. Rows that would be written to
 // transitions.csv are printed on the page instead.
 //
 // Vite only builds index.html, so this file and preview.html never reach the
@@ -15,25 +15,30 @@ import "./App.css";
 import VideoTaskMain from "./video-task/VideoTaskMain";
 import VideoWatchPage from "./video-task/VideoWatchPage";
 import VideoRatingPage from "./video-task/VideoRatingPage";
-import CombinedRatingPage from "./video-task/CombinedRatingPage";
 import VideoSelectionPage from "./video-task/VideoSelectionPage";
 import PostConversation from "./classification-task/PostConversation";
 import RatingOverlay from "./dyad-task/RatingOverlay";
 import TransitionScreen from "./dyad-task/TransitionScreen";
+import PerspectiveNotice from "./components/PerspectiveNotice";
 import AdminDashboard from "./roundrobin/AdminDashboard";
+import StationSetup from "./setup/StationSetup";
 import HelpButton from "./components/HelpButton";
 import { VIDEO_SETS, findVideo, resolveVideoSrc } from "./video-task/videos";
 import { emptyData } from "./roundrobin/store";
 import type { RRData } from "./roundrobin/store";
+import { EMPTY_SETTINGS } from "./utils/settings";
+import type { FormData } from "./App";
 
 const SCREENS = [
+  "station setup",
   "post-conversation questions",
   "post-video writing + rating",
-  "perspective screen",
+  "slider perspective screen",
+  "video perspective screen",
   "video task (whole thing)",
   "watch page",
-  "rating page",
-  "combined rating page",
+  "rating page — partner",
+  "rating page — self",
   "selection page",
   "dashboard",
 ] as const;
@@ -43,12 +48,26 @@ type Screen = (typeof SCREENS)[number];
 const SET = VIDEO_SETS[0];
 const srcFor = (id: string) => resolveVideoSrc(id, null);
 
+const BLANK_FORM: FormData = {
+  dyadId: "",
+  groupId: "",
+  participantId: "",
+  partnerId: "",
+  computer: "",
+  subjectInitials: "",
+  saveFolder: "",
+  raName: "",
+  sessionTime: "",
+  sessionDate: "",
+};
+
 function Preview() {
   const [screen, setScreen] = useState<Screen>("video task (whole thing)");
   const [rows, setRows] = useState<string[]>([]);
   const [rrData, setRrData] = useState<RRData>(emptyData());
   const [ratingText, setRatingText] = useState("");
   const [ratingScale, setRatingScale] = useState<number | undefined>(undefined);
+  const [form, setForm] = useState<FormData>(BLANK_FORM);
 
   const writeRow = async (
     ratingTask: string,
@@ -65,6 +84,7 @@ function Preview() {
   };
 
   const clip = findVideo(SET.videoIds[0]);
+  const emotions = clip.emotions;
 
   return (
     <div className="bg-black min-h-screen">
@@ -90,6 +110,35 @@ function Preview() {
         ))}
         <span className="text-gray-400 text-sm ml-auto">{rows.length} rows written</span>
       </div>
+
+      {screen === "station setup" && (
+        <StationSetup
+          formData={form}
+          settings={EMPTY_SETTINGS}
+          remote={{
+            roundRobinUrl: "https://example.invalid",
+            researchDriveRoot: null,
+            driveIsShared: false,
+            recentDriveRoots: [],
+          }}
+          roster={[]}
+          video={{
+            canSearch: false,
+            email: "",
+            onEmailChange: () => {},
+            onFind: () => {},
+            prep: { status: "idle" },
+            onUseClip: () => {},
+            onUseFile: () => {},
+          }}
+          onSettingsChange={() => {}}
+          onDriveChange={async () => {}}
+          onChange={(field, value) => setForm((prev) => ({ ...prev, [field]: value }))}
+          onSubmit={() => window.alert("Start session")}
+          onDashboard={() => setScreen("dashboard")}
+          onLeaveMode={() => window.alert("Back to the mode chooser")}
+        />
+      )}
 
       {screen === "post-conversation questions" && (
         <PostConversation
@@ -123,10 +172,24 @@ function Preview() {
         </div>
       )}
 
-      {screen === "perspective screen" && (
+      {screen === "slider perspective screen" && (
         <div className="relative h-[80vh]">
           <TransitionScreen
             ratingTarget="partner"
+            onContinue={() => window.alert("Continue")}
+          />
+        </div>
+      )}
+
+      {screen === "video perspective screen" && (
+        <div className="relative h-[80vh]">
+          <PerspectiveNotice
+            headline={
+              <>
+                You will now be reporting how{" "}
+                <span className="font-bold underline">YOUR PARTNER</span> would feel.
+              </>
+            }
             onContinue={() => window.alert("Continue")}
           />
         </div>
@@ -144,41 +207,26 @@ function Preview() {
         <VideoWatchPage
           src={srcFor(clip.id)}
           positionLabel="Video 1 of 8"
-          targetReminder="YOUR PARTNER"
-          alreadyWatchedEarlier={false}
-          requireWatch
           onWatched={(stats) => void writeRow("preview", clip.id, "", "watch", "", stats.plays)}
           onContinue={() => window.alert("Continue")}
         />
       )}
 
-      {screen === "rating page" && (
+      {(screen === "rating page — partner" || screen === "rating page — self") && (
         <VideoRatingPage
+          key={screen}
           videoId={clip.id}
-          emotions={clip.emotions}
+          emotions={emotions}
           src={srcFor(clip.id)}
-          targetPhrase="your partner"
-          targetCaps="YOUR PARTNER"
-          isSelf={false}
+          target={screen === "rating page — self" ? "self" : "partner"}
           positionLabel="Video 1 of 8"
-          onSubmit={(ratings) => {
-            for (const r of ratings) {
-              void writeRow("preview", clip.id, r.emotion, "intensity", "your partner", r.intensity);
+          onSubmit={(result) => {
+            const person = screen === "rating page — self" ? "yourself" : "your partner";
+            for (const r of result.ratings) {
+              void writeRow("preview", clip.id, r.emotion, "intensity", person, r.intensity);
             }
-          }}
-        />
-      )}
-
-      {screen === "combined rating page" && (
-        <CombinedRatingPage
-          videoId={clip.id}
-          emotions={clip.emotions}
-          people={["yourself", "your partner", "an average UW-Madison student"]}
-          src={srcFor(clip.id)}
-          positionLabel="Video 1 of 8"
-          onSubmit={(ratings) => {
-            for (const r of ratings) {
-              void writeRow("preview", clip.id, r.emotion, "intensity", r.person, r.intensity);
+            if (result.confidence !== "") {
+              void writeRow("preview", clip.id, "", "confidence", person, result.confidence);
             }
           }}
         />
@@ -191,7 +239,7 @@ function Preview() {
           onSubmit={(result) => {
             void writeRow("preview", "for_partner", "", "", "", result.forPartner.join(";"));
             void writeRow("preview", "for_self", "", "", "", result.forSelf.join(";"));
-            void writeRow("preview", "for_average_student", "", "", "", result.forAverage.join(";"));
+            void writeRow("preview", "column_order", "", "", "", result.columnOrder.join(";"));
           }}
         />
       )}
@@ -201,11 +249,12 @@ function Preview() {
           data={rrData}
           onChange={setRrData}
           onRefresh={setRrData}
-          onExit={() => window.alert("Sign out")}
+          onExit={() => window.alert("Back to setup")}
+          onLeaveMode={() => window.alert("Back to the mode chooser")}
         />
       )}
 
-      {screen !== "dashboard" && (
+      {screen !== "dashboard" && screen !== "station setup" && (
         <HelpButton onRequestHelp={() => {}} onCancelHelp={() => {}} pending={false} />
       )}
 
