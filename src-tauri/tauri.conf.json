@@ -32,6 +32,11 @@
     "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"],
     "macOS": {
       "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "installer-hooks.nsh"
+      }
     }
   }
 }
