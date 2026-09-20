@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ConfirmationModal from "./ConfirmationModal";
+import ScrollHint from "./ScrollHint";
 import { useScrollToTop } from "../utils/scroll";
 
 // Shared questionnaire scaffold. Visuals follow Suhaas's original app (black
@@ -12,6 +13,14 @@ import { useScrollToTop } from "../utils/scroll";
 // the page to one viewport height with overflow-hidden, which clipped the
 // bottom questions on short laptops with no scroll path — the same failure
 // RatingOverlay had (see RatingOverlay.tsx).
+//
+// Added 2026-09-19 from Ben's list, both about a participant not knowing what
+// they have not done:
+//   - `missing` — the page tells the confirmation dialog which questions are
+//     blank, and `attempted` (returned to the caller) turns on the asterisks
+//     next to them. A page that can list its items passes them; one that
+//     cannot passes nothing and behaves as before.
+//   - a scroll indicator, because the app no longer draws a scrollbar.
 interface QuestionnairePageProps {
   /** Pinned instruction text. Omit for single-screen pages with no header. */
   title?: string;
@@ -19,6 +28,17 @@ interface QuestionnairePageProps {
   valid: boolean;
   /** Called when the participant continues (directly or via the modal). */
   onSubmit: () => void;
+  /**
+   * The labels of the questions currently unanswered, in page order. Listed in
+   * the confirmation dialog.
+   */
+  missing?: string[];
+  /**
+   * Called the first time Continue is pressed with something blank, so the page
+   * can mark its own unanswered questions. Pages pass a setter for the flag
+   * they hand to NumberScale/MatrixQuestion as `unanswered`.
+   */
+  onIncomplete?: () => void;
   confirmMessage?: string;
   confirmText?: string;
   cancelText?: string;
@@ -31,6 +51,8 @@ export default function QuestionnairePage({
   title,
   valid,
   onSubmit,
+  missing,
+  onIncomplete,
   confirmMessage,
   confirmText,
   cancelText,
@@ -46,6 +68,7 @@ export default function QuestionnairePage({
     if (valid) {
       onSubmit();
     } else {
+      onIncomplete?.();
       setShowConfirm(true);
     }
   };
@@ -70,6 +93,9 @@ export default function QuestionnairePage({
         </button>
       </div>
 
+      {/* Sits above the Continue button's row so the two never collide. */}
+      <ScrollHint bottomClass="bottom-24" />
+
       <ConfirmationModal
         isOpen={showConfirm}
         onClose={() => setShowConfirm(false)}
@@ -80,6 +106,7 @@ export default function QuestionnairePage({
         message={confirmMessage}
         confirmText={confirmText}
         cancelText={cancelText}
+        missing={missing}
       />
     </div>
   );

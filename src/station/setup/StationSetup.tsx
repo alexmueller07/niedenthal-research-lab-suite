@@ -11,6 +11,14 @@ import {
   todayISO,
 } from "../roundrobin/sessionBoard";
 import type { DyadEntry, SessionBoard } from "../roundrobin/sessionBoard";
+import {
+  loadRounds,
+  nextRoundNumber,
+  ratingsFileName,
+  roundsFor,
+  transitionsFileName,
+} from "../rounds/rounds";
+import type { RoundRecord } from "../rounds/rounds";
 import { resolveDataDir } from "../utils/settings";
 import type { AppSettings } from "../utils/settings";
 import type { RemotePublic } from "../remote/api";
@@ -38,6 +46,13 @@ import type { RRParticipant } from "../roundrobin/store";
 
 interface StationSetupProps {
   formData: FormData;
+  /** Sets the round number, which is a number rather than a form string. */
+  onRoundChange: (round: number) => void;
+  /**
+   * The round this station finished a moment ago, if any, and whose it was.
+   * A floor under the suggested number — see the useEffect that applies it.
+   */
+  lastCompletedRound: { participantId: string; round: number } | null;
   settings: AppSettings;
   remote: RemotePublic | null;
   /** Known participants, for the video section's email suggestions. */
@@ -118,8 +133,59 @@ function Field({
   );
 }
 
+/**
+ * A nametag colour, for the typed-in path. The board path does not need one —
+ * tapping the colour IS the board path — so this only appears when an RA is
+ * entering a session by hand.
+ *
+ * Clicking the selected colour again clears it. No colour is a legitimate
+ * answer (a pilot, a make-good, a session run without nametags) and the app
+ * must never record a colour nobody is wearing.
+ */
+function ColorPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-white text-lg mb-2">{label}</label>
+      <div className="flex flex-wrap gap-2">
+        {NAMETAG_COLORS.map((color) => {
+          const active = value === color.key;
+          return (
+            <button
+              key={color.key}
+              type="button"
+              onClick={() => onChange(active ? "" : color.key)}
+              title={color.label}
+              aria-pressed={active}
+              className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors ${
+                active ? "border-white bg-gray-800" : "border-gray-600 hover:border-gray-300"
+              }`}
+            >
+              <span
+                aria-hidden
+                className="w-4 h-4 rounded-full border border-white/40 shrink-0"
+                style={{ backgroundColor: color.hex }}
+              />
+              <span className="text-white text-sm">{color.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function StationSetup({
   formData,
+  onRoundChange,
+  lastCompletedRound,
   settings,
   remote,
   roster,
@@ -142,6 +208,14 @@ export default function StationSetup({
   const [driveError, setDriveError] = useState<string | null>(null);
   /** Files already sitting in this dyad's folder — see the guard below. */
   const [collision, setCollision] = useState<string[] | null>(null);
+  /**
+   * Every round this station's ledger knows about, loaded once. It is what
+   * makes "which round is this?" answerable after the app has been closed, or
+   * on a different day, or at a different station — see rounds/rounds.ts.
+   */
+  const [ledger, setLedger] = useState<RoundRecord[] | null>(null);
+  /** True once the RA has overridden the suggested round number by hand. */
+  const [roundEdited, setRoundEdited] = useState(false);
 
   const today = todayISO();
   const driveReady = Boolean(remote?.driveIsShared);
@@ -149,7 +223,46 @@ export default function StationSetup({
 
   useEffect(() => {
     void loadBoard().then(setBoard);
+    void loadRounds().then((l) => setLedger(l.rounds));
   }, []);
+
+  // The round this participant is on, read off the ledger rather than asked.
+  // Suggested, not imposed: an RA who knows better (a round that crashed, a
+  // make-good) types over it, and the app stops suggesting once they have.
+  const priorRounds = useMemo(
+    () => (ledger ? roundsFor({ version: 1, rounds: ledger }, formData.participantId) : []),
+    [ledger, formData.participantId]
+  );
+  const suggestedRound = useMemo(
+    () =>
+      ledger ? nextRoundNumber({ version: 1, rounds: ledger }, formData.participantId) : 1,
+    [ledger, formData.participantId]
+  );
+  /**
+   * A floor under the suggestion, for the participant it belongs to.
+   *
+   * The ledger on disk can be one round behind what this station knows — a
+   * failed ledger write leaves it saying the last round never happened, and the
+   * suggestion would then point the next round at the files the last one just
+   * wrote. The in-memory answer wins in that direction, and only in that
+   * direction.
+   *
+   * Scoped to the participant on purpose. Without that, an RA who mistypes a
+   * study ID and corrects it would carry the previous participant's round
+   * number onto somebody's first conversation.
+   */
+  const floorRound =
+    lastCompletedRound && lastCompletedRound.participantId === formData.participantId
+      ? lastCompletedRound.round + 1
+      : 1;
+
+  useEffect(() => {
+    if (roundEdited) return;
+    const target = Math.max(suggestedRound, floorRound);
+    if (formData.round !== target) onRoundChange(target);
+    // onRoundChange is stable enough for this; re-running on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestedRound, floorRound, roundEdited]);
 
   // The clock knows the date and the time. Two fields that were typed by hand
   // into every session's data file, and every typo in them was permanent.
@@ -182,6 +295,12 @@ export default function StationSetup({
     onChange("participantId", here.participantId);
     onChange("partnerId", there.participantId);
     onChange("computer", seat === "left" ? "Left" : "Right");
+    // Both colours, not just this one. The pairing is what Randy asked the app
+    // to say out loud ("green talking to orange"), and it is what the data
+    // files now carry — the partner's colour is not derivable from anything
+    // else the station knows.
+    onChange("participantColor", color);
+    onChange("partnerColor", there.color ?? "");
     if (entry.time) onChange("sessionTime", entry.time);
     setIdErrors({});
   };
@@ -213,14 +332,19 @@ export default function StationSetup({
   };
 
   /**
-   * Checks whether this dyad's folder already holds data before starting.
+   * Checks whether THIS ROUND's files already exist before starting.
    *
-   * ratings.csv and transitions.csv are append-only, so a second session
-   * written into an existing folder interleaves two participants' rows and
-   * neither is recoverable. The folder name comes from the study IDs, so the
-   * way to land in one that already exists is a mistyped ID or the wrong
-   * nametag colour — both worth catching while the RA is still standing here,
-   * and neither detectable afterwards.
+   * The data files are append-only, so starting on top of one interleaves two
+   * sittings' rows and neither is recoverable. The folder name comes from the
+   * study IDs, so the way to land on an existing file is a mistyped ID, the
+   * wrong nametag colour, or the wrong round number — all worth catching while
+   * the RA is still standing here, and none detectable afterwards.
+   *
+   * Narrowed from "anything in this folder" on 2026-09-19. Files are now named
+   * per round, so a folder holding ratings_R1.csv is the *expected* state when
+   * an RA is setting up R2 for the same pairing. Warning about it would be a
+   * false alarm on every round after the first, which is exactly how a warning
+   * stops being read.
    */
   const handleSubmit = () => {
     setAttempted(true);
@@ -239,7 +363,12 @@ export default function StationSetup({
       initials: formData.subjectInitials,
     })
       .then((files) => {
-        if (files.length > 0) setCollision(files);
+        const mine = [
+          ratingsFileName(formData.round),
+          transitionsFileName(formData.round),
+        ];
+        const clash = files.filter((name) => mine.includes(name));
+        if (clash.length > 0) setCollision(clash);
         else start();
       })
       // A folder we cannot read is not a reason to block a session. The lab's
@@ -373,7 +502,82 @@ export default function StationSetup({
           )}
         </section>
 
-        {/* ---- 2. Who is sitting here ---- */}
+        {/* ---- 2. Which round ---- */}
+        <section className="border border-gray-700 rounded-lg p-5 mb-6">
+          <h2 className="text-white text-xl font-bold mb-1">Which round is this?</h2>
+          <p className="text-gray-400 text-sm mb-4">
+            A participant stays at this computer and talks to a different partner
+            each round. Every round writes its own pair of data files, so this
+            number is what tells them apart afterwards. It is counted for you —
+            change it only if you know it is wrong.
+          </p>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setRoundEdited(true);
+                onRoundChange(Math.max(1, formData.round - 1));
+              }}
+              className="px-4 py-2 text-white border border-gray-600 rounded-lg hover:border-white transition-colors"
+              aria-label="One round back"
+            >
+              −
+            </button>
+            <span className="text-white text-3xl font-bold tabular-nums w-20 text-center">
+              R{formData.round}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setRoundEdited(true);
+                onRoundChange(formData.round + 1);
+              }}
+              className="px-4 py-2 text-white border border-gray-600 rounded-lg hover:border-white transition-colors"
+              aria-label="One round forward"
+            >
+              +
+            </button>
+            {roundEdited && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRoundEdited(false);
+                  onRoundChange(suggestedRound);
+                }}
+                className="text-gray-400 text-sm underline hover:text-white"
+              >
+                Back to the counted value (R{suggestedRound})
+              </button>
+            )}
+          </div>
+
+          {!formData.participantId ? (
+            <p className="text-gray-500 text-xs mt-3">
+              Pick who is sitting here below and this fills itself in.
+            </p>
+          ) : priorRounds.length === 0 ? (
+            <p className="text-gray-500 text-xs mt-3">
+              No earlier rounds on file for participant {formData.participantId}.
+            </p>
+          ) : (
+            <div className="mt-4 border-t border-gray-800 pt-3">
+              <p className="text-gray-500 text-xs mb-2">
+                Already done by participant {formData.participantId}:
+              </p>
+              <ul className="text-gray-400 text-xs space-y-1">
+                {priorRounds.map((record) => (
+                  <li key={`${record.round}-${record.completedAt}`}>
+                    R{record.round} · {record.date}
+                    {record.partnerColor ? ` · with ${colorLabel(record.partnerColor)}` : ""}
+                    {record.partnerId ? ` (ID ${record.partnerId})` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        {/* ---- 3. Who is sitting here ---- */}
         <section className="border border-gray-700 rounded-lg p-5 mb-6">
           <h2 className="text-white text-xl font-bold mb-1">Who is sitting here</h2>
           {!manual && todaysDyads.length > 0 ? (
@@ -483,6 +687,24 @@ export default function StationSetup({
                   </div>
                 </div>
               </div>
+
+              {/* Typed-in sessions get the colours too. They are written to both
+                  data files and shown to the participant, so leaving them out
+                  of the manual path would make a hand-entered session quietly
+                  different from every other one. Both are optional: no colour
+                  is better than a guessed one. */}
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <ColorPicker
+                  label="This participant's nametag"
+                  value={formData.participantColor}
+                  onChange={(color) => onChange("participantColor", color)}
+                />
+                <ColorPicker
+                  label="Partner's nametag"
+                  value={formData.partnerColor}
+                  onChange={(color) => onChange("partnerColor", color)}
+                />
+              </div>
               {todaysDyads.length > 0 && (
                 <button
                   type="button"
@@ -505,11 +727,19 @@ export default function StationSetup({
               </div>
               <div>
                 <p className="text-gray-500">This participant</p>
-                <p className="text-white">{formData.participantId}</p>
+                <p className="text-white">
+                  {formData.participantId}
+                  {formData.participantColor
+                    ? ` · ${colorLabel(formData.participantColor)}`
+                    : ""}
+                </p>
               </div>
               <div>
                 <p className="text-gray-500">Partner</p>
-                <p className="text-white">{formData.partnerId}</p>
+                <p className="text-white">
+                  {formData.partnerId}
+                  {formData.partnerColor ? ` · ${colorLabel(formData.partnerColor)}` : ""}
+                </p>
               </div>
               <div>
                 <p className="text-gray-500">Seat</p>
@@ -519,7 +749,7 @@ export default function StationSetup({
           )}
         </section>
 
-        {/* ---- 3. The conversation recording ---- */}
+        {/* ---- 4. The conversation recording ---- */}
         <ConversationVideo
           canSearch={video.canSearch}
           roster={roster}
@@ -531,7 +761,7 @@ export default function StationSetup({
           onUseFile={video.onUseFile}
         />
 
-        {/* ---- 4. The rest ---- */}
+        {/* ---- 5. The rest ---- */}
         <section className="border border-gray-700 rounded-lg p-5 mb-6 space-y-4">
           <h2 className="text-white text-xl font-bold">This session</h2>
           <div>
@@ -606,16 +836,15 @@ export default function StationSetup({
         {collision && (
           <div className="border border-yellow-500 rounded-lg p-4 mb-4">
             <p className="text-yellow-400 text-base font-semibold">
-              This dyad already has data on disk.
+              Round {formData.round} already has data on disk.
             </p>
             <p className="text-gray-300 text-sm mt-2">
               {formData.dyadId}_{formData.participantId}_{formData.partnerId}_
-              {formData.subjectInitials} already contains{" "}
-              {collision.slice(0, 4).join(", ")}
-              {collision.length > 4 ? `, and ${collision.length - 4} more` : ""}.
-              Usually that means a study ID is wrong or the nametag colour was
-              mis-tapped. Starting anyway appends this session's rows to the same
-              files, and the two participants cannot be separated afterwards.
+              {formData.subjectInitials} already contains {collision.join(", ")}.
+              Usually that means a study ID is wrong, the nametag colour was
+              mis-tapped, or this round has been run already. Starting anyway
+              appends this sitting's rows to the same files, and the two cannot
+              be separated afterwards.
             </p>
             <div className="flex gap-3 mt-4">
               <button

@@ -23,6 +23,13 @@ interface MatrixSliderProps {
   defaultSelection?: number;
   leftLabel?: string;
   rightLabel?: string;
+  /**
+   * Row indexes left uncommitted when the participant tried to continue. Marked
+   * with an asterisk — see ConfirmationModal (Ben, 2026-09-19). A slider row is
+   * especially worth marking: an untouched handle already sits at a plausible
+   * value, so "not answered" is invisible without one.
+   */
+  unansweredRows?: number[];
 }
 
 function MatrixSlider({
@@ -37,8 +44,10 @@ function MatrixSlider({
   defaultSelection = 1,
   leftLabel = "",
   rightLabel = "",
+  unansweredRows = [],
 }: MatrixSliderProps) {
   const [interactedRows, setInteractedRows] = useState<Set<number>>(new Set());
+  const missing = new Set(unansweredRows);
 
   const handleSliderChange = (rowIndex: number, value: number) => {
     setInteractedRows((prev) => new Set(prev).add(rowIndex));
@@ -62,10 +71,19 @@ function MatrixSlider({
         {rows.map((row, rowIndex) => (
           <div
             key={rowIndex}
-            className="border-b border-gray-600 pb-4 text-center justify-center items-center"
+            className={`border-b border-gray-600 pb-4 text-center justify-center items-center ${
+              missing.has(rowIndex) ? "bg-red-950/30 rounded px-3" : ""
+            }`}
           >
             <div className="flex items-center justify-between mb-3 text-center">
-              <label className="text-white text-lg flex-1 pr-4">{row}</label>
+              <label className="text-white text-lg flex-1 pr-4">
+                {missing.has(rowIndex) && (
+                  <span className="text-red-400 font-bold mr-1" aria-label="Not answered">
+                    *
+                  </span>
+                )}
+                {row}
+              </label>
               <div className="text-white text-sm font-mono min-w-[3rem] text-right">
                 {interactedRows.has(rowIndex)
                   ? selections[row] ?? defaultSelection

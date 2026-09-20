@@ -6,6 +6,7 @@ import type { RemoteClip } from "../remote/api";
 import { csvEscape } from "../utils/csv";
 import { startingTarget } from "../utils/counterbalance";
 import { registerFlush } from "../utils/flushRegistry";
+import { isAdvanceKey, useAdvanceOnClick } from "../utils/useAdvance";
 
 import VideoPlayer from "./VideoPlayer";
 import Slider from "./Slider";
@@ -13,20 +14,47 @@ import Instructions from "./Instructions";
 import RatingOverlay from "./RatingOverlay";
 import TransitionScreen from "./TransitionScreen";
 
-// Stamped into every data row. Bumped to 3.0.0 on 2026-08-22, when Randy
-// restructured the video task (two perspectives instead of three, an order
-// drawn per clip, 1-7 scales) and the continuous-rating task started
-// honouring the seat/parity counterbalancing the protocol describes. It is
-// the one column that tells an analyst, from the file alone, which version
-// of the study a row came from.
-const SOFTWARE_VERSION = "3.1.0";
+// Stamped into every data row. Bumped to 4.0.0 on 2026-09-19, when the session
+// became multi-round and the block length went from 150 s to 60 s. It is the
+// one column that tells an analyst, from the file alone, which version of the
+// study a row came from — and rows either side of this bump are not comparable
+// block for block.
+const SOFTWARE_VERSION = "4.0.0";
 
-const DYAD_BLOCKS = 4;
+/**
+ * How long the participant rates one perspective before the video pauses for
+ * the writing screen and the perspective flips.
+ *
+ * Randy, 2026-09-19: sixty seconds, down from 150. The consequence is not just
+ * a shorter block — the number of blocks is no longer fixed at four either. A
+ * ten-minute conversation used to be rated for the first ten minutes in four
+ * blocks and stop; now it is rated all the way through in however many
+ * one-minute blocks the recording holds, which for a standard conversation is
+ * about ten write-ups per participant instead of four.
+ */
+const BLOCK_SECONDS = 60;
 
-// The instruction screens, revealed one keypress at a time. groupSize below is
-// this array's length so all five build up on a single page instead of
-// splitting 4 + 1, and the keydown handler advances off the same count.
+/**
+ * Blocks a recording of this length will produce. Used for the researcher
+ * dashboard's "block 3 of 10" only — the task itself ends when the video does,
+ * not on a count, so a mis-estimate here can never truncate a session.
+ */
+export function blocksForDuration(durationSeconds: number): number {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return 1;
+  return Math.max(1, Math.ceil(durationSeconds / BLOCK_SECONDS));
+}
+
+// The instruction screens, revealed one keypress (or click) at a time.
+// groupSize below is this array's length so they build up on a single page
+// instead of splitting into groups, and the advance handler counts off the same
+// array.
 const DYAD_INSTRUCTIONS = [
+  // Ben, 2026-09-19, relaying an RA: "we should probably have a reminder before
+  // the conversation video plays that they can adjust their audio volume."
+  // First screen rather than last, because the fix has to happen before the
+  // video starts — afterwards it means interrupting a block that is already
+  // being recorded.
+  "Before we begin: please check that the computer's volume is at a comfortable level. You will hear the audio from your conversation. Ask your researcher if you would like help adjusting it.",
   "In this part of the study, you will watch the video recording of the conversation you just had.",
   "We are interested in two things:\n\t1. How YOU were feeling during the conversation.\n\t2. How YOUR PARTNER was feeling during the conversation.",
   "The video is split into parts. Before each part, the screen will tell you whether to focus on YOUR OWN feelings or YOUR PARTNER'S feelings, and a reminder stays in the corner of the screen while you watch.",
@@ -115,7 +143,14 @@ function DyadTaskMain({
   const sliderFlushRef = useRef<number | null>(null);
   const taskStartMsRef = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const nextStopTimeSecRef = useRef<number>(150);
+  const nextStopTimeSecRef = useRef<number>(BLOCK_SECONDS);
+  /**
+   * Blocks this recording is expected to produce, once its duration is known.
+   * Dashboard bookkeeping only — the task ends when the video ends. Null until
+   * metadata loads, which is why the progress call below falls back to the
+   * count so far.
+   */
+  const totalBlocksRef = useRef<number | null>(null);
   const sampleBufferRef = useRef<string[]>([]);
   const videoStartedRef = useRef<boolean>(false);
   const textPromptCountRef = useRef<number>(0);
@@ -277,8 +312,12 @@ function DyadTaskMain({
       description,
       trialNumber.current,
       SOFTWARE_VERSION,
-      // Last column on purpose — see FormData.groupId in App.tsx.
+      // Appended, never inserted — see the header note in
+      // src-tauri/src/station/commands.rs.
       formData.groupId,
+      formData.participantColor,
+      formData.partnerColor,
+      formData.round,
     ]
       .map(csvEscape)
       .join(",");
@@ -318,7 +357,8 @@ function DyadTaskMain({
           } else {
             if (!videoStartedRef.current) {
               videoStartedRef.current = true;
-              nextStopTimeSecRef.current = Math.ceil(vt / 150) * 150 || 150;
+              nextStopTimeSecRef.current =
+                Math.ceil(vt / BLOCK_SECONDS) * BLOCK_SECONDS || BLOCK_SECONDS;
             }
             const elapsed = taskStartMsRef.current
               ? (Date.now() - taskStartMsRef.current) / 1000
@@ -362,6 +402,27 @@ function DyadTaskMain({
       if (sliderFlushRef.current) clearInterval(sliderFlushRef.current);
     };
   }, [videoSrc, instructionsDone, showToggleScreen, showTransitionScreen]);
+
+  // How many blocks this recording works out to, for the dashboard. Read off
+  // the element's own metadata rather than asked of anyone: nobody knows how
+  // long a conversation ran, and with one-minute blocks the answer varies from
+  // session to session.
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element || !videoSrc) return;
+    const learn = () => {
+      if (element.duration && Number.isFinite(element.duration)) {
+        totalBlocksRef.current = blocksForDuration(element.duration);
+      }
+    };
+    learn();
+    element.addEventListener("loadedmetadata", learn);
+    element.addEventListener("durationchange", learn);
+    return () => {
+      element.removeEventListener("loadedmetadata", learn);
+      element.removeEventListener("durationchange", learn);
+    };
+  }, [videoSrc]);
 
   // Polling end-of-video detection (fallback for webviews that swallow `ended`).
   useEffect(() => {
@@ -456,22 +517,32 @@ function DyadTaskMain({
       setNumberScale(undefined);
       setAttemptedSubmit(false);
       setShowToggleScreen(false);
+      // The block count comes from the recording's own length rather than a
+      // constant: with 60-second blocks there is no fixed number of them, and a
+      // dashboard that says "block 6 of 4" is worse than one that says nothing.
+      const totalBlocks = Math.max(
+        totalBlocksRef.current ?? 0,
+        textPromptCountRef.current
+      );
       onProgress?.(
         textPromptCountRef.current,
-        DYAD_BLOCKS,
-        `Block ${Math.min(textPromptCountRef.current + 1, DYAD_BLOCKS)} of ${DYAD_BLOCKS}`
+        totalBlocks,
+        totalBlocks > 0
+          ? `Block ${Math.min(textPromptCountRef.current + 1, totalBlocks)} of ${totalBlocks}`
+          : `Block ${textPromptCountRef.current + 1}`
       );
 
-      // This was the writing screen that follows the end of the video, or the
-      // last of the four blocks — either way the task is over.
-      if (awaitingFinalRatingRef.current || textPromptCountRef.current >= DYAD_BLOCKS) {
+      // Only one thing ends this task now: the video running out, which routes
+      // through awaitingFinalRating. The old `>= DYAD_BLOCKS` stop is gone with
+      // the fixed block count — a conversation is rated all the way through.
+      if (awaitingFinalRatingRef.current) {
         finishTask();
         return;
       }
 
       setCurrentRatingTarget((prev) => (prev === "self" ? "partner" : "self"));
       setResetTrigger((prev) => prev + 1);
-      nextStopTimeSecRef.current += 150;
+      nextStopTimeSecRef.current += BLOCK_SECONDS;
       // Show the between-block transition prompt.
       setShowTransitionScreen(true);
     } catch (err) {
@@ -511,6 +582,27 @@ function DyadTaskMain({
 
   const handleTransitionContinue = () => setShowTransitionScreen(false);
 
+  /**
+   * One step through the instruction screens, whether a key or a click asked
+   * for it. Ben, 2026-09-19: people reach for the mouse, and the prompt said
+   * "click continue" on screens that had no button to click.
+   */
+  const advanceInstructions = useCallback(() => {
+    if (instructionIndex + 1 >= DYAD_INSTRUCTIONS.length) {
+      setInstructionsDone(true);
+      setShowTransitionScreen(true);
+    } else {
+      setInstructionIndex((i) => i + 1);
+    }
+  }, [instructionIndex]);
+
+  // Clicks on the instruction screens only. The keyboard path stays inside the
+  // task's own keydown handler below, which has to arbitrate between the
+  // instructions, the Tab-submits-the-writing-screen rule and the perspective
+  // announcement that swallows keys entirely — adding the keyboard half here
+  // too would advance two screens per keypress.
+  useAdvanceOnClick(advanceInstructions, Boolean(videoSrc) && !instructionsDone);
+
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
       // The perspective announcement holds itself open for a few seconds and
@@ -524,14 +616,9 @@ function DyadTaskMain({
       } else if (videoSrc && !instructionsDone) {
         // Auto-repeat from a held key and lone modifiers are not deliberate
         // keypresses — either could blow through several instruction screens.
-        if (event.repeat || ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+        if (!isAdvanceKey(event)) return;
         event.preventDefault();
-        if (instructionIndex + 1 >= DYAD_INSTRUCTIONS.length) {
-          setInstructionsDone(true);
-          setShowTransitionScreen(true);
-        } else {
-          setInstructionIndex((i) => i + 1);
-        }
+        advanceInstructions();
       }
     };
 
@@ -679,6 +766,7 @@ function DyadTaskMain({
         <Instructions
           instructionIndex={instructionIndex}
           onBack={() => setInstructionIndex((i) => Math.max(0, i - 1))}
+          onContinue={advanceInstructions}
           groupSize={DYAD_INSTRUCTIONS.length}
           instructions={DYAD_INSTRUCTIONS}
         />

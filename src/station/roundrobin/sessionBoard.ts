@@ -23,26 +23,51 @@ import { invoke } from "@tauri-apps/api/core";
  * whole point is that the RA at the station and the RA at the door mean the
  * same thing by "green", and a typed colour name cannot be matched reliably
  * (Green / green / Grn).
+ *
+ * Randy, 2026-09-19, named exactly six: red, blue, purple, black, orange,
+ * green. Six is three simultaneous pairs, which is the shape of a round. The
+ * three that used to be here and are not any more (yellow, pink, teal) still
+ * resolve through colorLabel/colorHex, so an old board entry wearing one keeps
+ * displaying — it simply cannot be handed out again.
  */
 export const NAMETAG_COLORS = [
   { key: "red", label: "Red", hex: "#d64545" },
   { key: "blue", label: "Blue", hex: "#3b76d6" },
-  { key: "green", label: "Green", hex: "#3faa5a" },
-  { key: "yellow", label: "Yellow", hex: "#d8b125" },
   { key: "purple", label: "Purple", hex: "#8c56c4" },
+  // Not #000: a pure-black swatch is invisible on this app's black background.
+  // Near-black plus the white ring every swatch already carries reads as black
+  // and can still be seen.
+  { key: "black", label: "Black", hex: "#242424" },
   { key: "orange", label: "Orange", hex: "#e0812b" },
+  { key: "green", label: "Green", hex: "#3faa5a" },
+] as const;
+
+/**
+ * Colours the lab has used before and may still have on a board somewhere.
+ * Never offered; only looked up, so a historical entry still says "Teal"
+ * instead of "teal".
+ */
+const RETIRED_COLORS = [
+  { key: "yellow", label: "Yellow", hex: "#d8b125" },
   { key: "pink", label: "Pink", hex: "#d95d9c" },
   { key: "teal", label: "Teal", hex: "#2ba8a0" },
 ] as const;
 
 export type ColorKey = (typeof NAMETAG_COLORS)[number]["key"];
 
+function knownColor(key: string) {
+  return (
+    NAMETAG_COLORS.find((c) => c.key === key) ??
+    RETIRED_COLORS.find((c) => c.key === key)
+  );
+}
+
 export function colorLabel(key: string): string {
-  return NAMETAG_COLORS.find((c) => c.key === key)?.label ?? key;
+  return knownColor(key)?.label ?? key;
 }
 
 export function colorHex(key: string): string {
-  return NAMETAG_COLORS.find((c) => c.key === key)?.hex ?? "#666";
+  return knownColor(key)?.hex ?? "#666";
 }
 
 export interface Seat {

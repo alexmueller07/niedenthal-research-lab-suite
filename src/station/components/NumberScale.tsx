@@ -21,6 +21,13 @@ interface NumberScaleProps {
   centerLabel?: string;
   value: number | undefined;
   onChange: (value: number) => void;
+  /**
+   * True once the participant has tried to continue with this question blank.
+   * Ben, 2026-09-19: the "are you sure" dialog said that something was missed
+   * but not what, so a participant who scrolled past one question on a page of
+   * twenty had to hunt. Marked rather than blocked — skipping is still allowed.
+   */
+  unanswered?: boolean;
 }
 
 export default function NumberScale({
@@ -32,19 +39,34 @@ export default function NumberScale({
   centerLabel,
   value,
   onChange,
+  unanswered = false,
 }: NumberScaleProps) {
   const points: number[] = [];
   for (let n = min; n <= max; n += 1) points.push(n);
 
   return (
-    <div className="border-b border-gray-600 py-6 last:border-b-0">
+    <div
+      className={`border-b border-gray-600 py-6 last:border-b-0 ${
+        unanswered ? "bg-red-950/30 -mx-4 px-4 rounded" : ""
+      }`}
+    >
       {/* The question sits inside the same column as the circles, centred over
           them. Randy, 2026-08-04: the question used to be left-aligned against
           the full width of the page frame while the scale was centred, so on a
           wide screen the two read as belonging to different questions. */}
       <div className="flex justify-center">
         <div className="w-full max-w-3xl">
-          <p className="text-white text-xl mb-5 text-center">{label}</p>
+          <p className="text-white text-xl mb-5 text-center">
+            {unanswered && (
+              <span className="text-red-400 font-bold mr-1" aria-label="Not answered">
+                *
+              </span>
+            )}
+            {label}
+          </p>
+          {unanswered && (
+            <p className="text-red-400 text-sm mb-4 text-center">Not answered</p>
+          )}
 
           <div className="flex items-start justify-between gap-1">
             {points.map((point) => (

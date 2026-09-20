@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import ConfirmationModal from "../components/ConfirmationModal";
+import ScrollHint from "../components/ScrollHint";
 import { useScrollElementToTop } from "../utils/scroll";
 
 // The writing + elicitation screen shown whenever the video pauses, and once
@@ -51,7 +52,10 @@ function RatingOverlay({
   useScrollElementToTop(scrollRef);
 
   return (
-    <div ref={scrollRef} className="h-full w-full overflow-y-auto bg-black cursor-auto">
+    <div
+      ref={scrollRef}
+      className="h-full w-full overflow-y-auto no-scrollbar bg-black cursor-auto"
+    >
       <div className="min-h-full flex flex-col justify-center max-w-2xl mx-auto px-8 py-12 pb-32">
         {isFinal && (
           <p className="text-gray-400 text-lg uppercase tracking-widest mb-4">
@@ -129,10 +133,20 @@ function RatingOverlay({
         </button>
       </div>
 
+      {/* This overlay scrolls inside itself rather than inside #root, so the
+          hint has to be pointed at it explicitly — see utils/scroll.ts. */}
+      <ScrollHint containerRef={scrollRef} bottomClass="bottom-24" />
+
       <ConfirmationModal
         isOpen={attemptedSubmit}
         onClose={onDismissIncomplete}
         onConfirm={onConfirmIncomplete}
+        missing={[
+          ...(textInput.trim() === "" ? ["The written description of the feelings"] : []),
+          ...(numberScale === undefined
+            ? ["To what extent these feelings were elicited (1-9)"]
+            : []),
+        ]}
       />
     </div>
   );

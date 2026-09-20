@@ -134,6 +134,8 @@ pub fn run() {
             station::commands::save_progress,
             station::commands::load_session_board,
             station::commands::save_session_board,
+            station::commands::load_rounds,
+            station::commands::save_rounds,
             station::remote::remote_status,
             station::remote::remote_configure,
             station::remote::remote_test,

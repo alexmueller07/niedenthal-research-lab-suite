@@ -17,11 +17,35 @@ body {
 }
 
 /* #root holds the app and is the scroll container when a screen is taller
-   than the viewport (e.g. the scenario task). */
+   than the viewport (e.g. the scenario task).
+
+   The scrollbar itself is hidden — Ben, 2026-09-19: the lab liked the screen
+   without one, and on a fullscreen macOS window it is a strip of grey over a
+   black study. Hiding it costs the one thing it was doing, which is telling a
+   participant there is more below; ScrollHint.tsx puts that back explicitly,
+   in the middle of the screen where people are actually looking, instead of as
+   a 12-pixel bar in the corner. Scrolling itself is untouched — wheel,
+   trackpad, arrow keys and the auto-scroll in VideoRatingPage all still work. */
 #root {
   height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+
+#root::-webkit-scrollbar {
+  display: none; /* WebKit / WebView2 */
+}
+
+/* Same treatment for the panes that scroll inside themselves (RatingOverlay). */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 img {

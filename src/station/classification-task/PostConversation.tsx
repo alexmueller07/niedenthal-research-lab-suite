@@ -73,6 +73,9 @@ export interface PostConversationResult {
 
 export default function PostConversation({ onContinue }: ClassificationTaskProps) {
   const [responses, setResponses] = useState<Record<string, number>>({});
+  // Set the first time Continue is pressed with something blank, so the page
+  // can mark which items those are — see ConfirmationModal (Ben, 2026-09-19).
+  const [attempted, setAttempted] = useState(false);
 
   const set = (key: string, value: number) =>
     setResponses((prev) => ({ ...prev, [key]: value }));
@@ -86,10 +89,17 @@ export default function PostConversation({ onContinue }: ClassificationTaskProps
     [TALK_ITEM_KEY]: TALK_ITEM_LABEL,
   };
 
+  const isMissing = (key: string) => responses[key] === undefined;
+  const missing = [...AGENCY_ITEMS.map((i) => i.key), TALK_ITEM_KEY]
+    .filter(isMissing)
+    .map((key) => labels[key]);
+
   return (
     <QuestionnairePage
       title="Thinking back on the conversation you just had, please answer the following."
       valid={complete}
+      missing={missing}
+      onIncomplete={() => setAttempted(true)}
       onSubmit={() =>
         onContinue?.({
           responses,
@@ -109,6 +119,7 @@ export default function PostConversation({ onContinue }: ClassificationTaskProps
             leftLabel="Not at all"
             rightLabel="Very much"
             value={responses[item.key]}
+            unanswered={attempted && isMissing(item.key)}
             onChange={(value) => set(item.key, value)}
           />
         ))}
@@ -121,6 +132,7 @@ export default function PostConversation({ onContinue }: ClassificationTaskProps
           centerLabel="My study partner and I spoke the same amount"
           rightLabel="I spoke much more than my study partner did"
           value={responses[TALK_ITEM_KEY]}
+          unanswered={attempted && isMissing(TALK_ITEM_KEY)}
           onChange={(value) => set(TALK_ITEM_KEY, value)}
         />
       </div>

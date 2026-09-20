@@ -11,8 +11,15 @@ use std::io::Write;
 use std::path::Path;
 use std::fs;
 
-// Writes continuous slider samples to ratings.csv.
+// Writes continuous slider samples to this round's ratings file.
+//
 // Header does not include saveFolder — it is redundant with the directory path.
+//
+// The last four columns are appended rather than inserted, always: groupId
+// arrived that way in August and participantColor/partnerColor/round did on
+// 2026-09-19. Every analysis script the lab has reads these files by column
+// position, so a new column at the end costs nothing and a new column in the
+// middle silently shifts every variable after it.
 #[tauri::command]
 pub fn write_csv_ratings(path: String, contents: Vec<String>) -> Result<(), String> {
     let file_exists = Path::new(&path).exists();
@@ -28,7 +35,8 @@ pub fn write_csv_ratings(path: String, contents: Vec<String>) -> Result<(), Stri
             file,
             "SubID,PartnerID,dyad,computer,subjectInitials,raName,sessionTime,sessionDate,\
 timestamp,taskOrder,Rating,EmoRating,EmoRating_Person,Time,stopTime,Movietime,\
-Shift,Description,trialNumber,softwareVersion,groupId"
+Shift,Description,trialNumber,softwareVersion,groupId,participantColor,\
+partnerColor,round"
         )
         .map_err(|e| e.to_string())?;
     }
@@ -39,7 +47,8 @@ Shift,Description,trialNumber,softwareVersion,groupId"
     Ok(())
 }
 
-// Writes classification-task responses to transitions.csv.
+// Writes questionnaire and video-task responses to this round's transitions
+// file. Same append-only column rule as above.
 #[tauri::command]
 pub fn write_csv_transitions(path: String, contents: Vec<String>) -> Result<(), String> {
     let file_exists = Path::new(&path).exists();
@@ -55,7 +64,8 @@ pub fn write_csv_transitions(path: String, contents: Vec<String>) -> Result<(), 
             file,
             "dyadId,participantId,partnerId,computer,subjectInitials,raName,sessionTime,\
 sessionDate,sessionTimestamp,ratingTask,subTask,emotion1,emotion2,ratingPerson,\
-response,trialNumber,softwareVersion,groupId"
+response,trialNumber,softwareVersion,groupId,participantColor,partnerColor,\
+round"
         )
         .map_err(|e| e.to_string())?;
     }
@@ -201,6 +211,41 @@ pub fn load_session_board(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn save_session_board(app: tauri::AppHandle, contents: String) -> Result<String, String> {
     let path = session_board_path(&app)?;
+    fs::write(&path, contents).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+// ---- Round ledger ----
+//
+// One record per completed round: who sat where, in what colours, against whom,
+// which round number it was, and which files it wrote. It lives beside
+// roundrobin.json and session-board.json in the shared tracking folder, so it
+// accumulates across days and across machines.
+//
+// Why it exists (Randy, 2026-09-19): a session is no longer one conversation.
+// A participant stays at the same computer and goes round after round with
+// different partners, sometimes coming back on a different day. Two things
+// needed an answer that outlives the app being open — "which round is this
+// person on?" and "which data file belongs to which pairing?" — and neither can
+// be derived from the CSVs, because the CSVs are what the answer names.
+//
+// It holds study IDs, colours and file paths. No names, no emails.
+pub fn rounds_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(store_dir(app)?.join("rounds.json"))
+}
+
+#[tauri::command]
+pub fn load_rounds(app: tauri::AppHandle) -> Result<String, String> {
+    let path = rounds_path(&app)?;
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_rounds(app: tauri::AppHandle, contents: String) -> Result<String, String> {
+    let path = rounds_path(&app)?;
     fs::write(&path, contents).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
 }

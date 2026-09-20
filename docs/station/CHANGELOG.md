@@ -6,6 +6,106 @@ to collect real participant data.
 
 ---
 
+## 2026-09-19 — Rounds, one-minute blocks, and Ben's list
+
+Two sources: Ben's feedback email of 2026-09-19 (what RAs and participants hit
+while running the app), and Randy's restructure of the session into rounds.
+
+⚠️ **This session changes what is collected.** The block length, the set of
+questionnaires and the shape of the data files all change. `softwareVersion` is
+now `4.0.0`; rows either side of that value are not comparable block for block
+and do not carry the same set of measures. Randy specified the change.
+
+### 1. A session is now several rounds
+
+A participant stays at one computer and has conversation after conversation
+with different partners, sometimes across days. Each round runs the
+post-conversation questions, the continuous slider task and the short-video
+task, then lands on a new **round-complete** screen where the RA chooses
+between another round and finishing.
+
+- **Data:** each round writes its own pair of files in the session folder —
+  `ratings_R<n>.csv`, `transitions_R<n>.csv`. `ratings.csv` / `transitions.csv`
+  without a round number are pre-1.2.0 files.
+- **New:** `rounds.json` in the shared tracking folder, one record per completed
+  round (participant, colours, partner, round number, date, folder, filenames).
+  It is what makes round numbering survive a restart, a new day and a change of
+  machine. Study IDs and colours only — no names, no emails.
+- **Data:** three columns appended to the end of BOTH files —
+  `participantColor`, `partnerColor`, `round`. Appended, never inserted, so
+  every script that reads these files by column position is unaffected.
+- Everything buffered is flushed to disk before the round-complete screen
+  appears, so a round is closed before an RA touches the computer.
+
+### 2. The slider task switches perspective every minute
+
+Blocks were 150 seconds and the task stopped after four of them. They are now
+60 seconds and the task runs to the end of the recording.
+
+- **Data:** a ten-minute conversation now produces about ten written responses
+  and elicitation ratings per participant, where it produced four. The whole
+  conversation is rated, where previously the last six minutes were not.
+
+### 3. Five questionnaires removed
+
+Randy: "take off all the individual measures like loneliness." Ben: the
+emotion-frequency page is not being used.
+
+- **Removed:** `Loneliness.tsx` (20 items), `SocialConnectedness.tsx` (20),
+  `Expressivity.tsx` (16), `Autism.tsx` (10), `SelfFrequency.tsx` (15 sliders).
+  81 items in total, and the randomised block that shuffled three of them.
+- **Kept and now per round:** the post-conversation questions, conversation
+  experience, partner ratings, partner history.
+- **Kept and now asked once, on the participant's last round:** demographics,
+  study feedback, and the video-sharing page — which Randy asked to be the last
+  thing a participant does.
+
+### 4. Ben's list
+
+- **Fullscreen on the lab Mac.** `fill_screen` sized every window to the work
+  area with no decorations, which on macOS left the Dock on screen and removed
+  the green fullscreen button. macOS now takes real fullscreen with decorations
+  kept; Windows is unchanged and deliberately not fullscreen (it would cover the
+  taskbar and break desktop switching). The scrollbar stays hidden.
+- **Instruction text under the prompt.** The instruction screens pinned their
+  "press any key" prompt over a fixed-height text block, so on a short monitor
+  the last line was drawn underneath it. The screen is a flex column now and the
+  two cannot overlap at any window height.
+- **Press any key, or click.** Every advance screen takes a click anywhere as
+  well as a key, and every one of them now carries a real Continue button.
+- **The fourth question on the partner page.** Answering the third emotion
+  scrolls the confidence question into view, and a scroll indicator appears on
+  any page that continues below the fold.
+- **Clicking through the are-you-sure dialog.** It now lists the questions left
+  blank by name, "Go back and answer" is the primary button, and "Continue
+  anyway" cannot be pressed for two seconds. The page marks each unanswered
+  question with a red asterisk.
+- **Wording.** "You can replay it on the question pages at any time" became
+  "You can play it again later, while you answer the questions about it".
+- **Volume.** A reminder to check the volume is now the first instruction of the
+  slider task, immediately before the conversation plays.
+
+### 5. Randy's colours
+
+The nametag list is exactly six — red, blue, purple, black, orange, green.
+Yellow, pink and teal are retired: still displayed on an old board entry, never
+offered again. Both colours of a pairing are written to the data files and shown
+at the bottom of the participant's screen: "Green (Left) talking to Orange
+(Right) · Round R2".
+
+### 6. Every word in the app, written down
+
+`docs/station/PPS-TEXT.txt` — every participant-facing and researcher-facing
+string, screen by screen in session order. Randy asked for it; it is also the
+fastest way to review wording without running a session.
+
+### Known, and worth Randy's attention
+
+All five video sets in `video-task/videos.ts` still point at the same eight
+proof-of-concept clips. Running the video task every round therefore shows a
+participant the same eight clips each round. The set is drawn from the dyad ID,
+so real sets fix this the moment they exist — but until then it is a confound.
+
 ## 2026-08-22 — The video task Randy specified, and the setup an RA can actually run
 
 Two sources: Randy's "Post convo feedback" email of 2026-08-05, and Alex's notes

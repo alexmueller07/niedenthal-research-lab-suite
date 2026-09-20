@@ -9,6 +9,12 @@ interface MatrixQuestionProps {
   selections?: { [key: string]: number };
   title?: string;
   className?: string;
+  /**
+   * Row indexes left blank when the participant tried to continue. Marked with
+   * an asterisk and a tinted row — see ConfirmationModal for why (Ben,
+   * 2026-09-19: say *which* questions were missed, not just that some were).
+   */
+  unansweredRows?: number[];
 }
 
 function MatrixQuestion({
@@ -18,7 +24,9 @@ function MatrixQuestion({
   selections = {},
   title,
   className = "",
+  unansweredRows = [],
 }: MatrixQuestionProps) {
+  const missing = new Set(unansweredRows);
   const handleCellClick = (rowIndex: number, columnIndex: number) => {
     onSelectionChange(rowIndex, columnIndex);
   };
@@ -48,8 +56,20 @@ function MatrixQuestion({
           </thead>
           <tbody>
             {rows.map((row, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-gray-600">
-                <td className="text-white p-3 text-2xl align-top">{row}</td>
+              <tr
+                key={rowIndex}
+                className={`border-b border-gray-600 ${
+                  missing.has(rowIndex) ? "bg-red-950/30" : ""
+                }`}
+              >
+                <td className="text-white p-3 text-2xl align-top">
+                  {missing.has(rowIndex) && (
+                    <span className="text-red-400 font-bold mr-1" aria-label="Not answered">
+                      *
+                    </span>
+                  )}
+                  {row}
+                </td>
                 {columns.map((_, columnIndex) => (
                   <td key={columnIndex} className="text-center p-3 align-top">
                     <button

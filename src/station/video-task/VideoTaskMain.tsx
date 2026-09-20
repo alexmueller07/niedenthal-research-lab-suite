@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Instructions from "../dyad-task/Instructions";
+import { useAdvance } from "../utils/useAdvance";
 import PerspectiveNotice from "../components/PerspectiveNotice";
 import VideoWatchPage from "./VideoWatchPage";
 import VideoRatingPage, { SCALE_MAX, SCALE_MIN } from "./VideoRatingPage";
 import type { VideoRatingResult } from "./VideoRatingPage";
 import VideoSelectionPage from "./VideoSelectionPage";
 import type { VideoSelectionResult } from "./VideoSelectionPage";
+import { writeSelectionRows } from "./selectionRows";
 import type { WatchStats } from "./StimulusPlayer";
 import { SET_ASSIGNMENT_METHOD, assignSet, findVideo, resolveVideoSrc } from "./videos";
 import { EMPTY_SETTINGS, loadSettings } from "../utils/settings";
@@ -56,7 +58,7 @@ const INSTRUCTIONS = [
   "After each video, you will answer the same questions twice: once about how YOU felt while watching it, and once about how YOUR PARTNER would feel while watching it.",
   "A screen before each set of questions will tell you which of the two you are answering. Please read it — it changes from video to video.",
   "Every question is answered on a scale from 1 (Not at all) to 7 (Extremely).",
-  "Please watch each video all the way through. You can replay it on the question pages at any time.",
+  "Please watch each video all the way through. You can play it again later, while you answer the questions about it.",
   "We ask that you answer each question efficiently in order to keep your participation time within one hour.",
 ];
 
@@ -73,6 +75,16 @@ interface VideoTaskMainProps {
   /** Dyad ID, used to yoke the video set across both members of the dyad. */
   dyadId: string;
   writeRow: VideoTaskWriteRow;
+  /**
+   * Whether the video-sharing page runs at the end of this pass.
+   *
+   * Randy, 2026-09-19: with the session split into rounds, the clip trials run
+   * once per conversation but "which of these would your partner want to see"
+   * is asked once, as the last thing a participant does all day. So the trials
+   * and the sharing page, which used to be one flow, are separable: every round
+   * passes false, the wrap-up runs the page on its own (see App.tsx).
+   */
+  includeSelection?: boolean;
   /** Reports trial progress so the researcher dashboard can show it. */
   onProgress?: (done: number, total: number, label: string) => void;
   onComplete: () => void;
@@ -82,6 +94,7 @@ interface VideoTaskMainProps {
 export default function VideoTaskMain({
   dyadId,
   writeRow,
+  includeSelection = true,
   onProgress,
   onComplete,
   onCsvError,
@@ -192,19 +205,14 @@ export default function VideoTaskMain({
     onProgress?.(trialIndex, totalTrials + 1, detail);
   }, [phase, trialIndex, totalTrials, onProgress]);
 
-  // Instruction screens advance on any deliberate keypress, matching the rest
-  // of the app. Auto-repeat from a held key and lone modifiers are ignored —
-  // either could blow through several instruction screens at once.
-  useEffect(() => {
-    if (phase !== "instructions") return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
-      if (instructionIndex + 1 >= INSTRUCTIONS.length) setPhase("trials");
-      else setInstructionIndex((i) => i + 1);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [phase, instructionIndex]);
+  // Instruction screens advance on any deliberate keypress OR a click, matching
+  // the rest of the app. The filtering that keeps a held-down key from blowing
+  // through several screens lives in utils/useAdvance.ts.
+  const advanceInstructions = useCallback(() => {
+    if (instructionIndex + 1 >= INSTRUCTIONS.length) setPhase("trials");
+    else setInstructionIndex((i) => i + 1);
+  }, [instructionIndex]);
+  useAdvance(advanceInstructions, phase === "instructions");
 
   const currentVideoId = videoOrder[trialIndex];
   const currentVideo = useMemo(
@@ -293,17 +301,17 @@ export default function VideoTaskMain({
       setPage("watch");
       return;
     }
-    setPhase("selection");
+    if (includeSelection) {
+      setPhase("selection");
+      return;
+    }
+    onProgress?.(totalTrials + 1, totalTrials + 1, "Video affective-response task");
+    onComplete();
   };
 
   const handleSelectionSubmit = async (result: VideoSelectionResult) => {
     try {
-      await writeRow("video_selection", "for_partner", "", "", "", result.forPartner.join(";"));
-      await writeRow("video_selection", "for_self", "", "", "", result.forSelf.join(";"));
-      await writeRow("video_selection", "presented_order", "", "", "", result.presentedOrder.join(";"));
-      await writeRow("video_selection", "column_order", "", "", "", result.columnOrder.join(";"));
-      await writeRow("video_selection", "n_for_partner", "", "", "", result.forPartner.length);
-      await writeRow("video_selection", "n_for_self", "", "", "", result.forSelf.length);
+      await writeSelectionRows(writeRow, result);
     } catch (err) {
       handleError(err);
     }
@@ -325,6 +333,7 @@ export default function VideoTaskMain({
         <Instructions
           instructionIndex={instructionIndex}
           onBack={() => setInstructionIndex((i) => Math.max(0, i - 1))}
+          onContinue={advanceInstructions}
           // Equal to the count so the screens build up on one page rather than
           // splitting into groups.
           groupSize={INSTRUCTIONS.length}

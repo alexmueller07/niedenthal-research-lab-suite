@@ -9,6 +9,7 @@ const ORIGINAL_ROWS = ["Is similar to me?", "Is close to me?", "Is familiar to m
 export default function PartnerSliders({ onContinue }: ClassificationTaskProps) {
   const [sliderSelections, setSliderSelections] = useState<{ [key: number]: number }>({});
   const [shuffledRows, setShuffledRows] = useState<string[]>([]);
+  const [attempted, setAttempted] = useState(false);
 
   useEffect(() => {
     setShuffledRows(shuffle(ORIGINAL_ROWS));
@@ -23,10 +24,16 @@ export default function PartnerSliders({ onContinue }: ClassificationTaskProps) 
     {} as { [key: string]: number }
   );
 
+  const missingIndexes = shuffledRows
+    .map((_, index) => index)
+    .filter((index) => sliderSelections[index] === undefined);
+
   return (
     <QuestionnairePage
       title="My partner... (1-100: 1 = Not at all, 100 = Very much)"
       valid={Object.keys(sliderSelections).length === ORIGINAL_ROWS.length}
+      missing={missingIndexes.map((index) => `My partner... ${shuffledRows[index]}`)}
+      onIncomplete={() => setAttempted(true)}
       onSubmit={() => onContinue?.({ sliderSelections, order: shuffledRows })}
       frameClassName="bg-black border p-8 w-10/12 mx-auto flex-1 flex flex-col justify-center"
     >
@@ -39,6 +46,7 @@ export default function PartnerSliders({ onContinue }: ClassificationTaskProps) 
             setSliderSelections((prev) => ({ ...prev, [rowIndex]: value }))
           }
           selections={selectionsForDisplay}
+          unansweredRows={attempted ? missingIndexes : []}
         />
       </div>
     </QuestionnairePage>

@@ -1,0 +1,684 @@
+================================================================================
+EVERY WORD IN THE PPS RATING STATION APP
+Niedenthal Lab Suite v1.2.0 — Rating Station mode
+Generated for Randy, 2026-09-19
+================================================================================
+
+This is every piece of text the app can put on screen, in the order a session
+meets it. Question wording, button labels, placeholder text inside empty boxes,
+pop-up dialogs, error messages — all of it, verbatim.
+
+Notes on how to read it:
+  * [RESEARCHER] marks a screen a participant never sees.
+  * <angle brackets> mark something the app fills in at run time, e.g. <round>.
+  * Pages whose questions are shuffled are marked; the items are listed in the
+    order they appear in the source, not the order any one participant sees.
+  * A "round" is one conversation. A participant stays at the same computer and
+    does several, each with a different partner.
+
+--------------------------------------------------------------------------------
+CONTENTS
+--------------------------------------------------------------------------------
+  0. On screen throughout
+  1. [RESEARCHER] Set up this station
+  2. Study Check-In
+  3. Welcome
+  4. Post-conversation questions
+  5. Conversation rating task (the slider)
+  6. Short video task
+  7. Conversation experience
+  8. Partner ratings
+  9. Partner history
+ 10. Round complete
+ 11. Last round only: Demographics
+ 12. Last round only: Study feedback
+ 13. Last round only: Video sharing
+ 14. Finished
+ 15. [RESEARCHER] Save & quit, and the researcher dashboard
+
+
+================================================================================
+0. ON SCREEN THROUGHOUT
+================================================================================
+
+HELP BUTTON (bottom-left, on every participant screen except during the
+continuous slider rating)
+
+    Need help?
+
+  After pressing it:
+
+    Ask for help
+    This lets the researcher know you need help. Your place in the study is
+    saved — nothing is lost.
+    [Never mind]  [Notify the researcher]
+
+  Once the researcher has been notified:
+
+    Researcher notified — please wait
+    I'm okay now
+
+
+SESSION STRIP (bottom-centre, small grey text, hidden while the slider is
+being recorded)
+
+    <Colour> (<Left or Right>) talking to <Colour> (<Left or Right>) · Round R<n>
+
+  Example:  Green (Left) talking to Orange (Right) · Round R2
+
+
+SCROLL INDICATOR (appears only when a page continues below the fold)
+
+    ▼ More questions below — scroll down
+
+  On the instruction screens the same indicator reads:
+
+    ▼ More below — scroll down
+
+
+UNANSWERED-QUESTION DIALOG (whenever Continue is pressed with something blank)
+
+    There are unanswered questions on this page. Would you like to continue?
+
+    This question has no answer:
+      (or, for more than one)
+    These <n> questions have no answer:
+      • <the question, word for word>
+      • <the question, word for word>
+      …and <n> more, marked with * on the page.
+
+    [Continue anyway]  [Go back and answer]
+
+  "Continue anyway" cannot be pressed for the first two seconds.
+  Unanswered questions are marked on the page itself with a red * and, on the
+  1–7 and 0–10 scales, the words "Not answered".
+
+
+DATA SAVE ERROR BANNER (top of the screen, only when a write to disk fails)
+
+    ⚠ DATA SAVE ERROR — Please alert your RA immediately!
+    <the technical reason>
+    [Dismiss]
+
+
+================================================================================
+1. [RESEARCHER] SET UP THIS STATION
+================================================================================
+
+    Set up this station
+    Researcher only. Hand the computer over once this is done.
+    [Researcher dashboard]  [← Modes]
+
+  SECTION 1 — Research Drive
+
+    Research Drive
+    Where the recording rooms file their conversations. This station copies the
+    participant's video from here on its own, so nobody browses for a file
+    mid-session. Set it once on this computer and it is remembered.
+    [Change]  [Browse]  [Save]  (placeholder in the box: R:\niedenthal\recordings)
+
+    Not set yet. The station will still run, but it can only find a
+    conversation recorded on this same computer — a video from the recording
+    room next door will not appear.
+
+  SECTION 2 — Which round
+
+    Which round is this?
+    A participant stays at this computer and talks to a different partner each
+    round. Every round writes its own pair of data files, so this number is
+    what tells them apart afterwards. It is counted for you — change it only if
+    you know it is wrong.
+    [−]  R<n>  [+]  Back to the counted value (R<n>)
+
+    Pick who is sitting here below and this fills itself in.
+    No earlier rounds on file for participant <id>.
+    Already done by participant <id>:
+      R<n> · <date> · with <Colour> (ID <id>)
+
+  SECTION 3 — Who is sitting here
+
+    Who is sitting here
+    Tap the colour of this participant's nametag. The dyad and both study IDs
+    come from the board the head RA set up this morning, so both stations use
+    the same numbers.
+    Not on the board — type it in instead
+    ← Back to the nametag colours
+
+    Nothing on the board for today (<date>). Whoever hands out the nametags can
+    add today's dyads under Researcher dashboard, and then both stations read
+    the same numbers off a colour. Until then, type them in.
+
+    Typed-in fields:  Dyad ID · Participant ID · Partner ID · Seat [Left][Right]
+    Nametag colours:  This participant's nametag · Partner's nametag
+    The six colours:  Red · Blue · Purple · Black · Orange · Green
+
+    Summary line:  Dyad · This participant · Partner · Seat
+
+  SECTION 4 — The conversation recording (see ConversationVideo.tsx)
+
+  SECTION 5 — This session
+
+    This session
+    Group  [A] [B] [C]
+    Recorded in both data files. It does not change what this participant
+    sees — every group runs the same session.
+    Subject initials (placeholder: AB)
+    RA name (placeholder: Your name)
+    Session date
+    Session time
+    Data folder
+    A folder for this dyad is created inside it. Set by the Research Drive
+    above — change it on the researcher dashboard if the lab ever wants it
+    somewhere else.
+
+    Still needed: <list>.
+
+  COLLISION WARNING
+
+    Round <n> already has data on disk.
+    <folder> already contains <files>. Usually that means a study ID is wrong,
+    the nametag colour was mis-tapped, or this round has been run already.
+    Starting anyway appends this sitting's rows to the same files, and the two
+    cannot be separated afterwards.
+    [Let me check the IDs]  [They are right — start anyway]
+
+  START
+
+    Start — hand the computer to the participant
+    The next screen asks the participant for their email. Nothing above is
+    shown to them.
+
+
+================================================================================
+2. STUDY CHECK-IN  (first round only)
+================================================================================
+
+    Study Check-In
+    Please enter your email:
+    (placeholder in the box: you@wisc.edu)
+    [Continue]
+
+    Please enter a valid email address.
+
+
+================================================================================
+3. WELCOME  (first round only)
+================================================================================
+
+    You're checked in!
+      (or, for somebody who has been here before)
+    Welcome back!
+
+    You are in Group <n>.
+    You have met <n> of your <n> group partners so far.
+      (or, when nobody else has joined yet)
+    Your group partners will be assigned as more participants join.
+
+    Please let the researcher know you have checked in.
+    [Continue]
+
+
+================================================================================
+4. POST-CONVERSATION QUESTIONS  (every round)
+================================================================================
+
+Pinned header:
+
+    Thinking back on the conversation you just had, please answer the
+    following.
+
+Nine questions, each on a 0–10 scale.  Scale ends: "Not at all" … "Very much".
+Order is fixed, not shuffled.
+
+    1.  To what extent do you feel YOU were influencing YOUR PARTNER'S
+        emotions?
+    2.  To what extent do you feel YOUR PARTNER was influencing YOUR emotions?
+    3.  To what extent do you feel you could predict YOUR PARTNER'S emotions?
+    4.  How well did the conversation "flow"?
+    5.  How much did you enjoy the conversation you had with your study
+        partner?
+    6.  Can you picture your study partner fitting in with your friends?
+    7.  How much would you like to be friends with your study partner?
+    8.  How comfortable did you feel during the conversation?
+    9.  How much were you focused on yourself during the conversation?
+
+Tenth question, on a −5 … +5 scale:
+
+    10. Think about how much you and your study partner each talked during your
+        conversation, and indicate your relative contributions on the scale
+        below:
+
+        Left end:   My study partner spoke much more than I did
+        Middle:     My study partner and I spoke the same amount
+        Right end:  I spoke much more than my study partner did
+
+    [Continue]
+
+
+================================================================================
+5. CONVERSATION RATING TASK (THE SLIDER)  (every round)
+================================================================================
+
+INSTRUCTION SCREENS — six, revealed one at a time. Any key, or the Continue
+button, or a click anywhere on the screen, moves to the next one.
+
+    1.  Before we begin: please check that the computer's volume is at a
+        comfortable level. You will hear the audio from your conversation. Ask
+        your researcher if you would like help adjusting it.
+
+    2.  In this part of the study, you will watch the video recording of the
+        conversation you just had.
+
+    3.  We are interested in two things:
+            1. How YOU were feeling during the conversation.
+            2. How YOUR PARTNER was feeling during the conversation.
+
+    4.  The video is split into parts. Before each part, the screen will tell
+        you whether to focus on YOUR OWN feelings or YOUR PARTNER'S feelings,
+        and a reminder stays in the corner of the screen while you watch.
+
+    5.  As the video plays, continuously move the slider to indicate how
+        positive or negative YOU or YOUR PARTNER felt at that moment during the
+        conversation.
+
+    6.  At certain points, you will be asked to write a short response and make
+        ratings about how you or your partner felt during the part of the
+        conversation you just watched.
+
+  At the bottom of every instruction screen:
+
+    Press any key to continue, or click Continue
+    [Continue]
+    ← Previous   (from the second screen on)
+
+
+PERSPECTIVE ANNOUNCEMENT — before every one-minute block. Held for three
+seconds before anything will advance it.
+
+  Rating your own feelings:
+
+    You will now be rating YOUR OWN FEELINGS during the conversation.
+    Think about how YOU were feeling, moment to moment.
+
+  Rating your partner's feelings:
+
+    You will now be rating YOUR PARTNER'S FEELINGS during the conversation.
+    Think about how YOUR PARTNER was feeling, moment to moment.
+
+  Both, underneath:
+
+    Continuing in <n>…
+    Press any key to continue, or click Continue
+    [Continue]
+
+
+WHILE THE VIDEO PLAYS
+
+    How positive or negative did YOU feel during this moment in the
+    conversation?
+      (or)
+    How positive or negative did YOUR PARTNER feel during this moment in the
+    conversation?
+
+  Corner reminder, top right:
+
+    YOU ARE RATING
+    YOUR OWN FEELINGS
+      (or)
+    YOUR PARTNER'S FEELINGS
+
+  Slider ends:
+
+    Very Negative                                              Very Positive
+
+  If the video will not start:
+
+    The video could not be started. Please alert your researcher.
+
+
+WRITING + RATING SCREEN — after every one minute of video, and once more when
+the video runs out.
+
+  On the screen that follows the end of the video only:
+
+    LAST PART OF THE VIDEO
+
+  Then:
+
+    Please use the box below to write about how YOU were feeling during the
+    part of the conversation you just watched.
+      (or)
+    Please use the box below to write about how YOUR PARTNER was feeling during
+    the part of the conversation you just watched.
+
+    (placeholder in the box: Type your response here...)
+
+    To what extent do you feel that YOUR PARTNER elicited these feelings in
+    YOU? Click the corresponding number.
+      (or)
+    To what extent do you feel that YOU elicited these feelings in YOUR
+    PARTNER? Click the corresponding number.
+
+    Scale 1–9.  Left: Not at all.  Right: Very.
+    Selected: <n>
+
+    Press Tab or click Continue.
+    [Continue]
+
+
+BEFORE THE VIDEO IS READY — what the RA sees if the recording is still being
+fetched. A participant normally never sees these.
+
+    Finding the conversation video…
+    Asking Round Robin which recording belongs to this participant.
+    Choose a file manually instead
+
+    Preparing the conversation video…
+    Copying from the Research Drive and verifying the recorder's checksum. This
+    can take a minute for a full conversation.
+    <n> MB of <n> MB · Starting…
+
+    Which conversation should be rated?
+    This participant has <n> recordings on file. The most recent is first.
+    (most recent)
+
+    Loading the conversation video…
+
+    The conversation video could not be fetched automatically.
+    [Try again]
+
+    Select Video File
+
+
+================================================================================
+6. SHORT VIDEO TASK  (every round)
+================================================================================
+
+INSTRUCTION SCREENS — six, same controls as above.
+
+    1.  In this part of the study, you will watch a series of short videos.
+
+    2.  After each video, you will answer the same questions twice: once about
+        how YOU felt while watching it, and once about how YOUR PARTNER would
+        feel while watching it.
+
+    3.  A screen before each set of questions will tell you which of the two you
+        are answering. Please read it — it changes from video to video.
+
+    4.  Every question is answered on a scale from 1 (Not at all) to 7
+        (Extremely).
+
+    5.  Please watch each video all the way through. You can play it again
+        later, while you answer the questions about it.
+
+    6.  We ask that you answer each question efficiently in order to keep your
+        participation time within one hour.
+
+
+WATCH PAGE
+
+    Please watch the following video all the way through.
+    Video <n> of 8
+    [Play video]
+    The clip plays once through. You cannot fast-forward.
+    Viewing complete. You may watch it again, or continue.
+    Please watch the video before continuing.
+    [Continue]
+
+  If a clip is missing:
+
+    This clip could not be loaded.
+    Please let the researcher know. (Missing file, or the stimulus folder is not
+    set on this machine.)
+
+
+PERSPECTIVE ANNOUNCEMENT — before each set of questions, held three seconds.
+
+    You will now be reporting how YOU felt.
+      (or)
+    You will now be reporting how YOUR PARTNER would feel.
+
+    Continuing in <n>…
+    Press any key to continue, or click Continue
+    [Continue]
+
+
+RATING PAGE
+
+    Video <n> of 8
+    Rating: YOU        (or)  Rating: YOUR PARTNER
+    [Watch again]
+
+  Three questions, one per emotion, on a 1–7 scale.
+  Scale ends: "Not at all" … "Extremely".
+
+    To what extent did you feel <emotion> while watching this video?
+      (or)
+    To what extent would your partner feel <emotion> while watching this video?
+
+  On the partner page only, a fourth question on the same 1–7 scale:
+
+    How confident are you in your ratings of your partner?
+
+  Answering the third question scrolls this fourth one into view.
+
+    [Continue]
+
+
+================================================================================
+7. CONVERSATION EXPERIENCE  (every round)
+================================================================================
+
+  Question 1, seven points:
+
+    How often were you thinking about the fact that your conversation was being
+    video recorded?
+    Left: Not at all          Right: The entire time
+
+  Question 2, seven points:
+
+    How comfortable did you feel during the conversation?
+    Left: Extremely uncomfortable    Right: Extremely comfortable
+
+  Question 3, free text:
+
+    We're interested in hearing more about your experience during your
+    conversation. Please share any thoughts that you have below.
+
+    [Continue]
+
+
+================================================================================
+8. PARTNER RATINGS  (every round)
+================================================================================
+
+Pinned header:
+
+    My partner... (1-100: 1 = Not at all, 100 = Very much)
+
+Three sliders, order shuffled. Ends: "Not at all" … "Very much".
+
+    Is similar to me?
+    Is close to me?
+    Is familiar to me?
+
+    [Continue]
+
+
+================================================================================
+9. PARTNER HISTORY  (every round)
+================================================================================
+
+    Have you met your partner prior to today's study?
+    [Yes]  [No]
+
+  Only if Yes:
+
+    How long have you known your partner? (in months):
+
+    Two statements, on a seven-point scale from "Very much Disagree" through
+    "Somewhat Disagree", "Somewhat Agree" to "Very much Agree":
+
+        I am happy with my friendship with my partner
+        My partner is fun to sit and talk with
+
+    [Continue]
+
+
+================================================================================
+10. ROUND COMPLETE  (after every round)
+================================================================================
+
+    ROUND <n> COMPLETE
+
+    Please let your researcher know you have finished this part. You can stay at
+    this computer.
+
+  [RESEARCHER] below a dividing line:
+
+    Researcher: this round is saved. Choose what happens next.
+    [Log the next round]  [Finish this participant's session]
+    Finishing runs the last few questions and the video-sharing page, which are
+    asked once rather than after every conversation.
+    <folder>
+    ratings_R<n>.csv · transitions_R<n>.csv
+
+
+================================================================================
+11. DEMOGRAPHICS  (last round only)
+================================================================================
+
+    Enter your age:                  (placeholder: Enter your age)
+
+    Are you Spanish, Hispanic, or Latino?
+    [Yes]  [None of these]
+
+    Choose one or more races that you consider yourself to be:
+        White
+        Asian
+        Black or African American
+        Native Hawaiian or Pacific Islander
+        American Indian or Alaska Native
+        Other                        (then: Please specify)
+
+    What is your sex?
+    [Male]  [Female]
+
+    Please provide the zip code of your permanent address (where you grew up):
+                                     (placeholder: Enter zip code)
+
+    [Continue]
+
+
+================================================================================
+12. STUDY FEEDBACK  (last round only)
+================================================================================
+
+    We're interested in hearing more about your experience with our study.
+    Please share any thoughts you have below.
+
+    [Continue]
+
+
+================================================================================
+13. VIDEO SHARING  (last round only — the last thing a participant does)
+================================================================================
+
+Pinned header:
+
+    If you could share these videos, which ones do you think your partner would
+    be interested in seeing, and which would you pick for yourself?
+
+    Tick every box that applies — as many or as few as you like. Click a video
+    to watch it again.
+
+  Table headings (the two columns swap places at random):
+
+    Video      I would be interested      My conversation partner would be
+                                          interested
+
+    Video <n>
+    [▶ Watch again]
+    Selected      <n> of 8      <n> of 8
+
+    [Continue]
+    [Back to the list]    (after clicking a video to re-watch it)
+
+  If nothing is ticked:
+
+    You haven't ticked any boxes on this page. Would you like to continue?
+    [Continue anyway]  [Go back and answer]
+
+
+================================================================================
+14. FINISHED
+================================================================================
+
+    Please alert your researcher that you are finished.
+    <folder>
+
+
+================================================================================
+15. [RESEARCHER] SAVE & QUIT, AND THE DASHBOARD
+================================================================================
+
+SAVE & QUIT — Ctrl+Shift+Q (Cmd+Shift+Q on the Mac), or the window's close
+button. Not shown to participants and not told to them.
+
+    Researcher: Save & Quit
+    Type "Confirm" to save all data collected so far and quit the application.
+    [Cancel]  [Save & Quit]
+    Save and go back to the mode chooser instead
+    Same save, but the app stays open — for turning this computer into a
+    recording room or the control screen.
+
+RESEARCHER DASHBOARD — reached from the setup screen, or by signing in as
+admin@admin. Session board, live participant progress and folder settings; see
+AdminDashboard.tsx.
+
+    Loading…    (the screen between two steps)
+
+
+================================================================================
+WHAT CHANGED IN v1.2.0
+================================================================================
+
+Removed entirely. None of the following are asked any more:
+
+    * Loneliness — 20 items, "How often do you feel that you lack
+      companionship?" and the rest of the UCLA scale.
+    * Social Connectedness — 20 items, "I feel disconnected from the world
+      around me." and the rest.
+    * Expressivity — 16 items, "I am an emotionally expressive person." and the
+      rest.
+    * Autism-spectrum quotient — 10 items, "I often notice small sounds when
+      others do not" and the rest.
+    * Emotion frequency — "In this part of the study, you will be asked to
+      estimate how often YOU experience each of the previously seen states."
+      with its 15 sliders (confident, grouchy, sad, assertive, unrestrained,
+      nervous, irritable, lively, bold, talkative, satisfaction, love, contempt,
+      disgust, embarrassment).
+
+Reworded:
+
+    was:  Please watch each video all the way through. You can replay it on the
+          question pages at any time.
+    now:  Please watch each video all the way through. You can play it again
+          later, while you answer the questions about it.
+
+Added:
+
+    * The volume reminder, now the first instruction of the slider task.
+    * "or click Continue" on every press-any-key screen, with a real button.
+    * The scroll indicator.
+    * The list of missed questions in the are-you-sure dialog, and the red *
+      beside each of them on the page.
+    * The session strip naming the colour pairing and the round.
+    * Everything on the round-complete screen.
+    * The "Which round is this?" section of the researcher setup screen.
+
+Timing:
+
+    The slider task's blocks are now one minute long instead of two and a half,
+    and the task runs to the end of the recording rather than stopping after
+    four blocks.

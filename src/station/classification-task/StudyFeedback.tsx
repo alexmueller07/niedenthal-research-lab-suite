@@ -8,10 +8,12 @@ export default function StudyFeedback({ onContinue }: ClassificationTaskProps) {
   return (
     <QuestionnairePage
       valid={textInput.trim() !== ""}
+      missing={
+        textInput.trim() === ""
+          ? ["We're interested in hearing more about your experience with our study."]
+          : []
+      }
       onSubmit={() => onContinue?.({ text: textInput })}
-      confirmMessage="There are unanswered questions on this page. Would you like to continue?"
-      confirmText="Continue"
-      cancelText="Close"
     >
       <div className="mt-6">
         <label className="block text-white text-2xl mb-6 mt-32">

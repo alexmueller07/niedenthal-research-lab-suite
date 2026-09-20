@@ -134,6 +134,21 @@ Engineering notes: [docs/recorder/DESIGN.md](docs/recorder/DESIGN.md).
 
 ## Status
 
+- **A session is several rounds as of v1.2.0 (2026-09-19).** A participant
+  stays at one rating station and has conversation after conversation with
+  different partners, sometimes across days. Every round writes its own
+  `ratings_R<n>.csv` / `transitions_R<n>.csv`, both files carry the nametag
+  colours and the round number in three new trailing columns, and the round
+  ledger (`rounds.json`, beside `roundrobin.json` in the shared folder) is what
+  makes round numbering survive a restart or a change of machine. The
+  continuous slider now switches perspective every minute instead of every two
+  and a half, and runs the whole conversation instead of stopping after four
+  blocks. Five questionnaires were removed. `softwareVersion` is `4.0.0`; rows
+  either side of it are not comparable. Full detail:
+  [docs/station/CHANGELOG.md](docs/station/CHANGELOG.md).
+- **Every word the Rating Station can show is written down** in
+  [docs/station/PPS-TEXT.txt](docs/station/PPS-TEXT.txt) — the fastest way to
+  review wording without running a session.
 - Built from the approved pipeline branches of the three standalone repos;
   those repos are frozen as fallback until Randy signs off on the suite.
 - **The video task changed on 2026-08-22** to Randy's specification: two
@@ -144,7 +159,11 @@ Engineering notes: [docs/recorder/DESIGN.md](docs/recorder/DESIGN.md).
   says it should** (odd study ID → own feelings). Every session before that
   date started on "self" regardless of seat. Randy needs to decide what that
   means for the pilot data.
-- The macOS build has not run on the lab Mac yet.
+- **macOS now opens in real fullscreen** (v1.2.0), which is what the Dock and
+  the missing green button on the lab Mac were about. Windows deliberately does
+  not — real fullscreen there covers the taskbar and breaks desktop switching.
+  The macOS change is `cfg(target_os = "macos")`-gated and has not been run on
+  the lab Mac yet; Ben should confirm it before a session does.
 - Coordinate with Ismam before changes that touch shared systems.
 
 Questions: Alexander Mueller (admueller3@wisc.edu), CC Randy Lee

@@ -11,6 +11,12 @@ import type { TransitionsWriter } from "./utils/transitions";
 import ErrorBanner from "./components/ErrorBanner";
 import AdminQuitModal from "./components/AdminQuitModal";
 import HelpButton from "./components/HelpButton";
+import SessionStrip from "./components/SessionStrip";
+import RoundComplete from "./rounds/RoundComplete";
+import VideoSelectionStep from "./video-task/VideoSelectionStep";
+import { ratingsFileName, recordRound, transitionsFileName } from "./rounds/rounds";
+import type { RoundRecord } from "./rounds/rounds";
+import { nowHHMM, todayISO } from "./roundrobin/sessionBoard";
 import SignIn from "./roundrobin/SignIn";
 import Welcome from "./roundrobin/Welcome";
 import AdminDashboard from "./roundrobin/AdminDashboard";
@@ -63,6 +69,28 @@ export interface FormData {
   raName: string;
   sessionTime: string;
   sessionDate: string;
+  /**
+   * Nametag colours for this round's pairing. Written to both data files and
+   * shown at the bottom of the participant's screen (SessionStrip).
+   *
+   * Randy, 2026-09-19. The seat alone stopped being enough the moment a
+   * participant does several conversations in an afternoon: "Left" is where
+   * they sat, not who they talked to, and the partner changes every round. The
+   * colour is what the lab hands out at the door and what the RAs say out loud,
+   * so it is the identifier a mistake is actually visible in.
+   *
+   * Empty when the RA typed study IDs by hand instead of tapping a colour — the
+   * app never invents one.
+   */
+  participantColor: string;
+  partnerColor: string;
+  /**
+   * Which conversation of this participant's this is. 1-based and continuing
+   * across days: somebody who did two rounds last week comes back on R3. The
+   * number comes from the round ledger (rounds/rounds.ts) rather than a counter
+   * in this process, because the process does not survive the afternoon.
+   */
+  round: number;
 }
 
 /**
@@ -111,7 +139,14 @@ export type ConversationPrep =
  * the first walkthrough. The RA now sets the station up, hands the computer
  * over, and the sign-in screen is the first thing the participant sees.
  */
-type Stage = "setup" | "signin" | "welcome" | "admin" | "study";
+/**
+ * "roundComplete" arrived on 2026-09-19 with the multi-round session. It is the
+ * screen between two conversations: the participant is told to fetch their
+ * researcher, this round's files are closed, and the RA decides whether there
+ * is another round or whether the day is over. Before it, the only thing after
+ * a session was the end of the session.
+ */
+type Stage = "setup" | "signin" | "welcome" | "admin" | "study" | "roundComplete";
 
 function App() {
   const [formData, setFormData] = useState<FormData>({
@@ -125,18 +160,30 @@ function App() {
     raName: "",
     sessionTime: "",
     sessionDate: "",
+    participantColor: "",
+    partnerColor: "",
+    round: 1,
   });
 
+  /**
+   * What the participant is doing right now.
+   *
+   * "wrapUp" and "selection" are the two things that run once, at the end of
+   * the last round rather than at the end of every one: the demographics and
+   * study-feedback questionnaires, then the video-sharing page. Randy,
+   * 2026-09-19: the sharing page is "the last thing they should do before we
+   * bring them back to the done stream".
+   */
   const [selectedTask, setSelectedTask] = useState<
-    "postConversation" | "dyad" | "classification" | null
+    "postConversation" | "dyad" | "classification" | "wrapUp" | "selection" | null
   >(null);
   const [dyadCsvFilePath, setDyadCsvFilePath] = useState<string>("");
   const [sessionFolder, setSessionFolder] = useState<string>("");
-  const [completedTasks, setCompletedTasks] = useState({ dyad: false, classification: false });
-  // One writer for transitions.csv for the whole session, created once the save
-  // folder exists. Both the post-conversation questionnaire and the
-  // questionnaire task write through it, so the file's trial numbering stays a
-  // single sequence — see utils/transitions.ts.
+  // One writer for this round's transitions file, created once the save folder
+  // exists. Both the post-conversation questionnaire and the questionnaire task
+  // write through it, so the file's trial numbering stays a single sequence —
+  // see utils/transitions.ts. It is replaced at the start of every round,
+  // because every round writes its own file and each one numbers trials from 1.
   const transitionsWriterRef = useRef<TransitionsWriter | null>(null);
   const [taskOrder, setTaskOrder] = useState<number>(0);
   const [csvError, setCsvError] = useState<string | null>(null);
@@ -160,6 +207,33 @@ function App() {
   // render cycle avoids re-rendering the running task on every trial.
   const progressRef = useRef<RRProgress | null>(null);
   const [helpPending, setHelpPending] = useState<boolean>(false);
+  /**
+   * The participant has finished everything, not just this round.
+   *
+   * It used to be enough to notice that both tasks had reported done; that flag
+   * is gone, because "both tasks are done" now means the end of a round and
+   * says nothing about the end of the day. Which round is the last one is a
+   * decision the RA makes on the round-complete screen, not something the tasks
+   * can conclude on their own.
+   */
+  const [sessionDone, setSessionDone] = useState<boolean>(false);
+  /**
+   * The round this station just finished, and whose it was.
+   *
+   * The setup screen normally reads the next round number off the ledger on
+   * disk. This is the same fact held in memory, and it exists because the two
+   * can disagree in one direction that matters: if the ledger write failed, the
+   * disk still says the participant's last round was the one before, and the
+   * setup screen would point round N+1 at the files round N just wrote.
+   *
+   * Carries the participant ID because a station does not always keep the same
+   * participant — an RA who mistypes a study ID and corrects it must get that
+   * participant's round number, not the previous one's.
+   */
+  const [lastCompletedRound, setLastCompletedRound] = useState<{
+    participantId: string;
+    round: number;
+  } | null>(null);
   // Cursor position is the measurement during the continuous rating, so the
   // help button has to disappear while that runs — see DyadTaskMain.
   const [cursorLocked, setCursorLocked] = useState<boolean>(false);
@@ -526,7 +600,18 @@ function App() {
     [remoteReady, prepareClip, reportStationEvent]
   );
 
-  /** The RA finished setting the station up. Next screen is the participant's. */
+  /**
+   * The RA finished setting the station up. Next screen is the participant's —
+   * or, from the second round on, straight back into the study, because the
+   * participant is already signed in and sitting there.
+   *
+   * The files are named for the round: ratings_R2.csv, transitions_R2.csv. They
+   * used to be ratings.csv and transitions.csv, one pair per folder, which
+   * worked exactly as long as a folder meant one conversation. Round two with
+   * the same partner would have appended a second participant-session onto the
+   * first and neither could be separated afterwards — the failure the setup
+   * screen's collision check exists to catch.
+   */
   const handleSetupSubmit = async () => {
     try {
       const basePath = await invoke<string>("setup_rating_directory", {
@@ -538,11 +623,24 @@ function App() {
       });
 
       setSessionFolder(basePath);
-      setDyadCsvFilePath(`${basePath}/ratings.csv`);
+      setDyadCsvFilePath(`${basePath}/${ratingsFileName(formData.round)}`);
       transitionsWriterRef.current = createTransitionsWriter(
         formData,
-        `${basePath}/transitions.csv`
+        `${basePath}/${transitionsFileName(formData.round)}`
       );
+      // Round two and later: the participant never left, so the sign-in and
+      // welcome screens would be asking a person who is already sitting there
+      // to identify themselves again.
+      if (rrParticipant) {
+        // Their new conversation has to be found afresh. Skipped when the RA
+        // already started it from the setup screen, so a copy that is nearly
+        // done is not thrown away and restarted.
+        if (searchedEmailRef.current !== rrParticipant.email) {
+          startConversationSearch(rrParticipant.email);
+        }
+        beginRound();
+        return;
+      }
       setStage("signin");
     } catch (error) {
       console.error("Error setting up directory:", error);
@@ -594,11 +692,17 @@ function App() {
     });
   };
 
-  const beginStudy = () => {
+  /**
+   * Start the study on this round's conversation. Every round runs the same
+   * three things — the post-conversation questions, the continuous rating, and
+   * the short-video task — because all three are about the conversation that
+   * just happened.
+   */
+  const beginRound = () => {
     setSelectedTask("postConversation");
     setTaskOrder(1);
     setStage("study");
-    reportProgress("postconv", 0, 1, "Post-conversation questions");
+    reportProgress("postconv", 0, 1, `Round ${formData.round} — post-conversation questions`);
   };
 
   const handleFormChange = (field: string, value: string) => {
@@ -630,11 +734,13 @@ function App() {
       setCsvError(`Write failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     setSelectedTask("dyad");
-    reportProgress("dyad", 0, 4, "Instructions");
+    // No block total yet: with one-minute blocks the count comes from the
+    // recording's own length, which DyadTaskMain learns from the video element
+    // and reports from its first block onwards.
+    reportProgress("dyad", 0, 0, "Instructions");
   };
 
   const handleDyadTaskComplete = () => {
-    setCompletedTasks((prev) => ({ ...prev, dyad: true }));
     setTaskOrder(2);
     setSelectedTask("classification");
     setCursorLocked(false);
@@ -643,17 +749,131 @@ function App() {
     reportProgress("video", 0, 9, "Instructions");
   };
 
-  const handleClassificationTaskComplete = () => {
-    setCompletedTasks((prev) => ({ ...prev, classification: true }));
+  /**
+   * The last per-round page is done. Close the round.
+   *
+   * Everything that could still be in memory goes to disk BEFORE the screen
+   * changes — flushAll drains the continuous-rating sample buffer, which holds
+   * up to ~15 seconds of the measurement (see utils/flushRegistry.ts). Randy's
+   * concern was exactly this: "the app records data continuously… save a CSV
+   * after every round". The round is only then written to the ledger, so a
+   * ledger row is evidence the files are complete rather than a promise that
+   * they will be.
+   *
+   * A failed flush does not block the screen. The RA needs to be able to move
+   * the session on; the error banner says what happened and the rows are still
+   * in the buffer for the next flush or the save-and-quit gate.
+   */
+  const handleRoundTasksComplete = async () => {
     setSelectedTask(null);
+    try {
+      await flushAll();
+    } catch (err) {
+      console.error("Flush at the end of the round failed:", err);
+      setCsvError(`Some data could not be written at the end of round ${formData.round}: ${err}`);
+    }
+
+    const record: RoundRecord = {
+      participantId: formData.participantId,
+      participantColor: formData.participantColor,
+      partnerId: formData.partnerId,
+      partnerColor: formData.partnerColor,
+      seat: formData.computer,
+      dyadId: formData.dyadId,
+      round: formData.round,
+      date: formData.sessionDate,
+      time: formData.sessionTime,
+      folder: sessionFolder,
+      ratingsFile: ratingsFileName(formData.round),
+      transitionsFile: transitionsFileName(formData.round),
+      completedAt: new Date().toISOString(),
+      raName: formData.raName,
+      groupId: formData.groupId,
+    };
+    try {
+      await recordRound(record);
+    } catch (err) {
+      // The ledger is bookkeeping, not study data: the CSVs are already on
+      // disk. Losing a row costs the next round's auto-numbering, which the RA
+      // can correct on the setup screen, so it is logged rather than blocking.
+      console.error("Round ledger write failed:", err);
+    }
+
+    setLastCompletedRound({
+      participantId: formData.participantId,
+      round: formData.round,
+    });
+    setStage("roundComplete");
+    reportProgress("done", 1, 1, `Round ${formData.round} complete`);
+  };
+
+  /**
+   * The RA says there is another conversation. Keep the participant, the RA
+   * name, the drive and the machine settings; clear everything that belongs to
+   * the round that just ended.
+   *
+   * The conversation video is reset to idle rather than re-fetched here: the
+   * next round's recording may not have been filed yet (the participants have
+   * only just walked back in), and the setup screen is where an RA finds or
+   * waits for it — with the manual picker one click away, as always.
+   */
+  const handleNextRound = () => {
+    setFormData((prev) => ({
+      ...prev,
+      round: prev.round + 1,
+      // The partner changes; who is sitting here does not.
+      partnerId: "",
+      partnerColor: "",
+      dyadId: "",
+      sessionTime: nowHHMM(),
+      sessionDate: todayISO(),
+    }));
+    setSelectedTask(null);
+    setDyadCsvFilePath("");
+    setSessionFolder("");
+    transitionsWriterRef.current = null;
+    setPrep({ status: "idle" });
+    searchedEmailRef.current = "";
+    setStage("setup");
+  };
+
+  /** No more rounds today: the once-only pages, then the sharing page. */
+  const handleFinishSession = () => {
+    setSelectedTask("wrapUp");
+    setStage("study");
+    reportProgress("questionnaires", 0, 3, "Final questions");
+  };
+
+  /** The demographics and study-feedback pages are done. */
+  const handleWrapUpComplete = () => {
+    setSelectedTask("selection");
+    reportProgress("questionnaires", 2, 3, "Choosing videos to share");
+  };
+
+  /** The sharing page is done, and so is the participant's day. */
+  const handleSessionComplete = () => {
+    setSelectedTask(null);
+    setSessionDone(true);
     reportProgress("done", 1, 1, "Session complete");
+    void flushAll().catch((err) =>
+      console.error("Flush at the end of the session failed:", err)
+    );
   };
 
   const handleCsvError = (msg: string) => {
     setCsvError(msg);
   };
 
-  const allTasksCompleted = completedTasks.dyad && completedTasks.classification;
+  /**
+   * Whether the colour strip belongs on screen right now.
+   *
+   * Participant-facing screens only, and never during the continuous rating:
+   * the pointer is the measurement there, and a line of text at the bottom of
+   * the screen is an invitation to move the cursor down to read it. Same rule
+   * as the help button above.
+   */
+  const showSessionStrip =
+    (stage === "study" || stage === "roundComplete") && !cursorLocked;
 
   // The wrapper below is w-full, not w-screen. #root is the scroll container, so
   // on any page tall enough to scroll, 100vw is wider than the space left beside
@@ -685,9 +905,22 @@ function App() {
         />
       )}
 
+      {showSessionStrip && (
+        <SessionStrip
+          participantColor={formData.participantColor}
+          partnerColor={formData.partnerColor}
+          seat={formData.computer}
+          round={formData.round}
+        />
+      )}
+
       {stage === "setup" ? (
         <StationSetup
           formData={formData}
+          onRoundChange={(round) =>
+            setFormData((prev) => ({ ...prev, round: Math.max(1, round) }))
+          }
+          lastCompletedRound={lastCompletedRound}
           settings={settings}
           remote={remote}
           roster={rrData?.participants ?? []}
@@ -738,9 +971,9 @@ function App() {
           data={rrData}
           participant={rrParticipant}
           isNew={rrIsNew}
-          onContinue={beginStudy}
+          onContinue={beginRound}
         />
-      ) : allTasksCompleted ? (
+      ) : sessionDone ? (
         <div className="h-screen w-full flex flex-col items-center justify-center px-8">
           <p className="text-white text-2xl text-center max-w-2xl">
             Please alert your researcher that you are finished.
@@ -753,6 +986,15 @@ function App() {
             {sessionFolder}
           </p>
         </div>
+      ) : stage === "roundComplete" ? (
+        <RoundComplete
+          round={formData.round}
+          folder={sessionFolder}
+          ratingsFile={ratingsFileName(formData.round)}
+          transitionsFile={transitionsFileName(formData.round)}
+          onNextRound={handleNextRound}
+          onFinishSession={handleFinishSession}
+        />
       ) : selectedTask === "postConversation" ? (
         <PostConversation onContinue={handlePostConversationComplete} />
       ) : selectedTask === "dyad" ? (
@@ -778,11 +1020,33 @@ function App() {
         <ClassificationTaskMain
           dyadId={formData.dyadId}
           writeRow={transitionsWriterRef.current}
-          onComplete={handleClassificationTaskComplete}
+          mode="round"
+          onComplete={() => void handleRoundTasksComplete()}
           onCsvError={handleCsvError}
           onProgress={(stage, done, total, detail) =>
             reportProgress(stage, done, total, detail)
           }
+        />
+      ) : selectedTask === "wrapUp" && transitionsWriterRef.current ? (
+        <ClassificationTaskMain
+          dyadId={formData.dyadId}
+          writeRow={transitionsWriterRef.current}
+          mode="wrapUp"
+          onComplete={handleWrapUpComplete}
+          onCsvError={handleCsvError}
+          onProgress={(stage, done, total, detail) =>
+            reportProgress(stage, done, total, detail)
+          }
+        />
+      ) : selectedTask === "selection" && transitionsWriterRef.current ? (
+        // The last thing of the day. It is asked about the clips from the round
+        // that just finished, so it uses that round's dyad ID and that round's
+        // transitions file — see VideoSelectionStep.
+        <VideoSelectionStep
+          dyadId={formData.dyadId}
+          writeRow={transitionsWriterRef.current}
+          onComplete={handleSessionComplete}
+          onCsvError={(err) => handleCsvError(String(err))}
         />
       ) : (
         <div className="h-screen w-full flex items-center justify-center">

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useScrollToTop } from "../utils/scroll";
+import { useAdvance } from "../utils/useAdvance";
+import PressKeyPrompt from "./PressKeyPrompt";
 
 // The screen that tells a participant whose feelings the next thing is about.
 //
@@ -13,8 +15,14 @@ import { useScrollToTop } from "../utils/scroll";
 //
 // The dwell is a data-quality control, not decoration. A block rated from the
 // wrong perspective is unusable and there is no way to detect it afterwards, so
-// keys do nothing until the countdown expires — and the remaining seconds are
+// nothing advances until the countdown expires — and the remaining seconds are
 // on screen, so the wait reads as deliberate rather than as a frozen app.
+//
+// Alex, 2026-09-19: once the dwell is over, a click anywhere works as well as a
+// key, and there is a real Continue button. Ben's list had this screen in both
+// of its "press any key" complaints — no button to click, and no way through
+// for somebody whose hand is on the mouse. The dwell is unchanged; what changed
+// is only how you get past it afterwards.
 
 /** How long the announcement holds before any key will advance it. */
 export const PERSPECTIVE_DWELL_MS = 3000;
@@ -44,12 +52,7 @@ export default function PerspectiveNotice({
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    if (locked) return;
-    const handler = () => onContinue();
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [locked, onContinue]);
+  useAdvance(onContinue, !locked);
 
   // Left-aligned inside a wide column, matching the slides Randy sent: the text
   // starts in the same place on every one of these screens, so a participant's
@@ -67,16 +70,16 @@ export default function PerspectiveNotice({
           Continuing in {Math.ceil(remainingMs / 1000)}…
         </p>
 
-        <p
-          className={`text-3xl leading-relaxed mt-16 transition-opacity duration-300 ${
-            locked ? "opacity-0" : "opacity-100 text-white"
+        {/* Reserved rather than revealed: the prompt occupies its space while
+            hidden, so the block of text does not jump when the countdown ends. */}
+        <div
+          className={`mt-16 max-w-xl transition-opacity duration-300 ${
+            locked ? "opacity-0 pointer-events-none" : "opacity-100"
           }`}
-          // Reserved rather than revealed: the line occupies its space while
-          // hidden, so the block of text does not jump when the countdown ends.
           aria-hidden={locked}
         >
-          Press any key to continue
-        </p>
+          <PressKeyPrompt onContinue={onContinue} disabled={locked} />
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import NumberScale from "../components/NumberScale";
 import ConfirmationModal from "../components/ConfirmationModal";
+import ScrollHint from "../components/ScrollHint";
 import StimulusPlayer from "./StimulusPlayer";
 import { useScrollToTop } from "../utils/scroll";
 
@@ -23,6 +24,20 @@ import { useScrollToTop } from "../utils/scroll";
 // same size on both perspectives ("video and text all same size"): the two
 // pages are the same measurement asked about two people, so anything that
 // makes one easier to answer than the other is a confound.
+//
+// THE FOURTH QUESTION — Ben, 2026-09-19. The partner page asks four things
+// (three emotions plus confidence) and the fourth sits below the fold on the
+// lab's monitors: "not everyone scrolled down every time and didn't see the
+// last question". Two answers, because either alone leaks:
+//
+//   - answering the last emotion scrolls the confidence question into view. A
+//     participant who is working down the page is carried to the end of it.
+//   - a scroll indicator (ScrollHint), for anyone who answers out of order or
+//     whose window is short enough that even the third question is below the
+//     fold.
+//
+// Neither auto-advances or auto-answers anything. Being carried to a question
+// is not the same as being asked to give a particular answer to it.
 
 export interface VideoRating {
   emotion: string;
@@ -64,7 +79,9 @@ export default function VideoRatingPage({
   const [intensity, setIntensity] = useState<Record<string, number>>({});
   const [confidence, setConfidence] = useState<number | undefined>(undefined);
   const [showIncomplete, setShowIncomplete] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [replays, setReplays] = useState(0);
+  const confidenceRef = useRef<HTMLDivElement>(null);
 
   const self = target === "self";
 
@@ -73,11 +90,21 @@ export default function VideoRatingPage({
     setIntensity({});
     setConfidence(undefined);
     setShowIncomplete(false);
+    setAttempted(false);
     setReplays(0);
   }, [videoId, target]);
 
-  const complete =
-    emotions.every((e) => intensity[e] !== undefined) && (self || confidence !== undefined);
+  // Every emotion answered, confidence still blank: bring the confidence
+  // question to them. Only on the partner page — the self page has no fourth
+  // question — and only while it is genuinely unanswered, so re-editing an
+  // emotion afterwards does not yank the page around.
+  const allEmotionsAnswered = emotions.every((e) => intensity[e] !== undefined);
+  useEffect(() => {
+    if (self || !allEmotionsAnswered || confidence !== undefined) return;
+    confidenceRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [self, allEmotionsAnswered, confidence]);
+
+  const complete = allEmotionsAnswered && (self || confidence !== undefined);
 
   const submit = () => {
     setShowIncomplete(false);
@@ -89,14 +116,25 @@ export default function VideoRatingPage({
   };
 
   const handleContinue = () => {
-    if (complete) submit();
-    else setShowIncomplete(true);
+    if (complete) {
+      submit();
+      return;
+    }
+    setAttempted(true);
+    setShowIncomplete(true);
   };
 
   const question = (emotion: string) =>
     self
       ? `To what extent did you feel ${emotion} while watching this video?`
       : `To what extent would your partner feel ${emotion} while watching this video?`;
+
+  const CONFIDENCE_QUESTION = "How confident are you in your ratings of your partner?";
+
+  const missing = [
+    ...emotions.filter((e) => intensity[e] === undefined).map(question),
+    ...(!self && confidence === undefined ? [CONFIDENCE_QUESTION] : []),
+  ];
 
   return (
     <div className="min-h-full w-full flex flex-col bg-black pb-24">
@@ -123,6 +161,7 @@ export default function VideoRatingPage({
               leftLabel="Not at all"
               rightLabel="Extremely"
               value={intensity[emotion]}
+              unanswered={attempted && intensity[emotion] === undefined}
               onChange={(value) =>
                 setIntensity((prev) => ({ ...prev, [emotion]: value }))
               }
@@ -131,15 +170,18 @@ export default function VideoRatingPage({
 
           {/* Asked once, about the partner ratings as a whole. */}
           {!self && (
-            <NumberScale
-              label="How confident are you in your ratings of your partner?"
-              min={SCALE_MIN}
-              max={SCALE_MAX}
-              leftLabel="Not at all"
-              rightLabel="Extremely"
-              value={confidence}
-              onChange={setConfidence}
-            />
+            <div ref={confidenceRef}>
+              <NumberScale
+                label={CONFIDENCE_QUESTION}
+                min={SCALE_MIN}
+                max={SCALE_MAX}
+                leftLabel="Not at all"
+                rightLabel="Extremely"
+                value={confidence}
+                unanswered={attempted && confidence === undefined}
+                onChange={setConfidence}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -154,10 +196,13 @@ export default function VideoRatingPage({
         </button>
       </div>
 
+      <ScrollHint bottomClass="bottom-24" />
+
       <ConfirmationModal
         isOpen={showIncomplete}
         onClose={() => setShowIncomplete(false)}
         onConfirm={submit}
+        missing={missing}
       />
     </div>
   );

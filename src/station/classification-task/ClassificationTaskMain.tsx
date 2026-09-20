@@ -2,39 +2,71 @@ import { useEffect, useRef, useState } from "react";
 import type { TransitionsWriter } from "../utils/transitions";
 import VideoTaskMain from "../video-task/VideoTaskMain";
 import PartnerHistory from "./PartnerHistory";
-import SelfFrequency from "./SelfFrequency";
-import Loneliness from "./Loneliness";
 import Demographics from "./Demographics";
 import PartnerSliders from "./PartnerSliders";
-import SocialConnectedness from "./SocialConnectedness";
 import Experience from "./Experience";
-import Expressivity from "./Expressivity";
 import StudyFeedback from "./StudyFeedback";
-import Autism from "./Autism";
 import type { ClassificationStepData } from "./types";
-import { shuffle } from "../utils/shuffle";
+
+// Everything after the conversation-rating task: the short-video task and the
+// questionnaires.
+//
+// WHAT WAS REMOVED, 2026-09-19. Randy: "need to take off all the individual
+// measures like loneliness." Ben, separately: "the section on 'how often you
+// feel the following previously seen emotions' should be removed, as we are not
+// using that questionnaire." Five pages went, and it is worth naming them so
+// nobody spends an afternoon wondering where they went:
+//
+//   - Loneliness (UCLA, 20 items)
+//   - Social Connectedness (20 items)
+//   - Expressivity (16 items)
+//   - Autism-spectrum quotient (10 items)
+//   - Emotion frequency ("how often do you feel …", 15 sliders)
+//
+// That is 81 items. They were trait measures — properties of a person, asked
+// once and unchanged by anything the study does — and a session is now several
+// rounds long, so asking them would have meant asking the same 81 questions
+// after every conversation, or building an exception for them. Randy's answer
+// was to stop asking. The randomised block that used to shuffle three of them
+// went with them; the randomisation that remains (video set, clip order,
+// per-clip perspective order, emotion order) is untouched.
+//
+// What is left splits cleanly, which is why the split is the prop below:
+//
+//   per round — about this conversation and this partner:
+//     the short-video task, Experience, PartnerSliders, PartnerHistory
+//   once per participant — about the person, or about the study as a whole:
+//     Demographics, StudyFeedback  (App.tsx runs these, plus the video-sharing
+//     page, as the wrap-up when the RA says the day is over)
 
 // Human-readable names for the questionnaire steps, shown on the researcher
 // dashboard so "where is this participant" is answerable at a glance.
 const STEP_LABELS: Record<string, string> = {
   videoTask: "Video affective-response task",
-  selfFrequency: "Emotion frequency",
   experience: "Conversation experience",
   partnerSliders: "Partner ratings",
-  loneliness: "Loneliness",
-  socialConnectedness: "Social connectedness",
-  expressivity: "Expressivity",
-  autism: "Autism-spectrum quotient",
   partnerHistory: "Partner history",
   demographics: "Demographics",
   studyFeedback: "Study feedback",
 };
 
+/** The pages that belong to one conversation, in order. */
+const PER_ROUND_STEPS = ["videoTask", "experience", "partnerSliders", "partnerHistory"];
+
+/** The pages asked once, at the end of a participant's last round. */
+const WRAP_UP_STEPS = ["demographics", "studyFeedback"];
+
 interface ClassificationTaskMainProps {
   /** Yokes the video set across both members of the dyad. */
   dyadId: string;
-  /** Session-wide writer for transitions.csv — see utils/transitions.ts. */
+  /** Session-wide writer for this round's transitions file. */
   writeRow: TransitionsWriter;
+  /**
+   * "round" runs the per-conversation pages; "wrapUp" runs the once-only ones.
+   * Splitting them is what lets a participant do four conversations without
+   * being asked their zip code four times.
+   */
+  mode?: "round" | "wrapUp";
   onComplete?: () => void;
   onCsvError?: (msg: string) => void;
   /** Reports progress for the researcher dashboard. */
@@ -49,6 +81,7 @@ interface ClassificationTaskMainProps {
 function ClassificationTaskMain({
   dyadId,
   writeRow: writeCSVRow,
+  mode = "round",
   onComplete,
   onCsvError,
   onProgress,
@@ -59,17 +92,19 @@ function ClassificationTaskMain({
     onCsvError?.(`Write failed: ${msg}`);
   };
 
-  const [currentStep, setCurrentStep] = useState<string>("videoTask");
-  const [formOrder, setFormOrder] = useState<string[]>([]);
+  const [formOrder] = useState<string[]>(() =>
+    mode === "wrapUp" ? WRAP_UP_STEPS : PER_ROUND_STEPS
+  );
   const [currentFormIndex, setCurrentFormIndex] = useState<number>(0);
+  const [currentStep, setCurrentStep] = useState<string>(formOrder[0]);
 
   // Ledger of rows already written. A failed write leaves the participant on
-  // the same page, and Continue re-runs the whole step below; transitions.csv
-  // is append-only, so rows that landed on the first attempt must be skipped
-  // on the retry, not appended a second time. Keys are namespaced by step, so
-  // the ledger never needs clearing; the step only advances once every one of
-  // its rows has been written. (A row that landed keeps its first-attempt
-  // value even if the answer was edited before the retry.)
+  // the same page, and Continue re-runs the whole step below; the transitions
+  // file is append-only, so rows that landed on the first attempt must be
+  // skipped on the retry, not appended a second time. Keys are namespaced by
+  // step, so the ledger never needs clearing; the step only advances once every
+  // one of its rows has been written. (A row that landed keeps its
+  // first-attempt value even if the answer was edited before the retry.)
   const writtenRowsRef = useRef<Set<string>>(new Set());
 
   /** Writes one row unless this key already made it to disk on a prior attempt. */
@@ -79,27 +114,22 @@ function ClassificationTaskMain({
     writtenRowsRef.current.add(key);
   };
 
+  // A step list that starts on a questionnaire (the wrap-up) has to report its
+  // first page, because advanceForm only reports the ones it moves to.
   useEffect(() => {
-    const blockRandomized = shuffle(["loneliness", "socialConnectedness", "expressivity"]);
-    setFormOrder([
-      "videoTask",
-      "selfFrequency",
-      "experience",
-      "partnerSliders",
-      blockRandomized[0],
-      blockRandomized[1],
-      blockRandomized[2],
-      "autism",
-      "partnerHistory",
-      "demographics",
-      "studyFeedback",
-    ]);
+    if (formOrder[0] === "videoTask") return;
+    onProgress?.(
+      "questionnaires",
+      0,
+      formOrder.length,
+      STEP_LABELS[formOrder[0]] ?? formOrder[0]
+    );
+    // Once, on mount: this is the arrival announcement, not a subscription.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-
   const handleVideoTaskComplete = () => {
-    setCurrentFormIndex(1);
-    setCurrentStep(formOrder[1] ?? "selfFrequency");
+    advanceForm();
   };
 
   const advanceForm = () => {
@@ -107,11 +137,10 @@ function ClassificationTaskMain({
       const nextIndex = currentFormIndex + 1;
       setCurrentFormIndex(nextIndex);
       setCurrentStep(formOrder[nextIndex]);
-      // Questionnaire pages only — the video task reports its own sub-progress.
       onProgress?.(
         "questionnaires",
-        nextIndex - 1,
-        formOrder.length - 1,
+        nextIndex,
+        formOrder.length,
         STEP_LABELS[formOrder[nextIndex]] ?? formOrder[nextIndex]
       );
     } else {
@@ -130,30 +159,6 @@ function ClassificationTaskMain({
           await writeRowOnce("partnerHistory:fun", "partner_history", "My partner is fun to sit and talk with", "", "", "", String((stepData?.matrixSelections as Record<number, number>)?.[1] ?? ""));
           advanceForm();
           break;
-
-        case "selfFrequency": {
-          const order = stepData?.order as string[] | undefined;
-          const ratings = stepData?.ratings as Record<string, number> | undefined;
-          if (order && ratings) {
-            for (const emotion of order) {
-              await writeRowOnce(`selfFrequency:${emotion}`, "self_frequency", `How often do you feel ${emotion}?`, "", "", "", ratings[emotion] ?? "");
-            }
-          }
-          advanceForm();
-          break;
-        }
-
-        case "loneliness": {
-          const order = stepData?.order as string[] | undefined;
-          const sel = stepData?.matrixSelections as Record<number, number> | undefined;
-          if (order && sel) {
-            for (const [index, question] of order.entries()) {
-              await writeRowOnce(`loneliness:${index}`, "loneliness", question, "", "", "", sel[index] ?? "");
-            }
-          }
-          advanceForm();
-          break;
-        }
 
         case "demographics":
           await writeRowOnce("demographics:age", "demographics", "Enter your age:", "", "", "", String(stepData?.age ?? ""));
@@ -177,48 +182,12 @@ function ClassificationTaskMain({
           break;
         }
 
-        case "autism": {
-          const order = stepData?.order as string[] | undefined;
-          const sel = stepData?.matrixSelections as Record<number, number> | undefined;
-          if (order && sel) {
-            for (const [index, question] of order.entries()) {
-              await writeRowOnce(`autism:${index}`, "autism", question, "", "", "", sel[index] ?? "");
-            }
-          }
-          advanceForm();
-          break;
-        }
-
         case "experience":
           await writeRowOnce("experience:recorded", "experience", "How often were you thinking about the fact that your conversation was being video recorded?", "", "", "", String(stepData?.sync ?? ""));
           await writeRowOnce("experience:comfortable", "experience", "How comfortable did you feel during the conversation?", "", "", "", String(stepData?.wavelength ?? ""));
           await writeRowOnce("experience:text", "experience", "We're interested in hearing more about your experience during your conversation. Please share any thoughts that you have below", "", "", "", String(stepData?.text ?? ""));
           advanceForm();
           break;
-
-        case "socialConnectedness": {
-          const order = stepData?.order as string[] | undefined;
-          const sel = stepData?.matrixSelections as Record<number, number> | undefined;
-          if (order && sel) {
-            for (const [index, question] of order.entries()) {
-              await writeRowOnce(`socialConnectedness:${index}`, "social_connectedness", question, "", "", "", sel[index] ?? "");
-            }
-          }
-          advanceForm();
-          break;
-        }
-
-        case "expressivity": {
-          const order = stepData?.order as string[] | undefined;
-          const sel = stepData?.matrixSelections as Record<number, number> | undefined;
-          if (order && sel) {
-            for (const [index, question] of order.entries()) {
-              await writeRowOnce(`expressivity:${index}`, "expressivity", question, "", "", "", sel[index] ?? "");
-            }
-          }
-          advanceForm();
-          break;
-        }
 
         case "studyFeedback":
           await writeRowOnce("studyFeedback:text", "study_feedback", "We're interested in hearing more about your experience with our study. Please share any thoughts you have below.", "", "", "", String(stepData?.text ?? ""));
@@ -234,7 +203,6 @@ function ClassificationTaskMain({
   };
 
   if (currentStep === "completed") {
-    onComplete?.();
     return null;
   }
 
@@ -247,6 +215,9 @@ function ClassificationTaskMain({
       <VideoTaskMain
         dyadId={dyadId}
         writeRow={writeCSVRow}
+        // The sharing page is the last thing a participant does all day, not
+        // the last thing they do each round — App.tsx runs it in the wrap-up.
+        includeSelection={false}
         onProgress={(done, total, label) => onProgress?.("video", done, total, label)}
         onComplete={handleVideoTaskComplete}
         onCsvError={handleCsvError}
@@ -257,12 +228,8 @@ function ClassificationTaskMain({
   return (
     <div className="min-h-full w-full flex flex-col items-center justify-center bg-black">
       <div className="w-full mx-auto px-8">
-
         {currentStep === "partnerHistory" && (
           <PartnerHistory onContinue={(data) => handleStepComplete(data)} />
-        )}
-        {currentStep === "selfFrequency" && (
-          <SelfFrequency onContinue={(data) => handleStepComplete(data)} />
         )}
         {currentStep === "experience" && (
           <Experience onContinue={(data) => handleStepComplete(data)} />
@@ -270,20 +237,8 @@ function ClassificationTaskMain({
         {currentStep === "partnerSliders" && (
           <PartnerSliders onContinue={(data) => handleStepComplete(data)} />
         )}
-        {currentStep === "loneliness" && (
-          <Loneliness onContinue={(data) => handleStepComplete(data)} />
-        )}
-        {currentStep === "socialConnectedness" && (
-          <SocialConnectedness onContinue={(data) => handleStepComplete(data)} />
-        )}
-        {currentStep === "expressivity" && (
-          <Expressivity onContinue={(data) => handleStepComplete(data)} />
-        )}
         {currentStep === "demographics" && (
           <Demographics onContinue={(data) => handleStepComplete(data)} />
-        )}
-        {currentStep === "autism" && (
-          <Autism onContinue={(data) => handleStepComplete(data)} />
         )}
         {currentStep === "studyFeedback" && (
           <StudyFeedback onContinue={(data) => handleStepComplete(data)} />

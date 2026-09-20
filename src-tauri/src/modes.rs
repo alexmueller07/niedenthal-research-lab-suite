@@ -17,6 +17,9 @@ const DARK: Color = Color(14, 16, 19, 255);
 
 /// The primary monitor's usable area — the screen minus the taskbar — in the
 /// logical units the window builder takes.
+///
+/// Unused on macOS, which takes the real-fullscreen route in `fill_screen`.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn work_area_logical(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let monitor = app.primary_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
@@ -29,26 +32,42 @@ fn work_area_logical(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     ))
 }
 
-/// No title bar, no border, filling the screen down to the taskbar.
+/// Fills the screen, by whichever route that platform actually means.
 ///
 /// The lab asked for the chrome to go (2026-08-29): a title bar above a
 /// participant-facing task is one more thing to click by accident, and on the
 /// station it is the only piece of the screen that is not the study.
 ///
-/// Deliberately NOT `.fullscreen(true)`. Real fullscreen on Windows covers the
-/// taskbar and makes Win+Ctrl+arrow desktop switching unreliable — and RAs
-/// switch desktops between a session and their own work all day. Sizing to the
-/// work area instead keeps the window a window: alt-tabbable, taskbar visible,
-/// desktops switchable, just without a frame.
+/// **Windows/Linux — a chromeless window sized to the work area.** Deliberately
+/// NOT `.fullscreen(true)`: real fullscreen on Windows covers the taskbar and
+/// makes Win+Ctrl+arrow desktop switching unreliable, and RAs switch desktops
+/// between a session and their own work all day. Sizing to the work area keeps
+/// the window a window — alt-tabbable, taskbar visible, desktops switchable —
+/// just without a frame.
 ///
 /// The fallback matters. A monitor query can fail (a session opening while the
 /// display is asleep, a remote desktop mid-reconnect), and a chromeless window
 /// at some default size with no title bar to drag would be genuinely stuck. So
 /// no work area means a plain maximised window, which is always usable.
+///
+/// **macOS — real fullscreen, decorations kept.** Ben, 2026-09-19: on the lab
+/// Mac the work-area window left the Dock on screen and, with decorations off,
+/// no green fullscreen button to fix it with. macOS is the platform where
+/// fullscreen is a first-class window state: it opens its own Space, hides the
+/// Dock and the menu bar until the pointer asks for them, and does not fight
+/// Mission Control the way a Windows fullscreen fights the taskbar. Keeping
+/// decorations on is what puts the traffic lights back within reach.
 fn fill_screen<'a>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
     app: &AppHandle,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        return builder.decorations(true).fullscreen(true);
+    }
+
+    #[cfg(not(target_os = "macos"))]
     match work_area_logical(app) {
         Some((x, y, width, height)) => builder
             .decorations(false)

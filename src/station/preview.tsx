@@ -17,6 +17,14 @@ import VideoWatchPage from "./video-task/VideoWatchPage";
 import VideoRatingPage from "./video-task/VideoRatingPage";
 import VideoSelectionPage from "./video-task/VideoSelectionPage";
 import PostConversation from "./classification-task/PostConversation";
+import Experience from "./classification-task/Experience";
+import PartnerSliders from "./classification-task/PartnerSliders";
+import PartnerHistory from "./classification-task/PartnerHistory";
+import Demographics from "./classification-task/Demographics";
+import StudyFeedback from "./classification-task/StudyFeedback";
+import Instructions from "./dyad-task/Instructions";
+import RoundComplete from "./rounds/RoundComplete";
+import SessionStrip from "./components/SessionStrip";
 import RatingOverlay from "./dyad-task/RatingOverlay";
 import TransitionScreen from "./dyad-task/TransitionScreen";
 import PerspectiveNotice from "./components/PerspectiveNotice";
@@ -31,6 +39,8 @@ import type { FormData } from "./App";
 
 const SCREENS = [
   "station setup",
+  "round complete",
+  "slider instructions",
   "post-conversation questions",
   "post-video writing + rating",
   "slider perspective screen",
@@ -39,9 +49,27 @@ const SCREENS = [
   "watch page",
   "rating page — partner",
   "rating page — self",
+  "conversation experience",
+  "partner ratings",
+  "partner history",
+  "demographics",
+  "study feedback",
   "selection page",
   "dashboard",
 ] as const;
+
+// The conversation-rating instructions, copied from DyadTaskMain so the screen
+// can be shown on its own. Kept here deliberately rather than exported from the
+// task: this panel never ships (vite.config.ts builds no entry for it), and an
+// export that only the preview uses is an export the task has to keep working.
+const DYAD_INSTRUCTIONS_PREVIEW = [
+  "Before we begin: please check that the computer's volume is at a comfortable level. You will hear the audio from your conversation. Ask your researcher if you would like help adjusting it.",
+  "In this part of the study, you will watch the video recording of the conversation you just had.",
+  "We are interested in two things:\n\t1. How YOU were feeling during the conversation.\n\t2. How YOUR PARTNER was feeling during the conversation.",
+  "The video is split into parts. Before each part, the screen will tell you whether to focus on YOUR OWN feelings or YOUR PARTNER'S feelings, and a reminder stays in the corner of the screen while you watch.",
+  "As the video plays, continuously move the slider to indicate how positive or negative YOU or YOUR PARTNER felt at that moment during the conversation.",
+  "At certain points, you will be asked to write a short response and make ratings about how you or your partner felt during the part of the conversation you just watched.",
+];
 
 type Screen = (typeof SCREENS)[number];
 
@@ -59,6 +87,9 @@ const BLANK_FORM: FormData = {
   raName: "",
   sessionTime: "",
   sessionDate: "",
+  participantColor: "",
+  partnerColor: "",
+  round: 1,
 };
 
 function Preview() {
@@ -68,6 +99,7 @@ function Preview() {
   const [ratingText, setRatingText] = useState("");
   const [ratingScale, setRatingScale] = useState<number | undefined>(undefined);
   const [form, setForm] = useState<FormData>(BLANK_FORM);
+  const [instructionIndex, setInstructionIndex] = useState(0);
 
   const writeRow = async (
     ratingTask: string,
@@ -114,6 +146,8 @@ function Preview() {
       {screen === "station setup" && (
         <StationSetup
           formData={form}
+          onRoundChange={(round) => setForm((prev) => ({ ...prev, round }))}
+          lastCompletedRound={null}
           settings={EMPTY_SETTINGS}
           remote={{
             roundRobinUrl: "https://example.invalid",
@@ -137,6 +171,87 @@ function Preview() {
           onSubmit={() => window.alert("Start session")}
           onDashboard={() => setScreen("dashboard")}
           onLeaveMode={() => window.alert("Back to the mode chooser")}
+        />
+      )}
+
+      {screen === "round complete" && (
+        <RoundComplete
+          round={2}
+          folder="R:\niedenthal\pps-data\51_101_102_AB"
+          ratingsFile="ratings_R2.csv"
+          transitionsFile="transitions_R2.csv"
+          onNextRound={() => window.alert("Log the next round")}
+          onFinishSession={() => window.alert("Finish the session")}
+        />
+      )}
+
+      {screen === "slider instructions" && (
+        <div className="h-[calc(100vh-170px)]">
+          <Instructions
+            instructionIndex={instructionIndex}
+            instructions={DYAD_INSTRUCTIONS_PREVIEW}
+            groupSize={DYAD_INSTRUCTIONS_PREVIEW.length}
+            onBack={() => setInstructionIndex((i) => Math.max(0, i - 1))}
+            onContinue={() =>
+              setInstructionIndex((i) =>
+                Math.min(DYAD_INSTRUCTIONS_PREVIEW.length - 1, i + 1)
+              )
+            }
+          />
+        </div>
+      )}
+
+      {screen === "conversation experience" && (
+        <Experience
+          onContinue={(data) =>
+            void writeRow("experience", "text", "", "", "", String(data?.text ?? ""))
+          }
+        />
+      )}
+
+      {screen === "partner ratings" && (
+        <PartnerSliders
+          onContinue={(data) =>
+            void writeRow(
+              "partner_sliders",
+              "all",
+              "",
+              "",
+              "",
+              JSON.stringify(data?.sliderSelections ?? {})
+            )
+          }
+        />
+      )}
+
+      {screen === "partner history" && (
+        <PartnerHistory
+          onContinue={(data) =>
+            void writeRow(
+              "partner_history",
+              "met",
+              "",
+              "",
+              "",
+              data?.partnerHistory ? "Yes" : "No"
+            )
+          }
+        />
+      )}
+
+      {screen === "demographics" && (
+        <Demographics
+          onContinue={(data) =>
+            void writeRow("demographics", "age", "", "", "", String(data?.age ?? ""))
+          }
+        />
+      )}
+
+      {screen === "study feedback" && (
+        <StudyFeedback
+          onContinue={(data) =>
+            void writeRow("study_feedback", "text", "", "", "", String(data?.text ?? ""))
+          }
         />
       )}
 
@@ -255,7 +370,15 @@ function Preview() {
       )}
 
       {screen !== "dashboard" && screen !== "station setup" && (
-        <HelpButton onRequestHelp={() => {}} onCancelHelp={() => {}} pending={false} />
+        <>
+          <HelpButton onRequestHelp={() => {}} onCancelHelp={() => {}} pending={false} />
+          <SessionStrip
+            participantColor="green"
+            partnerColor="orange"
+            seat="Left"
+            round={2}
+          />
+        </>
       )}
 
       {rows.length > 0 && (

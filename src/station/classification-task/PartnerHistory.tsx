@@ -7,6 +7,10 @@ export default function PartnerHistory({ onContinue }: ClassificationTaskProps) 
   const [partnerHistory, setPartnerHistory] = useState<boolean | null>(null);
   const [partnerHistoryMonths, setPartnerHistoryMonths] = useState<string>("");
   const [matrixSelections, setMatrixSelections] = useState<{ [rowIndex: number]: number }>({});
+  const [attempted, setAttempted] = useState(false);
+
+  const MET_Q = "Have you met your partner prior to today's study?";
+  const MONTHS_Q = "How long have you known your partner? (in months)";
 
   const matrixRows = [
     "I am happy with my friendship with my partner",
@@ -27,15 +31,32 @@ export default function PartnerHistory({ onContinue }: ClassificationTaskProps) 
     return partnerHistoryMonths.trim() !== "" && Object.keys(matrixSelections).length === 2;
   })();
 
+  // The follow-ups only exist once "yes" is chosen, so nothing below the first
+  // question can be "missed" while it is unanswered or answered "no".
+  const missingMatrixRows =
+    partnerHistory === true
+      ? matrixRows.map((_, index) => index).filter((index) => matrixSelections[index] === undefined)
+      : [];
+  const missing = [
+    ...(partnerHistory === null ? [MET_Q] : []),
+    ...(partnerHistory === true && partnerHistoryMonths.trim() === "" ? [MONTHS_Q] : []),
+    ...missingMatrixRows.map((index) => matrixRows[index]),
+  ];
+
   return (
     <QuestionnairePage
       valid={isFormValid}
+      missing={missing}
+      onIncomplete={() => setAttempted(true)}
       onSubmit={() => onContinue?.({ partnerHistory, partnerHistoryMonths, matrixSelections })}
       frameClassName="bg-black border p-8  max-w-7xl mx-auto flex-1 flex flex-col justify-center"
     >
       <div className="max-w-2xl mx-auto text-left flex flex-col justify-center mt-72">
         <label className="block text-white text-2xl">
-          Have you met your partner prior to today's study?
+          {attempted && partnerHistory === null && (
+            <span className="text-red-400 font-bold mr-1">*</span>
+          )}
+          {MET_Q}
         </label>
         <div className="flex space-x-4 mt-32">
           {([true, false] as const).map((val) => (
@@ -60,7 +81,10 @@ export default function PartnerHistory({ onContinue }: ClassificationTaskProps) 
           <div className="grid grid-cols-1 gap-4 mb-6 max-w-2xl mx-auto">
             <div>
               <label className="block text-white text-2xl mb-2">
-                How long have you known your partner? (in months):
+                {attempted && partnerHistoryMonths.trim() === "" && (
+                  <span className="text-red-400 font-bold mr-1">*</span>
+                )}
+                {MONTHS_Q}:
               </label>
               <input
                 type="text"
@@ -77,6 +101,7 @@ export default function PartnerHistory({ onContinue }: ClassificationTaskProps) 
               setMatrixSelections((prev) => ({ ...prev, [rowIndex]: columnIndex }))
             }
             selections={matrixSelections}
+            unansweredRows={attempted ? missingMatrixRows : []}
           />
         </div>
       )}
