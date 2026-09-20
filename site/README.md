@@ -79,8 +79,11 @@ next upload — there is nothing to remember to delete.
   (`scripts/ffmpeg-manifest.json`). Fine for a rating station, wrong for a
   recording room — the point of pinning is that every machine encodes the same
   way.
-- The Windows CI job cannot build: gyan.dev rotated its rolling release and the
-  pinned checksum no longer matches (confirmed again on 2026-08-23). Windows
-  installers therefore come from a local `npx tauri build`. Re-pinning changes
-  the encoder every lab machine uses, so it is Randy's call, not a silent bump.
-  The macOS job is unaffected and builds fine.
+- **The Windows CI job builds again** (2026-09-20). It had two separate
+  outages, both gyan.dev pruning the archive the FFmpeg pin points at: first the
+  rolling release changing under the checksum, then the versioned package URL
+  going 404. It now fetches gyan's own GitHub release asset, which is immutable,
+  and the sha256 is unchanged — the archive that URL serves is byte-identical to
+  the one the pin was made against, so no encoder changed and nothing needed
+  Randy's sign-off. Windows installers come from CI again rather than from a
+  local `npx tauri build`.
