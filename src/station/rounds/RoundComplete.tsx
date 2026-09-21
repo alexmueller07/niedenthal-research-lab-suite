@@ -29,7 +29,7 @@ interface RoundCompleteProps {
   transitionsFile: string;
   /** Set this station up for the participant's next conversation. */
   onNextRound: () => void;
-  /** No more rounds: run the wrap-up questionnaires and the sharing page. */
+  /** No more rounds for this participant today. */
   onFinishSession: () => void;
 }
 
@@ -73,8 +73,9 @@ export default function RoundComplete({
           </button>
         </div>
         <p className="text-gray-600 text-xs text-center mt-4">
-          Finishing runs the last few questions and the video-sharing page, which
-          are asked once rather than after every conversation.
+          Finishing closes this participant out on this computer. There is
+          nothing further for them to answer &mdash; everything belongs to a
+          conversation, and this one is saved.
         </p>
 
         {/* Proof the round landed somewhere, and where. A round whose files are

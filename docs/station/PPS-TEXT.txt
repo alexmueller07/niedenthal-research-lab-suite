@@ -517,8 +517,9 @@ Three sliders, order shuffled. Ends: "Not at all" … "Very much".
 
     Researcher: this round is saved. Choose what happens next.
     [Log the next round]  [Finish this participant's session]
-    Finishing runs the last few questions and the video-sharing page, which are
-    asked once rather than after every conversation.
+    Finishing closes this participant out on this computer. There is nothing
+    further for them to answer - everything belongs to a conversation, and this
+    one is saved.
     <folder>
     ratings_R<n>.csv · transitions_R<n>.csv
 
