@@ -19,6 +19,7 @@ import {
   transitionsFileName,
 } from "../rounds/rounds";
 import type { RoundRecord } from "../rounds/rounds";
+import { ROUNDS_WITH_SETS, assignSet } from "../video-task/videos";
 import { resolveDataDir } from "../utils/settings";
 import type { AppSettings } from "../utils/settings";
 import type { RemotePublic } from "../remote/api";
@@ -511,33 +512,48 @@ export default function StationSetup({
             number is what tells them apart afterwards. It is counted for you —
             change it only if you know it is wrong.
           </p>
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => {
-                setRoundEdited(true);
-                onRoundChange(Math.max(1, formData.round - 1));
-              }}
-              className="px-4 py-2 text-white border border-gray-600 rounded-lg hover:border-white transition-colors"
-              aria-label="One round back"
-            >
-              −
-            </button>
-            <span className="text-white text-3xl font-bold tabular-nums w-20 text-center">
-              R{formData.round}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setRoundEdited(true);
-                onRoundChange(formData.round + 1);
-              }}
-              className="px-4 py-2 text-white border border-gray-600 rounded-lg hover:border-white transition-colors"
-              aria-label="One round forward"
-            >
-              +
-            </button>
-            {roundEdited && (
+          {/* One button per round, rather than a stepper. Randy, 2026-09-20:
+              "Round 1, Round 2, (...), Round 5." The protocol has five, there
+              are five clip groups, and a list you tap is faster and harder to
+              get wrong mid-session than a number you have to count up to. */}
+          <div className="flex items-center gap-3">
+            {Array.from({ length: ROUNDS_WITH_SETS }, (_, i) => i + 1).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => {
+                  setRoundEdited(true);
+                  onRoundChange(r);
+                }}
+                className={`flex-1 px-4 py-3 border rounded-lg text-lg font-semibold transition-colors ${
+                  formData.round === r
+                    ? "bg-white text-black border-white"
+                    : "bg-gray-800 hover:bg-gray-700 text-white border-white"
+                }`}
+              >
+                R{r}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-3 flex items-center gap-4 flex-wrap">
+            {/* The round IS the clip group, so the RA can see which clips this
+                round will show before the participant does — and catch a wrong
+                round before it produces a repeat. */}
+            <p className="text-gray-400 text-sm">
+              Short-video task:{" "}
+              <span className="text-white">
+                {assignSet(formData.round).id.replace("_", " ").toLowerCase()}
+              </span>{" "}
+              ({assignSet(formData.round).videoIds.length} clips)
+            </p>
+            {formData.round > ROUNDS_WITH_SETS && (
+              <p className="text-yellow-400 text-sm">
+                Past round {ROUNDS_WITH_SETS}: the clip groups start again, so
+                this participant will see clips they have already rated.
+              </p>
+            )}
+            {roundEdited && formData.round !== suggestedRound && (
               <button
                 type="button"
                 onClick={() => {

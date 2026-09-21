@@ -168,14 +168,15 @@ function App() {
   /**
    * What the participant is doing right now.
    *
-   * "wrapUp" and "selection" are the two things that run once, at the end of
-   * the last round rather than at the end of every one: the demographics and
-   * study-feedback questionnaires, then the video-sharing page. Randy,
-   * 2026-09-19: the sharing page is "the last thing they should do before we
-   * bring them back to the done stream".
+   * "selection" is the one thing that runs once, at the end of the last round
+   * rather than at the end of every one. Randy, 2026-09-19: the sharing page is
+   * "the last thing they should do before we bring them back to the done
+   * stream". The demographics and study-feedback pages that used to sit between
+   * the last round and it are gone — Randy, 2026-09-20: everything that is not
+   * about this partner is asked before the participant sits down.
    */
   const [selectedTask, setSelectedTask] = useState<
-    "postConversation" | "dyad" | "classification" | "wrapUp" | "selection" | null
+    "postConversation" | "dyad" | "classification" | "selection" | null
   >(null);
   const [dyadCsvFilePath, setDyadCsvFilePath] = useState<string>("");
   const [sessionFolder, setSessionFolder] = useState<string>("");
@@ -744,9 +745,10 @@ function App() {
     setTaskOrder(2);
     setSelectedTask("classification");
     setCursorLocked(false);
-    // 8 clips plus the sharing page. The video task reports its own finer
-    // progress from here on; this is only the first tick.
-    reportProgress("video", 0, 9, "Instructions");
+    // Eight clips. The sharing page is no longer part of every round, and the
+    // video task reports its own finer progress from here on — this is only
+    // the first tick.
+    reportProgress("video", 0, 8, "Instructions");
   };
 
   /**
@@ -837,17 +839,18 @@ function App() {
     setStage("setup");
   };
 
-  /** No more rounds today: the once-only pages, then the sharing page. */
+  /**
+   * No more rounds today. Straight to the video-sharing page.
+   *
+   * Demographics and study feedback used to sit between here and it. Randy,
+   * 2026-09-20: everything that is not about this partner is asked before the
+   * participant ever sits down, so the sharing page is now the only thing left
+   * at the end of the day — which is where Randy asked for it.
+   */
   const handleFinishSession = () => {
-    setSelectedTask("wrapUp");
-    setStage("study");
-    reportProgress("questionnaires", 0, 3, "Final questions");
-  };
-
-  /** The demographics and study-feedback pages are done. */
-  const handleWrapUpComplete = () => {
     setSelectedTask("selection");
-    reportProgress("questionnaires", 2, 3, "Choosing videos to share");
+    setStage("study");
+    reportProgress("questionnaires", 0, 1, "Choosing videos to share");
   };
 
   /** The sharing page is done, and so is the participant's day. */
@@ -1018,32 +1021,20 @@ function App() {
         />
       ) : selectedTask === "classification" && transitionsWriterRef.current ? (
         <ClassificationTaskMain
-          dyadId={formData.dyadId}
+          round={formData.round}
           writeRow={transitionsWriterRef.current}
-          mode="round"
           onComplete={() => void handleRoundTasksComplete()}
           onCsvError={handleCsvError}
           onProgress={(stage, done, total, detail) =>
             reportProgress(stage, done, total, detail)
           }
         />
-      ) : selectedTask === "wrapUp" && transitionsWriterRef.current ? (
-        <ClassificationTaskMain
-          dyadId={formData.dyadId}
-          writeRow={transitionsWriterRef.current}
-          mode="wrapUp"
-          onComplete={handleWrapUpComplete}
-          onCsvError={handleCsvError}
-          onProgress={(stage, done, total, detail) =>
-            reportProgress(stage, done, total, detail)
-          }
-        />
       ) : selectedTask === "selection" && transitionsWriterRef.current ? (
-        // The last thing of the day. It is asked about the clips from the round
-        // that just finished, so it uses that round's dyad ID and that round's
-        // transitions file — see VideoSelectionStep.
+        // The last thing of the day. It asks about the clips from the round
+        // that just finished, so it takes that round's number and writes to
+        // that round's transitions file — see VideoSelectionStep.
         <VideoSelectionStep
-          dyadId={formData.dyadId}
+          round={formData.round}
           writeRow={transitionsWriterRef.current}
           onComplete={handleSessionComplete}
           onCsvError={(err) => handleCsvError(String(err))}

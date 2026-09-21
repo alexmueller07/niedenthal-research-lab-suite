@@ -1,6 +1,10 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   EMOTIONS_PER_VIDEO,
+  ROUNDS_WITH_SETS,
+  STUDY_EMOTIONS,
   VIDEOS_PER_SET,
   VIDEO_CATALOG,
   VIDEO_SETS,
@@ -12,6 +16,11 @@ import {
 } from "./videos";
 
 describe("stimulus catalog", () => {
+  it("holds the forty clips Ben grouped", () => {
+    expect(VIDEO_CATALOG).toHaveLength(ROUNDS_WITH_SETS * VIDEOS_PER_SET);
+    expect(VIDEO_CATALOG).toHaveLength(40);
+  });
+
   it("has no duplicate clip ids", () => {
     const ids = VIDEO_CATALOG.map((v) => v.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -24,15 +33,45 @@ describe("stimulus catalog", () => {
     }
   });
 
-  it("keeps the full annotation when more than three emotions were listed", () => {
-    const clip = findVideo("0494");
-    expect(clip.annotated).toContain("anger");
-    // The three probed emotions must be a subset of the full annotation.
-    for (const emotion of clip.emotions) {
-      expect(clip.annotated).toContain(emotion);
+  // The emotion word goes straight into the question ("To what extent did you
+  // feel <emotion> while watching this video?"), so a stray capital or a word
+  // from outside the study's vocabulary is a participant-visible typo.
+  it("only asks about the study's twelve emotions, in lower case", () => {
+    const allowed = new Set<string>(STUDY_EMOTIONS);
+    for (const video of VIDEO_CATALOG) {
+      for (const emotion of video.emotions) {
+        expect(emotion).toBe(emotion.toLowerCase());
+        expect(allowed.has(emotion), `${video.id}: "${emotion}"`).toBe(true);
+      }
     }
   });
 
+  it("names every clip with the four-digit stem its file uses", () => {
+    for (const video of VIDEO_CATALOG) {
+      expect(video.id).toMatch(/^\d{4}$/);
+    }
+  });
+
+  it("rejects an unknown clip id rather than rendering a broken player", () => {
+    expect(() => findVideo("9999")).toThrow(/Unknown stimulus video/);
+  });
+});
+
+describe("the clip files themselves", () => {
+  // The catalog is a list of filenames. A clip in it with no file behind it is
+  // a black rectangle in the middle of a session, and nothing before this test
+  // would notice: TypeScript is happy, the build is happy, and the task only
+  // fails when a participant reaches that trial. Since 2026-09-21 the clips
+  // ship inside the installer, so this can simply be checked.
+  it("ships an mp4 for every clip in the catalog", () => {
+    const missing = VIDEO_CATALOG.map((v) => v.id).filter(
+      (id) => !existsSync(join(process.cwd(), "public", "videos", `${id}.mp4`))
+    );
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("video sets", () => {
   it("every set holds eight clips that all exist in the catalog", () => {
     expect(VIDEO_SETS).toHaveLength(5);
     for (const set of VIDEO_SETS) {
@@ -42,67 +81,79 @@ describe("stimulus catalog", () => {
     }
   });
 
-  it("rejects an unknown clip id rather than rendering a broken player", () => {
-    expect(() => findVideo("9999")).toThrow(/Unknown stimulus video/);
+  // This is the property the whole round-to-group rule exists for: a
+  // participant does five rounds and must not meet the same clip twice.
+  it("never puts the same clip in two groups", () => {
+    const all = VIDEO_SETS.flatMap((s) => s.videoIds);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("names the groups the way the data file will", () => {
+    expect(VIDEO_SETS.map((s) => s.id)).toEqual([
+      "GROUP_1",
+      "GROUP_2",
+      "GROUP_3",
+      "GROUP_4",
+      "GROUP_5",
+    ]);
   });
 });
 
 describe("set assignment", () => {
-  it("gives both members of a dyad the same set", () => {
-    // The two lab machines never talk to each other: each derives the set from
-    // the Dyad ID typed on its own participant form.
-    const left = assignSet("D104");
-    const right = assignSet("D104");
-    expect(left.id).toBe(right.id);
+  it("gives round N group N", () => {
+    for (let round = 1; round <= ROUNDS_WITH_SETS; round += 1) {
+      expect(assignSet(round).id).toBe(`GROUP_${round}`);
+    }
   });
 
-  it("ignores case and surrounding whitespace in the Dyad ID", () => {
-    expect(assignSet(" d104 ").id).toBe(assignSet("D104").id);
+  // Two people rating the same clips is what makes their ratings comparable,
+  // and with this rule it follows from them being on the same round rather
+  // than from the two machines agreeing about anything.
+  it("gives two participants on the same round the same clips", () => {
+    expect(assignSet(3).videoIds).toEqual(assignSet(3).videoIds);
+    expect(assignSet(3).id).toBe(assignSet(3).id);
   });
 
-  it("reaches all five sets across many dyads", () => {
+  it("gives a participant a different group on every one of their five rounds", () => {
     const seen = new Set<string>();
-    for (let i = 0; i < 200; i++) seen.add(assignSet(`D${i}`).id);
-    expect(seen.size).toBe(VIDEO_SETS.length);
+    for (let round = 1; round <= ROUNDS_WITH_SETS; round += 1) {
+      seen.add(assignSet(round).id);
+    }
+    expect(seen.size).toBe(ROUNDS_WITH_SETS);
   });
 
-  it("spreads dyads roughly evenly across the five sets", () => {
-    const counts = new Map<string, number>();
-    for (let i = 0; i < 1000; i++) {
-      const id = assignSet(`dyad-${i}`).id;
-      counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
-    // A perfectly uniform draw gives 200 each. Allow a wide band — this guards
-    // against a degenerate hash, not against ordinary sampling noise.
-    for (const set of VIDEO_SETS) {
-      expect(counts.get(set.id) ?? 0).toBeGreaterThan(120);
-      expect(counts.get(set.id) ?? 0).toBeLessThan(280);
-    }
+  // A sixth round is outside the protocol, but a session that reaches one has
+  // to keep running rather than crash in front of a participant.
+  it("wraps rather than failing past the last group", () => {
+    expect(assignSet(6).id).toBe("GROUP_1");
+    expect(assignSet(11).id).toBe("GROUP_1");
   });
 
-  it("still assigns a set when the Dyad ID is blank", () => {
-    expect(VIDEO_SETS.map((s) => s.id)).toContain(assignSet("").id);
+  it("falls back to the first group for a round that is not a round", () => {
+    expect(assignSet(0).id).toBe("GROUP_1");
+    expect(assignSet(-2).id).toBe("GROUP_1");
+    expect(assignSet(Number.NaN).id).toBe("GROUP_1");
   });
 });
 
 describe("clip source resolution", () => {
   it("falls back to the bundled clips when no stimulus folder is set", () => {
-    expect(resolveVideoSrc("1615", null)).toBe("/videos/1615.mp4");
+    expect(resolveVideoSrc("0014", null)).toBe("/videos/0014.mp4");
   });
 
   it("falls back to the bundled clips outside Tauri even with a folder set", () => {
-    // A plain browser cannot read the Research Drive; silently serving the
-    // bundled copy keeps `npm run dev` working.
-    expect(resolveVideoSrc("1615", "C:\\stimuli")).toBe("/videos/1615.mp4");
+    // A plain browser cannot read a local library; serving the bundled copy
+    // keeps `npm run dev` working.
+    expect(resolveVideoSrc("0014", "C:\\stimuli")).toBe("/videos/0014.mp4");
   });
 
   it("joins folder and filename with the separator the folder already uses", () => {
-    expect(joinPath("C:\\stimuli", "1615.mp4")).toBe("C:\\stimuli\\1615.mp4");
-    expect(joinPath("/Volumes/lab/stimuli", "1615.mp4")).toBe("/Volumes/lab/stimuli/1615.mp4");
+    expect(joinPath("C:\\stimuli", "0014.mp4")).toBe("C:\\stimuli\\0014.mp4");
+    expect(joinPath("/Volumes/lab/stimuli", "0014.mp4")).toBe("/Volumes/lab/stimuli/0014.mp4");
   });
 
   it("does not double the separator when the folder ends in one", () => {
-    expect(joinPath("C:\\stimuli\\", "1615.mp4")).toBe("C:\\stimuli\\1615.mp4");
-    expect(joinPath("/lab/stimuli/", "1615.mp4")).toBe("/lab/stimuli/1615.mp4");
+    expect(joinPath("C:\\stimuli\\", "0014.mp4")).toBe("C:\\stimuli\\0014.mp4");
+    expect(joinPath("/lab/stimuli/", "0014.mp4")).toBe("/lab/stimuli/0014.mp4");
   });
 });

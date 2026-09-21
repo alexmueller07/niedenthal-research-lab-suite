@@ -146,6 +146,14 @@ Engineering notes: [docs/recorder/DESIGN.md](docs/recorder/DESIGN.md).
   blocks. Five questionnaires were removed. `softwareVersion` is `4.0.0`; rows
   either side of it are not comparable. Full detail:
   [docs/station/CHANGELOG.md](docs/station/CHANGELOG.md).
+- **The real stimulus clips landed in v1.3.0 (2026-09-21).** Forty Cowen &
+  Keltner clips in five groups of eight, bundled in the installer, with the
+  round choosing the group: R1 gets group 1, R5 gets group 5, so nobody sees a
+  clip twice across five rounds. Each clip asks about its three highest-rated
+  emotions within the study's twelve, checked against the published norms.
+  Three more questionnaires went (conversation experience, demographics, study
+  feedback) — everything that is not about this partner is asked before the
+  participant sits down.
 - **Every word the Rating Station can show is written down** in
   [docs/station/PPS-TEXT.txt](docs/station/PPS-TEXT.txt) — the fastest way to
   review wording without running a session.

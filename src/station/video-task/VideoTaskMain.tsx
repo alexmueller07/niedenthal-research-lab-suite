@@ -72,8 +72,16 @@ export type VideoTaskWriteRow = (
 ) => Promise<void>;
 
 interface VideoTaskMainProps {
-  /** Dyad ID, used to yoke the video set across both members of the dyad. */
-  dyadId: string;
+  /**
+   * Which round this is. It picks the clip group — R1 gets group 1, R2 group 2
+   * — so nobody sees a clip twice across their five rounds, and two people on
+   * the same round rate the same clips. See videos.ts `assignSet`.
+   *
+   * It used to be the dyad ID, hashed into one of five identical placeholder
+   * sets. That yoked a pair but let a participant meet the same eight clips on
+   * every round of the afternoon.
+   */
+  round: number;
   writeRow: VideoTaskWriteRow;
   /**
    * Whether the video-sharing page runs at the end of this pass.
@@ -92,7 +100,7 @@ interface VideoTaskMainProps {
 }
 
 export default function VideoTaskMain({
-  dyadId,
+  round,
   writeRow,
   includeSelection = true,
   onProgress,
@@ -109,8 +117,9 @@ export default function VideoTaskMain({
   const [perspectiveIndex, setPerspectiveIndex] = useState(0);
   const [page, setPage] = useState<"watch" | "notice" | "rate">("watch");
 
-  // One draw per participant, made on mount and never re-rolled.
-  const [set] = useState(() => assignSet(dyadId));
+  // The round's group, read on mount and never re-read: the round cannot change
+  // underneath a participant who is already rating.
+  const [set] = useState(() => assignSet(round));
   const [videoOrder] = useState<string[]>(() => shuffle(set.videoIds));
   /** Perspective order for each clip, indexed the same way as videoOrder. */
   const [perspectiveOrders] = useState<Target[][]>(() =>
@@ -160,6 +169,7 @@ export default function VideoTaskMain({
       try {
         await writeRow("video_task", "set_assignment", "", "", "", set.id);
         await writeRow("video_task", "set_assignment_method", "", "", "", SET_ASSIGNMENT_METHOD);
+        await writeRow("video_task", "set_assignment_round", "", "", "", round);
         await writeRow("video_task", "set_contents", "", "", "", set.videoIds.join(";"));
         await writeRow("video_task", "video_order", "", "", "", videoOrder.join(";"));
         await writeRow("video_task", "scale", "", "", "", `${SCALE_MIN}-${SCALE_MAX}`);
@@ -187,6 +197,7 @@ export default function VideoTaskMain({
     })();
   }, [
     settingsLoaded,
+    round,
     set,
     videoOrder,
     perspectiveOrders,
@@ -202,8 +213,8 @@ export default function VideoTaskMain({
         : phase === "selection"
           ? "Choosing videos to share"
           : `Video ${trialIndex + 1} of ${totalTrials}`;
-    onProgress?.(trialIndex, totalTrials + 1, detail);
-  }, [phase, trialIndex, totalTrials, onProgress]);
+    onProgress?.(trialIndex, totalTrials + (includeSelection ? 1 : 0), detail);
+  }, [phase, trialIndex, totalTrials, includeSelection, onProgress]);
 
   // Instruction screens advance on any deliberate keypress OR a click, matching
   // the rest of the app. The filtering that keeps a held-down key from blowing
@@ -305,7 +316,8 @@ export default function VideoTaskMain({
       setPhase("selection");
       return;
     }
-    onProgress?.(totalTrials + 1, totalTrials + 1, "Video affective-response task");
+    const steps = totalTrials + (includeSelection ? 1 : 0);
+    onProgress?.(steps, steps, "Video affective-response task");
     onComplete();
   };
 
@@ -315,7 +327,8 @@ export default function VideoTaskMain({
     } catch (err) {
       handleError(err);
     }
-    onProgress?.(totalTrials + 1, totalTrials + 1, "Video affective-response task");
+    const steps = totalTrials + (includeSelection ? 1 : 0);
+    onProgress?.(steps, steps, "Video affective-response task");
     onComplete();
   };
 

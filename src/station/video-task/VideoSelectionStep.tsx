@@ -6,10 +6,10 @@
 // conversation while this page is asked once, at the very end of a
 // participant's day — so it needed to come out of VideoTaskMain's own flow.
 //
-// It draws the same set the round's trials drew (both derive it from the dyad
-// ID — see videos.ts `assignSet`), so a participant is asked about clips they
-// have just been rating, and the row order is shuffled here exactly as it was
-// shuffled there.
+// It draws the same set the round's trials drew (both derive it from the round
+// number — see videos.ts `assignSet`), so a participant is asked about clips
+// they have just been rating, and the row order is shuffled here exactly as it
+// was shuffled there.
 
 import { useCallback, useEffect, useState } from "react";
 import VideoSelectionPage from "./VideoSelectionPage";
@@ -22,22 +22,22 @@ import type { AppSettings } from "../utils/settings";
 import { shuffle } from "../utils/shuffle";
 
 interface VideoSelectionStepProps {
-  /** Dyad ID of the round whose clips are being asked about. */
-  dyadId: string;
+  /** The round whose clips are being asked about — the participant's last. */
+  round: number;
   writeRow: VideoTaskWriteRow;
   onComplete: () => void;
   onCsvError?: (err: unknown) => void;
 }
 
 export default function VideoSelectionStep({
-  dyadId,
+  round,
   writeRow,
   onComplete,
   onCsvError,
 }: VideoSelectionStepProps) {
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [set] = useState(() => assignSet(dyadId));
+  const [set] = useState(() => assignSet(round));
   const [selectionOrder] = useState<string[]>(() => shuffle(set.videoIds));
 
   useEffect(() => {

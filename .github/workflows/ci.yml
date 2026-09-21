@@ -54,7 +54,11 @@ jobs:
       - name: Dist assertions
         shell: bash
         run: |
-          test -f dist/videos/0014.mp4 || { echo "demo clips missing from dist"; exit 1; }
+          # Every clip in the catalog has to reach the installer. A clip that is
+          # listed but not shipped is a black rectangle in the middle of a
+          # session, and nothing else in the pipeline would notice.
+          clips=$(ls dist/videos/*.mp4 2>/dev/null | wc -l)
+          test "$clips" -eq 40 || { echo "expected 40 stimulus clips in dist, found $clips"; exit 1; }
           test ! -f dist/preview.html || { echo "dev-only preview panel leaked into dist"; exit 1; }
           test -f dist/recorder.html && test -f dist/station.html && test -f dist/index.html
 

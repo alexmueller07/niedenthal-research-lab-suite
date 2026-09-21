@@ -17,11 +17,8 @@ import VideoWatchPage from "./video-task/VideoWatchPage";
 import VideoRatingPage from "./video-task/VideoRatingPage";
 import VideoSelectionPage from "./video-task/VideoSelectionPage";
 import PostConversation from "./classification-task/PostConversation";
-import Experience from "./classification-task/Experience";
 import PartnerSliders from "./classification-task/PartnerSliders";
 import PartnerHistory from "./classification-task/PartnerHistory";
-import Demographics from "./classification-task/Demographics";
-import StudyFeedback from "./classification-task/StudyFeedback";
 import Instructions from "./dyad-task/Instructions";
 import RoundComplete from "./rounds/RoundComplete";
 import SessionStrip from "./components/SessionStrip";
@@ -49,11 +46,8 @@ const SCREENS = [
   "watch page",
   "rating page — partner",
   "rating page — self",
-  "conversation experience",
   "partner ratings",
   "partner history",
-  "demographics",
-  "study feedback",
   "selection page",
   "dashboard",
 ] as const;
@@ -100,6 +94,10 @@ function Preview() {
   const [ratingScale, setRatingScale] = useState<number | undefined>(undefined);
   const [form, setForm] = useState<FormData>(BLANK_FORM);
   const [instructionIndex, setInstructionIndex] = useState(0);
+  // Which round the preview pretends to be, which is what picks the clip
+  // group — the whole point of a preview is being able to look at group 4
+  // without doing three conversations first.
+  const [previewRound, setPreviewRound] = useState(1);
 
   const writeRow = async (
     ratingTask: string,
@@ -140,7 +138,26 @@ function Preview() {
             {s}
           </button>
         ))}
-        <span className="text-gray-400 text-sm ml-auto">{rows.length} rows written</span>
+        {/* The round picks the clip group, so the preview needs it to be able
+            to show group 4 without doing three conversations first. */}
+        <span className="text-gray-400 text-sm ml-auto flex items-center gap-2">
+          Round
+          {[1, 2, 3, 4, 5].map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setPreviewRound(r)}
+              className={`px-2 py-0.5 border text-xs transition-colors ${
+                previewRound === r
+                  ? "bg-white text-black border-white"
+                  : "bg-black text-white border-gray-500 hover:border-white"
+              }`}
+            >
+              R{r}
+            </button>
+          ))}
+          <span className="ml-3">{rows.length} rows written</span>
+        </span>
       </div>
 
       {screen === "station setup" && (
@@ -201,14 +218,6 @@ function Preview() {
         </div>
       )}
 
-      {screen === "conversation experience" && (
-        <Experience
-          onContinue={(data) =>
-            void writeRow("experience", "text", "", "", "", String(data?.text ?? ""))
-          }
-        />
-      )}
-
       {screen === "partner ratings" && (
         <PartnerSliders
           onContinue={(data) =>
@@ -235,22 +244,6 @@ function Preview() {
               "",
               data?.partnerHistory ? "Yes" : "No"
             )
-          }
-        />
-      )}
-
-      {screen === "demographics" && (
-        <Demographics
-          onContinue={(data) =>
-            void writeRow("demographics", "age", "", "", "", String(data?.age ?? ""))
-          }
-        />
-      )}
-
-      {screen === "study feedback" && (
-        <StudyFeedback
-          onContinue={(data) =>
-            void writeRow("study_feedback", "text", "", "", "", String(data?.text ?? ""))
           }
         />
       )}
@@ -312,7 +305,7 @@ function Preview() {
 
       {screen === "video task (whole thing)" && (
         <VideoTaskMain
-          dyadId="PREVIEW"
+          round={previewRound}
           writeRow={writeRow}
           onComplete={() => window.alert("Video task complete")}
         />

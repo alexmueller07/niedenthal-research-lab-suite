@@ -26,15 +26,12 @@ CONTENTS
   4. Post-conversation questions
   5. Conversation rating task (the slider)
   6. Short video task
-  7. Conversation experience
-  8. Partner ratings
-  9. Partner history
- 10. Round complete
- 11. Last round only: Demographics
- 12. Last round only: Study feedback
- 13. Last round only: Video sharing
- 14. Finished
- 15. [RESEARCHER] Save & quit, and the researcher dashboard
+  7. Partner ratings
+  8. Partner history
+  9. Round complete
+ 10. Last round only: Video sharing
+ 11. Finished
+ 12. [RESEARCHER] Save & quit, and the researcher dashboard
 
 
 ================================================================================
@@ -128,7 +125,12 @@ DATA SAVE ERROR BANNER (top of the screen, only when a write to disk fails)
     round. Every round writes its own pair of data files, so this number is
     what tells them apart afterwards. It is counted for you — change it only if
     you know it is wrong.
-    [−]  R<n>  [+]  Back to the counted value (R<n>)
+    [R1]  [R2]  [R3]  [R4]  [R5]
+    Short-video task: group <n> (8 clips)
+    Back to the counted value (R<n>)
+
+    Past round 5: the clip groups start again, so this participant will see
+    clips they have already rated.
 
     Pick who is sitting here below and this fills itself in.
     No earlier rounds on file for participant <id>.
@@ -466,30 +468,7 @@ RATING PAGE
 
 
 ================================================================================
-7. CONVERSATION EXPERIENCE  (every round)
-================================================================================
-
-  Question 1, seven points:
-
-    How often were you thinking about the fact that your conversation was being
-    video recorded?
-    Left: Not at all          Right: The entire time
-
-  Question 2, seven points:
-
-    How comfortable did you feel during the conversation?
-    Left: Extremely uncomfortable    Right: Extremely comfortable
-
-  Question 3, free text:
-
-    We're interested in hearing more about your experience during your
-    conversation. Please share any thoughts that you have below.
-
-    [Continue]
-
-
-================================================================================
-8. PARTNER RATINGS  (every round)
+7. PARTNER RATINGS  (every round)
 ================================================================================
 
 Pinned header:
@@ -506,7 +485,7 @@ Three sliders, order shuffled. Ends: "Not at all" … "Very much".
 
 
 ================================================================================
-9. PARTNER HISTORY  (every round)
+8. PARTNER HISTORY  (every round)
 ================================================================================
 
     Have you met your partner prior to today's study?
@@ -526,7 +505,7 @@ Three sliders, order shuffled. Ends: "Not at all" … "Very much".
 
 
 ================================================================================
-10. ROUND COMPLETE  (after every round)
+9. ROUND COMPLETE  (after every round)
 ================================================================================
 
     ROUND <n> COMPLETE
@@ -545,43 +524,7 @@ Three sliders, order shuffled. Ends: "Not at all" … "Very much".
 
 
 ================================================================================
-11. DEMOGRAPHICS  (last round only)
-================================================================================
-
-    Enter your age:                  (placeholder: Enter your age)
-
-    Are you Spanish, Hispanic, or Latino?
-    [Yes]  [None of these]
-
-    Choose one or more races that you consider yourself to be:
-        White
-        Asian
-        Black or African American
-        Native Hawaiian or Pacific Islander
-        American Indian or Alaska Native
-        Other                        (then: Please specify)
-
-    What is your sex?
-    [Male]  [Female]
-
-    Please provide the zip code of your permanent address (where you grew up):
-                                     (placeholder: Enter zip code)
-
-    [Continue]
-
-
-================================================================================
-12. STUDY FEEDBACK  (last round only)
-================================================================================
-
-    We're interested in hearing more about your experience with our study.
-    Please share any thoughts you have below.
-
-    [Continue]
-
-
-================================================================================
-13. VIDEO SHARING  (last round only — the last thing a participant does)
+10. VIDEO SHARING  (last round only — the last thing a participant does)
 ================================================================================
 
 Pinned header:
@@ -611,7 +554,7 @@ Pinned header:
 
 
 ================================================================================
-14. FINISHED
+11. FINISHED
 ================================================================================
 
     Please alert your researcher that you are finished.
@@ -619,7 +562,7 @@ Pinned header:
 
 
 ================================================================================
-15. [RESEARCHER] SAVE & QUIT, AND THE DASHBOARD
+12. [RESEARCHER] SAVE & QUIT, AND THE DASHBOARD
 ================================================================================
 
 SAVE & QUIT — Ctrl+Shift+Q (Cmd+Shift+Q on the Mac), or the window's close
@@ -638,6 +581,45 @@ AdminDashboard.tsx.
 
     Loading…    (the screen between two steps)
 
+
+================================================================================
+WHAT CHANGED IN v1.3.0
+================================================================================
+
+The real clips arrived (Ben, 2026-09-20). Forty Cowen & Keltner clips in five
+groups of eight, and the group a participant gets is their round number: round
+1 is group 1, round 5 is group 5. Nobody sees a clip twice across five rounds.
+The three emotions each clip asks about are that clip's highest-rated three in
+the published norms, restricted to the twelve emotions this study uses:
+
+    amusement, anger, anxiety, awe, awkwardness, disappointment,
+    disgust, fear, joy, sadness, surprise, sympathy
+
+So a rating page now reads, for example:
+
+    To what extent did you feel fear while watching this video?
+    To what extent did you feel anxiety while watching this video?
+    To what extent did you feel awe while watching this video?
+
+Three more questionnaires were removed (Randy, 2026-09-20: everything that is
+not about this partner is asked before the participant sits down):
+
+    * Conversation experience - "How often were you thinking about the fact
+      that your conversation was being video recorded?", "How comfortable did
+      you feel during the conversation?", and the free-text box.
+    * Demographics - age, Hispanic/Latino, race, sex, zip code.
+    * Study feedback - "We're interested in hearing more about your experience
+      with our study."
+
+What a participant now does, per conversation:
+
+    post-conversation questions -> conversation slider task ->
+    short-video task -> partner ratings -> partner history -> round complete
+
+and once, at the end of their last round, the video-sharing page.
+
+The researcher setup screen picks the round with five buttons, R1 to R5, and
+says which clip group that round will show.
 
 ================================================================================
 WHAT CHANGED IN v1.2.0

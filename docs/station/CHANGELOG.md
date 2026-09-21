@@ -6,6 +6,95 @@ to collect real participant data.
 
 ---
 
+## 2026-09-21 — The real clips, tied to the round
+
+Ben sent the groupings and the emotion words on 2026-09-20; Randy sent a second
+list of session changes the same day. Both land here.
+
+⚠️ **This session changes what is collected.** The clips are real and the
+questionnaire set is smaller again. `softwareVersion` stays `4.0.0` — the file
+shape did not change — but a v1.2.0 session and a v1.3.0 session do not contain
+the same measures, and the clips a participant rated are not the same clips.
+
+### 1. Forty clips, five groups, one group per round
+
+`video-task/videos.ts` held eight proof-of-concept clips and five sets that all
+pointed at the same eight. It now holds the real forty, in Ben's five groups of
+eight, and the clips ship inside the installer (`public/videos`) rather than
+waiting on a folder somebody has to mount.
+
+**The round picks the group** — Randy: "TikTok task should have videos uniquely
+assigned to Round." R1 is group 1, R5 is group 5. Two consequences:
+
+- a participant cannot meet the same clip twice across their five rounds. The
+  old rule hashed the dyad ID into one of five *identical* sets, so every round
+  after the first was a repeat. That was the confound flagged in the v1.2.0
+  notes, and it is now closed by construction — a test asserts no clip appears
+  in two groups.
+- two people rate the same clips exactly when they are on the same round
+  number. That is the normal case; a pair who have fallen out of step rate
+  different clips, and the round is in the data file so that is visible rather
+  than silent.
+
+Past round five the groups wrap rather than failing, and the setup screen says
+so in as many words. A sixth conversation is not in the protocol, but a session
+that reaches one has to keep running.
+
+### 2. The emotion words
+
+Each clip asks about its three highest-rated emotions in the Cowen & Keltner
+norms, restricted to the twelve this study uses (amusement, anger, anxiety,
+awe, awkwardness, disappointment, disgust, fear, joy, sadness, surprise,
+sympathy).
+
+Checked rather than taken on trust: every one of Ben's forty rows was compared
+against the published per-clip ratings in `CowenKeltnerEmotionalVideos.csv`.
+All forty are that file's own top three within those twelve — twenty-eight
+matched in rank order and the other twelve were settled by a tie at the third
+place. A test now asserts no clip can ask about an emotion outside the twelve,
+and that every clip in the catalog has a file behind it.
+
+### 3. Three more questionnaires removed
+
+Randy: "After the TikTok task, all the questionnaires should be removed OTHER
+than questions about maybe how similar, familiar, [close] you are to your
+partner and whether you knew this person before the day. All other individual
+difference / questionnaires are done before the study starts."
+
+- **Removed:** conversation experience (`Experience.tsx`), demographics
+  (`Demographics.tsx`), study feedback (`StudyFeedback.tsx`).
+- **Kept, because they are about this partner and change with every new one:**
+  partner ratings (similar / close / familiar) and partner history (had you met
+  before today).
+
+With demographics and study feedback gone, the end of a participant's last
+round is the video-sharing page and nothing else — which is where Randy asked
+for it in the first place.
+
+A round is now: post-conversation questions → conversation slider task →
+short-video task → partner ratings → partner history → round complete.
+
+### 4. The setup screen
+
+- **Round is five buttons, R1 to R5**, rather than a stepper. Randy listed them
+  that way; the protocol has five; a list you tap is faster and harder to get
+  wrong mid-session than a number you count up to.
+- It says **which clip group** the chosen round will show, so a wrong round is
+  catchable before the participant sees a repeat.
+- Participant colour and partner colour were already there (v1.2.0), and so was
+  the conversation-video preview frame Randy asked for — a still read off the
+  share before any copying starts, so an RA can see it is the right recording.
+
+### Known, and worth Randy's attention
+
+Ben's own note on the groupings: "These groups may change, as the outcome of
+the survey of the RAs was that valence significantly differed across at least
+one grouping." The RA survey found group 1 rated more negative than groups 2
+and 3 (p < .001, p = .001); intensity did not differ (p = .51). **Since the
+group is now the round, a valence difference between groups is a valence
+difference between rounds**, confounded with order and fatigue. Rebalancing is
+an edit to `VIDEO_SETS` and nothing else.
+
 ## 2026-09-19 — Rounds, one-minute blocks, and Ben's list
 
 Two sources: Ben's feedback email of 2026-09-19 (what RAs and participants hit
