@@ -6,6 +6,63 @@ to collect real participant data.
 
 ---
 
+## 2026-09-21 (later) — The installer could not upgrade itself
+
+Alex hit "unable to install" trying to put 1.3.0 on a machine that already had
+1.1.1. It reproduces on every machine running 1.1.0 through 1.3.0, and it is
+our bug, not Tauri's.
+
+### What happens
+
+Double-click the installer with an older version present and it shows an
+**Already Installed** page with two options. The one selected by default,
+"Uninstall before installing", fails with a message box reading **"Unable to
+uninstall!"** and refuses to go further.
+
+### Why
+
+Tauri's installer runs the existing uninstaller *in place* so it can wait on it:
+`uninstall.exe /P _?=$INSTDIR` (installer.nsi, `reinst_uninstall`). In place
+means the uninstaller's own executable path is inside the install folder.
+
+Our `NSIS_HOOK_PREUNINSTALL` — added on 2026-09-12 to stop an orphaned FFmpeg
+sidecar from blocking an upgrade — killed *every process whose executable lives
+under `$INSTDIR`*. During an upgrade that set includes the uninstaller. It ran
+as the first statement of `Section Uninstall`, shot the uninstaller, and the
+uninstaller exited −1 having deleted nothing. Tauri then checks whether
+`$INSTDIR\<app>.exe` survived — it had — and reports the failure.
+
+Run the same uninstaller on its own (Settings → Apps) and NSIS copies it to
+`%TEMP%` first, so it is *not* under `$INSTDIR`, the filter misses it, and it
+works. That is why uninstalling was never seen to be broken.
+
+### The fix
+
+`src-tauri/installer-hooks.nsh` now kills an explicit list — the app binary and
+the two FFmpeg sidecars — instead of "anything under `$INSTDIR`". An allow-list
+rather than an exclusion for `uninstall.exe`, because getting this wrong fails
+silently and a new sidecar should have to be added deliberately.
+
+### What this means for machines already running 1.3.0 or earlier
+
+The uninstaller that runs during an upgrade is the OLD one, already on disk, so
+the fix cannot reach backwards. On those machines, once:
+
+- pick **"Do not uninstall"** on the Already Installed page — it installs
+  straight over the top, which is what an upgrade does anyway; or
+- run the installer with **`/S`**, which skips that page entirely (this is why
+  the lab's documented deployment route never hit the bug); or
+- uninstall from **Settings → Apps** first, then install.
+
+From 1.3.1 onward the default path works.
+
+### Guard
+
+`scripts/check-upgrade-path.ps1` runs the three installs that matter — clean,
+in-place uninstall the way an upgrade does it, and silent upgrade — and fails
+loudly on any of them. Every check we already had passed while this was broken,
+because none of them installed over an existing copy by hand.
+
 ## 2026-09-21 — The real clips, tied to the round
 
 Ben sent the groupings and the emotion words on 2026-09-20; Randy sent a second

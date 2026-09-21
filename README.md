@@ -39,6 +39,15 @@ Install it like any app (Windows will show "Windows protected your PC" —
 More info → Run anyway; the app is unsigned). Silent install for many
 machines: run the `-setup.exe` with `/S`.
 
+**Upgrading from 1.3.0 or earlier, by hand:** the installer shows an *Already
+Installed* page. Pick **Do not uninstall**. The option selected by default,
+"Uninstall before installing", fails with *"Unable to uninstall!"* on those
+versions — their uninstaller kills itself when the installer runs it in place
+(see `src-tauri/installer-hooks.nsh` for the whole story). `/S` is unaffected:
+it skips that page and installs straight over the top, which is why the lab's
+own deployment route never hit this. Uninstalling first from Settings → Apps
+also works. Fixed in 1.3.1, so this is a one-time nuisance per machine.
+
 ## First run on a lab machine
 
 The app opens on the mode chooser, with two live status chips up top — is

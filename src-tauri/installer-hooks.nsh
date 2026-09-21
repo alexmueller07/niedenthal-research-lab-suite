@@ -15,10 +15,36 @@
 ; Filtered on $INSTDIR rather than killing every ffmpeg.exe on the machine: an RA
 ; may be running FFmpeg for something else, and an installer has no business
 ; ending processes it does not own.
+;
+; ---------------------------------------------------------------------------
+; THE UNINSTALLER IS NOT ON THE LIST, AND THAT IS THE WHOLE POINT
+; ---------------------------------------------------------------------------
+; Alex, 2026-09-21. The version of this file written on 2026-09-12 matched on
+; the path alone: "any process whose executable lives under $INSTDIR". That set
+; turns out to include the uninstaller.
+;
+; Run uninstall.exe on its own and NSIS copies it to $TEMP first, so it is not
+; under $INSTDIR and the filter misses it. But an UPGRADE does not run it on its
+; own — Tauri's installer runs it in place, `uninstall.exe /P _?=$INSTDIR`
+; (installer.nsi, reinst_uninstall), precisely so it can be waited on. In place
+; means its own ExecutablePath is `$INSTDIR\uninstall.exe`, the filter matched
+; it, and this hook — which runs as the first thing in Section Uninstall — shot
+; the uninstaller before it deleted anything.
+;
+; What the lab saw: exit code -1, not one file removed, and because Tauri's
+; template treats a surviving `$INSTDIR\<app>.exe` as failure whatever the exit
+; code, a message box reading "Unable to uninstall!" and an upgrade that refused
+; to proceed. Every machine with a previous version installed, from v1.1.0 on.
+;
+; So the kill list is now explicit: the app and the two sidecars, which are the
+; only things that can hold a file handle open, and never the uninstaller. An
+; allow-list rather than a "not uninstall.exe" exclusion, because the failure
+; mode of getting this wrong is silent and expensive, and a new sidecar should
+; have to be added here deliberately.
 
 !macro KillOurProcesses
   DetailPrint "Closing anything still running from $INSTDIR..."
-  nsExec::ExecToLog `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $$_.ExecutablePath -like '$INSTDIR\*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  nsExec::ExecToLog `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ours = @('${MAINBINARYNAME}.exe', 'ffmpeg.exe', 'ffprobe.exe'); Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $$_.ExecutablePath -like '$INSTDIR\*' -and $$ours -contains $$_.Name } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Pop $0
   ; Windows releases the file handle a moment after the process goes.
   Sleep 1500
