@@ -1,7 +1,7 @@
 ================================================================================
 EVERY WORD IN THE PPS RATING STATION APP
-Niedenthal Lab Suite v1.2.0 — Rating Station mode
-Generated for Randy, 2026-09-19
+Niedenthal Lab Suite v1.3.2 — Rating Station mode
+Generated for Randy, updated 2026-09-21
 ================================================================================
 
 This is every piece of text the app can put on screen, in the order a session
@@ -28,8 +28,8 @@ CONTENTS
   6. Short video task
   7. Partner ratings
   8. Partner history
-  9. Round complete
- 10. Last round only: Video sharing
+  9. Video sharing (the end of the short-video task)
+ 10. Round complete
  11. Finished
  12. [RESEARCHER] Save & quit, and the researcher dashboard
 
@@ -505,7 +505,7 @@ Three sliders, order shuffled. Ends: "Not at all" … "Very much".
 
 
 ================================================================================
-9. ROUND COMPLETE  (after every round)
+10. ROUND COMPLETE  (after every round, and after the sharing page)
 ================================================================================
 
     ROUND <n> COMPLETE
@@ -524,8 +524,13 @@ Three sliders, order shuffled. Ends: "Not at all" … "Very much".
 
 
 ================================================================================
-10. VIDEO SHARING  (last round only — the last thing a participant does)
+9b. VIDEO SHARING  (every round — the last page of the short-video task)
 ================================================================================
+
+Ordering note: this page comes at the END of section 6, the short-video task,
+before the partner questions in sections 7 and 8. It is printed here because it
+was written up as its own section when it ran once per session; it now runs
+once per round, over that round's own eight clips.
 
 Pinned header:
 

@@ -156,9 +156,6 @@ function ClassificationTaskMain({
       <VideoTaskMain
         round={round}
         writeRow={writeCSVRow}
-        // The sharing page is the last thing a participant does all day, not
-        // the last thing they do each round — App.tsx runs it on its own.
-        includeSelection={false}
         onProgress={(done, total, label) => onProgress?.("video", done, total, label)}
         onComplete={advance}
         onCsvError={handleCsvError}

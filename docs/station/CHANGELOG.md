@@ -6,6 +6,45 @@ to collect real participant data.
 
 ---
 
+## 2026-09-21 (later still) — The sharing page belongs to the round
+
+Ben, testing the app: "it appears that the 'I would enjoy this video' / 'my
+partner would enjoy this video' is missing? The whole thing (rating emotions
+and me/my partner would enjoy) is the TikTok task, I think the language was
+meant to imply that both parts of the task should have the same videos
+within-rounds."
+
+He is right, and his reading settles something the 2026-09-19 change got wrong.
+Randy had asked for the sharing page to be "the last thing they should do
+before we bring them back to the done stream", which was read as *once per
+session, at the very end of the day*. Read the way Ben reads it — the last thing
+in the TikTok task, before the round hands back — both instructions agree, and
+the task stays one thing instead of being split across an afternoon.
+
+So the sharing page is part of the short-video task again. Every round: eight
+clips rated for both perspectives, then "which of these would you be interested
+in, and which would your partner be interested in" over those same eight.
+
+- `VideoTaskMain` always runs its selection phase; the `includeSelection` prop
+  is gone.
+- `VideoSelectionStep.tsx` and `selectionRows.ts`, which existed only to run the
+  page on its own at the end of a session, are deleted. One caller again, so the
+  six rows are written where they are read.
+- `App.tsx` has no once-per-session step left at all. "Finish this
+  participant's session" goes straight to the closing screen, because
+  everything a participant does now belongs to a conversation and finished with
+  it.
+
+Both halves draw from the same `assignSet(round)`, so they cannot disagree
+about which eight clips a round uses; a test pins that, and pins that no two
+rounds share a clip.
+
+**Wording, for Randy rather than a change:** the columns read *"I would be
+interested"* and *"My conversation partner would be interested"*, and the header
+asks which ones "your partner would be interested in seeing". Ben described them
+as "would enjoy". That is Randy's 2026-08-05 wording and has been left alone —
+changing it is a one-line edit if the lab wants "enjoy" instead.
+
 ## 2026-09-21 (later) — The installer could not upgrade itself
 
 Alex hit "unable to install" trying to put 1.3.0 on a machine that already had

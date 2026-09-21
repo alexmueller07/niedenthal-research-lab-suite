@@ -136,6 +136,36 @@ describe("set assignment", () => {
   });
 });
 
+describe("the two halves of the TikTok task", () => {
+  // Ben, 2026-09-21, after testing the app: "the whole thing (rating emotions
+  // and me/my partner would enjoy) is the TikTok task, I think the language was
+  // meant to imply that both parts of the task should have the same videos
+  // within-rounds."
+  //
+  // Both halves are drawn from the same `assignSet(round)` inside VideoTaskMain,
+  // so what has to hold is that the round alone decides the clip list — ask
+  // twice for the same round and you get the same eight, whatever order they
+  // are then shuffled into.
+  it("gives the rating trials and the sharing page the same eight clips", () => {
+    for (let round = 1; round <= ROUNDS_WITH_SETS; round += 1) {
+      const trials = assignSet(round).videoIds;
+      const sharing = assignSet(round).videoIds;
+      expect([...sharing].sort()).toEqual([...trials].sort());
+    }
+  });
+
+  it("never shows a round the clips of another round", () => {
+    for (let a = 1; a <= ROUNDS_WITH_SETS; a += 1) {
+      for (let b = a + 1; b <= ROUNDS_WITH_SETS; b += 1) {
+        const overlap = assignSet(a).videoIds.filter((id) =>
+          assignSet(b).videoIds.includes(id)
+        );
+        expect(overlap, `rounds ${a} and ${b} share clips`).toEqual([]);
+      }
+    }
+  });
+});
+
 describe("clip source resolution", () => {
   it("falls back to the bundled clips when no stimulus folder is set", () => {
     expect(resolveVideoSrc("0014", null)).toBe("/videos/0014.mp4");

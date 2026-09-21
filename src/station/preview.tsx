@@ -28,7 +28,7 @@ import PerspectiveNotice from "./components/PerspectiveNotice";
 import AdminDashboard from "./roundrobin/AdminDashboard";
 import StationSetup from "./setup/StationSetup";
 import HelpButton from "./components/HelpButton";
-import { VIDEO_SETS, findVideo, resolveVideoSrc } from "./video-task/videos";
+import { VIDEO_SETS, assignSet, findVideo, resolveVideoSrc } from "./video-task/videos";
 import { emptyData } from "./roundrobin/store";
 import type { RRData } from "./roundrobin/store";
 import { EMPTY_SETTINGS } from "./utils/settings";
@@ -342,7 +342,7 @@ function Preview() {
 
       {screen === "selection page" && (
         <VideoSelectionPage
-          videoIds={SET.videoIds}
+          videoIds={assignSet(previewRound).videoIds}
           srcFor={srcFor}
           onSubmit={(result) => {
             void writeRow("preview", "for_partner", "", "", "", result.forPartner.join(";"));

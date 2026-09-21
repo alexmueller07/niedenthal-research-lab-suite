@@ -7,7 +7,6 @@ import VideoRatingPage, { SCALE_MAX, SCALE_MIN } from "./VideoRatingPage";
 import type { VideoRatingResult } from "./VideoRatingPage";
 import VideoSelectionPage from "./VideoSelectionPage";
 import type { VideoSelectionResult } from "./VideoSelectionPage";
-import { writeSelectionRows } from "./selectionRows";
 import type { WatchStats } from "./StimulusPlayer";
 import { SET_ASSIGNMENT_METHOD, assignSet, findVideo, resolveVideoSrc } from "./videos";
 import { EMPTY_SETTINGS, loadSettings } from "../utils/settings";
@@ -83,16 +82,6 @@ interface VideoTaskMainProps {
    */
   round: number;
   writeRow: VideoTaskWriteRow;
-  /**
-   * Whether the video-sharing page runs at the end of this pass.
-   *
-   * Randy, 2026-09-19: with the session split into rounds, the clip trials run
-   * once per conversation but "which of these would your partner want to see"
-   * is asked once, as the last thing a participant does all day. So the trials
-   * and the sharing page, which used to be one flow, are separable: every round
-   * passes false, the wrap-up runs the page on its own (see App.tsx).
-   */
-  includeSelection?: boolean;
   /** Reports trial progress so the researcher dashboard can show it. */
   onProgress?: (done: number, total: number, label: string) => void;
   onComplete: () => void;
@@ -102,7 +91,6 @@ interface VideoTaskMainProps {
 export default function VideoTaskMain({
   round,
   writeRow,
-  includeSelection = true,
   onProgress,
   onComplete,
   onCsvError,
@@ -213,8 +201,9 @@ export default function VideoTaskMain({
         : phase === "selection"
           ? "Choosing videos to share"
           : `Video ${trialIndex + 1} of ${totalTrials}`;
-    onProgress?.(trialIndex, totalTrials + (includeSelection ? 1 : 0), detail);
-  }, [phase, trialIndex, totalTrials, includeSelection, onProgress]);
+    // +1 for the sharing page, which is the task's last step.
+    onProgress?.(trialIndex, totalTrials + 1, detail);
+  }, [phase, trialIndex, totalTrials, onProgress]);
 
   // Instruction screens advance on any deliberate keypress OR a click, matching
   // the rest of the app. The filtering that keeps a held-down key from blowing
@@ -312,23 +301,21 @@ export default function VideoTaskMain({
       setPage("watch");
       return;
     }
-    if (includeSelection) {
-      setPhase("selection");
-      return;
-    }
-    const steps = totalTrials + (includeSelection ? 1 : 0);
-    onProgress?.(steps, steps, "Video affective-response task");
-    onComplete();
+    setPhase("selection");
   };
 
   const handleSelectionSubmit = async (result: VideoSelectionResult) => {
     try {
-      await writeSelectionRows(writeRow, result);
+      await writeRow("video_selection", "for_partner", "", "", "", result.forPartner.join(";"));
+      await writeRow("video_selection", "for_self", "", "", "", result.forSelf.join(";"));
+      await writeRow("video_selection", "presented_order", "", "", "", result.presentedOrder.join(";"));
+      await writeRow("video_selection", "column_order", "", "", "", result.columnOrder.join(";"));
+      await writeRow("video_selection", "n_for_partner", "", "", "", result.forPartner.length);
+      await writeRow("video_selection", "n_for_self", "", "", "", result.forSelf.length);
     } catch (err) {
       handleError(err);
     }
-    const steps = totalTrials + (includeSelection ? 1 : 0);
-    onProgress?.(steps, steps, "Video affective-response task");
+    onProgress?.(totalTrials + 1, totalTrials + 1, "Video affective-response task");
     onComplete();
   };
 

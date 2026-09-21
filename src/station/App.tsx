@@ -13,7 +13,6 @@ import AdminQuitModal from "./components/AdminQuitModal";
 import HelpButton from "./components/HelpButton";
 import SessionStrip from "./components/SessionStrip";
 import RoundComplete from "./rounds/RoundComplete";
-import VideoSelectionStep from "./video-task/VideoSelectionStep";
 import { ratingsFileName, recordRound, transitionsFileName } from "./rounds/rounds";
 import type { RoundRecord } from "./rounds/rounds";
 import { nowHHMM, todayISO } from "./roundrobin/sessionBoard";
@@ -168,15 +167,15 @@ function App() {
   /**
    * What the participant is doing right now.
    *
-   * "selection" is the one thing that runs once, at the end of the last round
-   * rather than at the end of every one. Randy, 2026-09-19: the sharing page is
-   * "the last thing they should do before we bring them back to the done
-   * stream". The demographics and study-feedback pages that used to sit between
-   * the last round and it are gone — Randy, 2026-09-20: everything that is not
-   * about this partner is asked before the participant sits down.
+   * There is nothing here that runs once per session any more. Every page a
+   * participant sees belongs to a conversation, so every page repeats with it —
+   * including the video-sharing page, which is the last step of the short-video
+   * task rather than a thing of its own (Ben, 2026-09-21: "the whole thing
+   * (rating emotions and me/my partner would enjoy) is the TikTok task… both
+   * parts of the task should have the same videos within-rounds").
    */
   const [selectedTask, setSelectedTask] = useState<
-    "postConversation" | "dyad" | "classification" | "selection" | null
+    "postConversation" | "dyad" | "classification" | null
   >(null);
   const [dyadCsvFilePath, setDyadCsvFilePath] = useState<string>("");
   const [sessionFolder, setSessionFolder] = useState<string>("");
@@ -840,21 +839,14 @@ function App() {
   };
 
   /**
-   * No more rounds today. Straight to the video-sharing page.
+   * No more rounds today.
    *
-   * Demographics and study feedback used to sit between here and it. Randy,
-   * 2026-09-20: everything that is not about this partner is asked before the
-   * participant ever sits down, so the sharing page is now the only thing left
-   * at the end of the day — which is where Randy asked for it.
+   * Nothing is left to ask. Everything a participant does is about one
+   * conversation and was finished with that round — including the video-sharing
+   * page, which lives at the end of the short-video task where Ben pointed out
+   * it belongs. So this goes straight to the closing screen.
    */
   const handleFinishSession = () => {
-    setSelectedTask("selection");
-    setStage("study");
-    reportProgress("questionnaires", 0, 1, "Choosing videos to share");
-  };
-
-  /** The sharing page is done, and so is the participant's day. */
-  const handleSessionComplete = () => {
     setSelectedTask(null);
     setSessionDone(true);
     reportProgress("done", 1, 1, "Session complete");
@@ -1028,16 +1020,6 @@ function App() {
           onProgress={(stage, done, total, detail) =>
             reportProgress(stage, done, total, detail)
           }
-        />
-      ) : selectedTask === "selection" && transitionsWriterRef.current ? (
-        // The last thing of the day. It asks about the clips from the round
-        // that just finished, so it takes that round's number and writes to
-        // that round's transitions file — see VideoSelectionStep.
-        <VideoSelectionStep
-          round={formData.round}
-          writeRow={transitionsWriterRef.current}
-          onComplete={handleSessionComplete}
-          onCsvError={(err) => handleCsvError(String(err))}
         />
       ) : (
         <div className="h-screen w-full flex items-center justify-center">
