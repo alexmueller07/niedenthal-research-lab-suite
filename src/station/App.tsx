@@ -585,6 +585,33 @@ function App() {
   );
 
   /**
+   * The moment the station knows which dyad it is, go and find the video.
+   *
+   * "Nothing to enter" has to mean nothing to press, too. The RA taps a
+   * nametag colour, the dyad fills in, and the ~1 GB copy off the Research
+   * Drive starts there — while they are still filling in the rest of the form
+   * and doing the handover, rather than when they press Start. That head start
+   * is most of why the section sits on the setup screen at all.
+   *
+   * Only in setup, and only once per dyad: searchedDyadRef stops a re-render
+   * or a corrected typo from throwing away a copy that is nearly done.
+   *
+   * Debounced, because an RA typing 014 by hand produces "0", "01" and "014"
+   * and the first two are other people's dyads. Without the wait all three
+   * searches run, and the one that finishes last wins rather than the one that
+   * asked last — which is how a station ends up holding dyad 1's conversation
+   * while the screen says 014. Tapping a nametag colour sets the whole number
+   * at once and only pays the delay.
+   */
+  useEffect(() => {
+    if (stage !== "setup") return;
+    const dyad = formData.dyadId.trim();
+    if (!dyad || searchedDyadRef.current === dyad) return;
+    const timer = setTimeout(() => startConversationSearch(dyad), 600);
+    return () => clearTimeout(timer);
+  }, [stage, formData.dyadId, startConversationSearch]);
+
+  /**
    * The RA finished setting the station up. Next screen is the participant's —
    * or, from the second round on, straight back into the study, because the
    * participant is already signed in and sitting there.
