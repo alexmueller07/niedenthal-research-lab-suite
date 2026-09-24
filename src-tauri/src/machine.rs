@@ -824,18 +824,6 @@ pub async fn machine_self_test(app: AppHandle) -> Vec<CheckResult> {
         }
     }
 
-    // ---- anything waiting to be filed ----
-    let pending = crate::recorder::roundrobin::load_queue(&app).len();
-    out.push(CheckResult {
-        label: "Recordings waiting to be filed".into(),
-        passed: Some(pending == 0),
-        detail: if pending == 0 {
-            "None — everything recorded on this machine has been filed.".into()
-        } else {
-            format!("{pending} waiting. They retry automatically; open Recording mode to force one now.")
-        },
-    });
-
     out
 }
 

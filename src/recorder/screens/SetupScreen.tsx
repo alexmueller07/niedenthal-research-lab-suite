@@ -1,10 +1,9 @@
 import AudioMeter from "../components/AudioMeter";
-import { isNetworkPath } from "../naming";
+import { dyadFolder, isNetworkPath, normalizeDyadId } from "../naming";
 import PreflightPanel from "../components/PreflightPanel";
 import { presetById } from "../presets";
 import PreviewPane from "../components/PreviewPane";
 import { RecordButton } from "../components/RecordControls";
-import SessionLink from "../components/SessionLink";
 import SettingsPanel from "../components/SettingsPanel";
 import SpaceReadout from "../components/SpaceReadout";
 import type {
@@ -14,10 +13,8 @@ import type {
   Device,
   DeviceList,
   DiskInfo,
-  OpenedRecording,
   PreflightReport,
   PublicSettings,
-  SessionSummary,
   SpaceEstimate,
 } from "../types";
 
@@ -33,7 +30,7 @@ interface Props {
   height: number;
   fps: number;
   outputDir: string;
-  sessionCode: string;
+  dyadId: string;
   sessionMinutes: number;
   estimate: SpaceEstimate | null;
   disk: DiskInfo | null;
@@ -54,24 +51,6 @@ interface Props {
   preflightRunning: boolean;
   onPreflight: () => void;
 
-  // Grouped rather than flattened: these are two self-contained panels, and
-  // fourteen more positional props would make the call site unreadable.
-  roundRobin: {
-    configured: boolean;
-    sessions: SessionSummary[];
-    loading: boolean;
-    slotId: string;
-    roomIndex: number;
-    opened: OpenedRecording | null;
-    error: string | null;
-    pendingCount: number;
-    onSlot: (slotId: string) => void;
-    onRoom: (roomIndex: number) => void;
-    onRefresh: () => void;
-    onClear: () => void;
-    onFlush: () => void;
-    onTakeOver: () => void;
-  };
   machineSettings: {
     value: PublicSettings | null;
     saving: boolean;
@@ -88,7 +67,7 @@ interface Props {
   onSelectResolution: (width: number, height: number) => void;
   onSelectFps: (fps: number) => void;
   onPickFolder: () => void;
-  onSessionCode: (code: string) => void;
+  onDyadId: (dyadId: string) => void;
   onSessionMinutes: (minutes: number) => void;
   /** Reports whether the preview is genuinely delivering frames. */
   onCameraSignal: (delivering: boolean) => void;
@@ -394,15 +373,16 @@ export default function SetupScreen(props: Props) {
 
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label" htmlFor="code">
-                Session code
+              <label className="field-label" htmlFor="dyad">
+                Dyad ID
               </label>
               <input
-                id="code"
+                id="dyad"
                 className="control"
-                value={props.sessionCode}
-                onChange={(e) => props.onSessionCode(e.target.value)}
-                placeholder="dyad-014-room2"
+                inputMode="numeric"
+                value={props.dyadId}
+                onChange={(e) => props.onDyadId(e.target.value)}
+                placeholder="014"
                 disabled={props.busy}
               />
             </div>
@@ -426,11 +406,24 @@ export default function SetupScreen(props: Props) {
             </div>
           </div>
 
-          {/* No names, no emails, no NetIDs — the lab's rule about identifiers
-              applies to filenames as much as to source code. */}
-          <p className="mt-2 text-xs text-(--color-ink-faint)">
-            Codes only. Never a participant's name, email, or NetID.
-          </p>
+          {/* The one number this screen asks for, and the whole of the link to
+              the rating stations. Echoed back as the folder it produces so an
+              RA can see the answer rather than trust it. */}
+          {normalizeDyadId(props.dyadId) ? (
+            <p className="mt-2 text-xs leading-relaxed text-(--color-ink-dim)">
+              Filed as{" "}
+              <span className="font-mono text-(--color-good)">
+                {dyadFolder(props.dyadId)}
+              </span>
+              . A rating station set to this dyad plays it without anyone
+              looking for a file.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs leading-relaxed text-(--color-ink-faint)">
+              The dyad's number, and nothing else — no names, no emails, no
+              NetIDs. It is what the rating stations find the conversation by.
+            </p>
+          )}
         </section>
 
         <section className="card p-4">
@@ -448,8 +441,6 @@ export default function SetupScreen(props: Props) {
           disabled={props.busy || !props.plan?.mode || !props.outputDir}
           onRun={props.onPreflight}
         />
-
-        <SessionLink {...props.roundRobin} disabled={props.busy} />
 
         <SettingsPanel
           settings={props.machineSettings.value}

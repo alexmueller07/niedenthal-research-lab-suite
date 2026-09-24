@@ -26,8 +26,7 @@ import type { RemotePublic } from "../remote/api";
 import DriveRootChips from "../remote/DriveRootChips";
 import ConversationVideo from "./ConversationVideo";
 import type { ConversationPrep } from "../App";
-import type { RemoteClip } from "../remote/api";
-import type { RRParticipant } from "../roundrobin/store";
+import type { DyadVideo } from "../remote/api";
 
 // The first screen in Rating Station mode: the RA sets the computer up, then
 // hands it to the participant.
@@ -56,17 +55,13 @@ interface StationSetupProps {
   lastCompletedRound: { participantId: string; round: number } | null;
   settings: AppSettings;
   remote: RemotePublic | null;
-  /** Known participants, for the video section's email suggestions. */
-  roster: RRParticipant[];
   /** Finding and confirming the conversation recording — see ConversationVideo. */
   video: {
-    /** False when this machine has no Round Robin server to ask. */
-    canSearch: boolean;
-    email: string;
-    onEmailChange: (email: string) => void;
+    /** The dyad this station is set to, which is the whole of the lookup. */
+    dyadId: string;
     onFind: () => void;
     prep: ConversationPrep;
-    onUseClip: (clip: RemoteClip) => void;
+    onUseVideo: (video: DyadVideo) => void;
     onUseFile: (path: string) => void;
   };
   /** Persists a settings change (RA name, folders) for next time. */
@@ -189,7 +184,6 @@ export default function StationSetup({
   lastCompletedRound,
   settings,
   remote,
-  roster,
   video,
   onSettingsChange,
   onDriveChange,
@@ -767,13 +761,10 @@ export default function StationSetup({
 
         {/* ---- 4. The conversation recording ---- */}
         <ConversationVideo
-          canSearch={video.canSearch}
-          roster={roster}
-          email={video.email}
-          onEmailChange={video.onEmailChange}
+          dyadId={video.dyadId}
           onFind={video.onFind}
           prep={video.prep}
-          onUseClip={video.onUseClip}
+          onUseVideo={video.onUseVideo}
           onUseFile={video.onUseFile}
         />
 

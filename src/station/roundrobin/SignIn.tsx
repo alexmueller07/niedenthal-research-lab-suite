@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ADMIN_EMAIL, isValidEmail, normalizeEmail } from "./store";
+import { ADMIN_EMAIL, normalizeEmail } from "./store";
 
 // First screen of the app: email-only check-in (no password). A participant
 // email registers/looks up the person and shows their group; the admin email
@@ -11,15 +11,15 @@ interface SignInProps {
 
 export default function SignIn({ onParticipant, onAdmin }: SignInProps) {
   const [email, setEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
+  // Whatever they typed, trimmed and lower-cased, straight through. The format
+  // check that used to sit here is gone (2026-09-24): it rejected real
+  // addresses during the lab's test sessions and there is nothing it could
+  // protect. An address nobody can be reached at is a problem for the person
+  // who typed it, not something a rating station should refuse to start over.
   const handleContinue = () => {
     const normalized = normalizeEmail(email);
-    if (!isValidEmail(normalized)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-    setError(null);
+    if (!normalized) return;
     if (normalized === ADMIN_EMAIL) {
       onAdmin();
     } else {
@@ -49,7 +49,6 @@ export default function SignIn({ onParticipant, onAdmin }: SignInProps) {
               placeholder="you@wisc.edu"
               className="w-full p-3 text-white bg-gray-800 border border-white rounded-lg focus:outline-none focus:border-blue-400"
             />
-            {error && <p className="text-red-400 text-sm mt-2 text-left">{error}</p>}
           </div>
 
           <button

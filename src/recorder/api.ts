@@ -10,20 +10,15 @@ import type {
   ArchiveReport,
   CameraCapabilities,
   CapturePlan,
-  ClosePayload,
   DeviceList,
   DeviceRecord,
   DiskInfo,
   FinalizeResult,
-  FlushReport,
-  OpenedRecording,
-  PendingRegistration,
   PreflightReport,
   PublicSettings,
   RecordContext,
   RecordSettings,
   ResolutionOption,
-  SessionSummary,
   SettingsUpdate,
   SpaceEstimate,
   StopOutcome,
@@ -145,7 +140,7 @@ export const estimateSpace = (
 export const profileHash = (settings: RecordSettings) =>
   invoke<string>("profile_hash", { settings });
 
-// --- settings, Research Drive, Round Robin ---------------------------------
+// --- settings and the Research Drive ---------------------------------
 
 // recorder_-prefixed on the Rust side: the PPS station owns the bare
 // load_settings/save_settings names (frozen — its frontend ships
@@ -156,36 +151,18 @@ export const loadSettings = () => invoke<PublicSettings>("recorder_load_settings
 export const saveSettings = (update: SettingsUpdate) =>
   invoke<PublicSettings>("recorder_save_settings", { update });
 
-export const rrSessions = () => invoke<SessionSummary[]>("rr_sessions");
-
 /**
- * Opens a Round Robin row *before* the take, so the dyad is stamped from the
- * rotation at capture time rather than reconstructed afterwards from a rotation
- * that may since have changed.
+ * Files the finished take on the Research Drive under its dyad number, with
+ * the copy re-read and re-hashed on the far side.
+ *
+ * This is the entire hand-off to the rating stations. It replaced a chain that
+ * ran through Round Robin — open a row, stamp it from the rotation, close it
+ * with the integrity numbers, queue the whole thing for retry when any step
+ * failed — and could record a perfect conversation that no station could ever
+ * find, because a session was missing or a room was already claimed.
  */
-export const rrOpen = (
-  slotId: string,
-  roomIndex: number,
-  round: number | null,
-  force: boolean
-) => invoke<OpenedRecording>("rr_open", { slotId, roomIndex, round, force });
-
-export const rrPending = () => invoke<PendingRegistration[]>("rr_pending");
-
-export const rrFlush = () => invoke<FlushReport>("rr_flush");
-
-/**
- * Gives a Round Robin row back when the take it was opened for produced
- * nothing. Without this the row stays open and blocks the room's next take.
- */
-export const rrAbandon = (recordingId: string) =>
-  invoke<void>("rr_abandon", { recordingId });
-
-/** Copies to the Research Drive with checksum verification, then closes the row. */
 export const archiveRecording = (request: {
   localPath: string;
   sha256: string;
-  recordingId: string | null;
-  storageKey: string | null;
-  payload: ClosePayload;
+  dyadId: string | null;
 }) => invoke<ArchiveReport>("archive_recording", { request });

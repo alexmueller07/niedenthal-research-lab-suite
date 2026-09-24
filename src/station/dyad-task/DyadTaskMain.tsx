@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { ConversationPrep, FormData } from "../App";
-import { describeClip } from "../remote/api";
-import type { RemoteClip } from "../remote/api";
+import { describeVideo } from "../remote/api";
+import type { DyadVideo } from "../remote/api";
 import { csvEscape } from "../utils/csv";
 import { startingTarget } from "../utils/counterbalance";
 import { registerFlush } from "../utils/flushRegistry";
@@ -74,7 +74,7 @@ interface DyadTaskMainProps {
    */
   conversation?: {
     prep: ConversationPrep;
-    onUseClip: (clip: RemoteClip) => void;
+    onUseVideo: (video: DyadVideo) => void;
     onRetry: () => void;
   };
   onComplete?: () => void;
@@ -661,11 +661,12 @@ function DyadTaskMain({
               <>
                 <h1 className="text-white text-2xl mb-4">Preparing the conversation video…</h1>
                 <p className="text-gray-400 mb-2">
-                  {prep.clip ? describeClip(prep.clip) : "A file chosen by the researcher"}
+                  {prep.video ? describeVideo(prep.video) : "A file chosen by the researcher"}
                 </p>
                 <p className="text-gray-400 mb-4">
-                  Copying from the Research Drive and verifying the recorder&rsquo;s
-                  checksum. This can take a minute for a full conversation.
+                  Copying from the Research Drive onto this computer, so the
+                  video never plays over the network. This can take a minute for
+                  a full conversation.
                 </p>
                 <div className="w-full h-3 border border-white mb-2">
                   <div
@@ -697,28 +698,28 @@ function DyadTaskMain({
                   Which conversation should be rated?
                 </h1>
                 <p className="text-gray-400 mb-6">
-                  This participant has {prep.clips.length} recordings on file. The most
+                  {prep.videos.length} recordings are filed under this dyad. The most
                   recent is first.
                 </p>
                 <div className="space-y-3 mb-8">
                   {[
                     prep.recommended,
-                    ...prep.clips.filter(
-                      (c) => c.recordingId !== prep.recommended.recordingId
+                    ...prep.videos.filter(
+                      (v) => v.recordingId !== prep.recommended.recordingId
                     ),
-                  ].map((clip) => (
+                  ].map((video) => (
                     <button
-                      key={clip.recordingId}
+                      key={video.recordingId}
                       type="button"
-                      onClick={() => conversation?.onUseClip(clip)}
+                      onClick={() => conversation?.onUseVideo(video)}
                       className={`block w-full border p-4 text-left text-white hover:bg-gray-800 ${
-                        clip.recordingId === prep.recommended.recordingId
+                        video.recordingId === prep.recommended.recordingId
                           ? "border-white"
                           : "border-gray-600"
                       }`}
                     >
-                      {describeClip(clip)}
-                      {clip.recordingId === prep.recommended.recordingId && (
+                      {describeVideo(video)}
+                      {video.recordingId === prep.recommended.recordingId && (
                         <span className="ml-2 text-gray-400 text-sm">(most recent)</span>
                       )}
                     </button>

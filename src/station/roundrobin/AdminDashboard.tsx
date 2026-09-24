@@ -4,7 +4,6 @@ import {
   groupMembers,
   groupNumbers,
   groupPairs,
-  isValidEmail,
   loadData,
   normalizeEmail,
   participantProgress,
@@ -60,7 +59,7 @@ export default function AdminDashboard({
   onError,
 }: AdminDashboardProps) {
   const [newEmail, setNewEmail] = useState("");
-  const [addError, setAddError] = useState<string | null>(null);
+  const [addNote, setAddNote] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressMap>({});
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
 
@@ -104,19 +103,26 @@ export default function AdminDashboard({
 
   const groups = groupNumbers(data);
 
+  /**
+   * Adds whatever was typed, and says what happened.
+   *
+   * Both of the refusals that used to live here are gone (2026-09-24). The
+   * format check rejected real addresses during the lab's test sessions, and
+   * the duplicate check turned "this person is already in Group 2" — which is
+   * useful information and not a mistake — into a red error beside a field
+   * that would not clear. An address already on the roster now simply reports
+   * its group, and the field clears either way.
+   */
   const handleAdd = () => {
     const email = normalizeEmail(newEmail);
-    if (!isValidEmail(email) || email === ADMIN_EMAIL) {
-      setAddError("Please enter a valid participant email.");
-      return;
-    }
-    setAddError(null);
+    if (!email || email === ADMIN_EMAIL) return;
     const result = signIn(data, email);
-    if (!result.isNew) {
-      setAddError(`${email} is already registered (Group ${result.participant.group}).`);
-      return;
-    }
-    localEdit(() => onChange(result.data));
+    setAddNote(
+      result.isNew
+        ? `Added ${email} to Group ${result.participant.group}.`
+        : `${email} was already on the roster, in Group ${result.participant.group}.`
+    );
+    if (result.isNew) localEdit(() => onChange(result.data));
     setNewEmail("");
   };
 
@@ -180,7 +186,7 @@ export default function AdminDashboard({
               Add
             </button>
           </div>
-          {addError && <p className="text-red-400 text-sm mt-2">{addError}</p>}
+          {addNote && <p className="text-green-400 text-sm mt-2">{addNote}</p>}
           <p className="text-gray-400 text-sm mt-3">
             Participants normally add themselves by signing in with their email on this
             screen's check-in page. New emails are placed into a random group with an open

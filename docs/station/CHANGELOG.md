@@ -6,6 +6,91 @@ to collect real participant data.
 
 ---
 
+## 2026-09-24 — One number instead of five things
+
+The lab ran test sessions and two things came back. The linkage between a
+conversation room and a rating station was a code shaped like
+`dyad-###-room#`, and only the dyad part of it was ever needed — every dyad
+has a unique number. And the app would not let RAs save the emails they typed.
+
+Both are the same problem: the app was checking work the RAs were doing
+correctly, and refusing it.
+
+### The video linkage is the dyad number, and nothing else
+
+An RA in the conversation room now types a dyad number. The finished take is
+filed on the Research Drive under `dyad-014/`. A rating station set to dyad 14
+reads it straight off the drive. That is the whole pipeline.
+
+What it replaced, for one video: a Round Robin session had to exist for today,
+a room rotation had to have been generated, the room had to be claimed by this
+machine and not another, the participant had to be on the schedule, and the
+address they signed in with had to be the one the schedule had. Five things.
+Any of them being wrong recorded a perfect conversation that no rating station
+could ever play — and none of them announced itself until a participant was
+already sitting in front of an empty screen.
+
+- The recorder's **Session code** field is now **Dyad ID**. Whatever the RA
+  types, the first run of digits is the dyad, padded to three — `14`, `014` and
+  `dyad-014-room2` typed out of habit all mean dyad 014.
+- The recorder's Round Robin panel is **gone**: the session dropdown, the room
+  dropdown, "Take over this room", "N recordings waiting to be filed", and the
+  three error states that went with them. So is the offline registration queue
+  and the retry-on-launch, because there is no longer a server round trip to
+  retry. If a drive copy fails, the finish screen has one button that does it
+  again, and the take is on local disk either way.
+- The station's **"Participant's email" box is gone**. It was the only thing on
+  the setup screen that asked an RA for something the app already knew.
+- `find_dyad_videos` reads the drive. `list_conversation_clips`,
+  `prepare_conversation_video` and `resolve_clip_path` are deleted.
+
+**Research integrity:** nothing about what a participant sees or what is
+recorded changes. The data files, their columns and their names are untouched.
+What changed is which file the rating task opens and how it was found. The
+checksum verification on the Research Drive copy is kept — that guards against
+SMB truncating a copy and reporting success, which is a machine failure, not a
+person's.
+
+**For Randy:** the Control Center loses its per-recording rows, because the
+recorder no longer registers takes with Round Robin. The recordings are on the
+drive, named by dyad and timestamp, with their `.json` receipt beside them.
+Worth a decision before this goes to a real session.
+
+### Emails save whatever was typed
+
+Every format check on an email address is removed — in the suite and on the
+Round Robin site. Addresses are trimmed and lower-cased, which is what makes a
+returning participant the same participant next week, and then stored.
+
+- `isValidEmail` is deleted. The participant sign-in, the researcher
+  dashboard's "Add a participant", the Round Robin sign-up form and the RA
+  identity form all take the raw input.
+- The dashboard's duplicate refusal is gone too. An address already on the
+  roster reports which group it is in, which is information, rather than a red
+  error beside a field that would not clear.
+- The NetID fields accept a full address and read the NetID out of it, instead
+  of refusing it.
+
+### Preflight says what it measured
+
+Room A's laptop failed **Frame Rate Holds** and **Encoder Keeps up**, and
+nobody could tell what either referred to. Both were false alarms, and both
+were measuring against the wall clock.
+
+- **"Frames arrive on time"** (was "Frame rate holds") divides frames by the
+  duration FFmpeg actually wrote, not by the five seconds it was asked for. A
+  camera takes about a second to wake up on a laptop, and those were counted as
+  seconds it was delivering nothing — which read as "24.2 fps delivered against
+  30". Tolerance is a tenth rather than a twentieth.
+- **"This computer keeps up"** (was "Encoder keeps up") is judged on dropped
+  frames instead of FFmpeg's `speed`. Speed is encoded seconds over wall
+  seconds and includes the same startup, so a perfectly capable laptop reported
+  0.84x and looked like it was failing. The machine only actually fell behind
+  if frames were thrown away, and that is counted exactly.
+- Both now say in plain words what was measured and what to do about it.
+
+---
+
 ## 2026-09-21 (later still) — The sharing page belongs to the round
 
 Ben, testing the app: "it appears that the 'I would enjoy this video' / 'my

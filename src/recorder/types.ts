@@ -204,38 +204,6 @@ export interface SettingsUpdate {
   researchDriveRoot?: string;
 }
 
-export interface SessionSummary {
-  slotId: string;
-  date: string;
-  time: string | null;
-  roomCount: number;
-  currentRound: number;
-}
-
-export interface OpenedRecording {
-  id: string;
-  storageKey: string;
-  round: number;
-  roomIndex: number;
-  participantA: string | null;
-  participantB: string | null;
-  /** The rotation has no pair in this room this round. */
-  unassigned: boolean;
-}
-
-export interface ClosePayload {
-  durationMs: number;
-  captureFps: number;
-  framesDropped: number;
-  framesDuplicated: number;
-  sha256: string;
-  profileHash: string;
-  recorderVersion: string;
-  cfr: boolean;
-  /** Size of the verified MP4, for servers that cannot see the drive share. */
-  bytes: number;
-}
-
 export interface ArchiveOutcome {
   destination: string;
   bytes: number;
@@ -245,26 +213,8 @@ export interface ArchiveOutcome {
 
 export interface ArchiveReport {
   archived: ArchiveOutcome | null;
-  registered: boolean;
-  queued: boolean;
+  /** Plain words for the finish screen, whichever way it went. */
   message: string;
-}
-
-export interface PendingRegistration {
-  recordingId: string;
-  storageKey: string;
-  localPath: string;
-  archived: boolean;
-  attempts: number;
-  lastError: string | null;
-  queuedAt: string;
-}
-
-export interface FlushReport {
-  attempted: number;
-  succeeded: number;
-  stillPending: number;
-  errors: string[];
 }
 
 export interface DeviceRecord {
@@ -281,11 +231,12 @@ export interface DeviceRecord {
  * take, and handed back by `active_recording`. Rust never reads it.
  */
 export interface RecordContext {
+  /** The dyad number. Still `sessionCode` on the wire — Rust holds it opaquely
+   *  and renaming the field would strand a take running through an upgrade. */
   sessionCode: string;
   discreet: boolean;
   presetId: string;
   profileHash: string;
-  opened: OpenedRecording | null;
   device: DeviceRecord;
 }
 

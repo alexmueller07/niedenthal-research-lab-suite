@@ -8,6 +8,17 @@ interface Props {
   finalizing: boolean;
   error: string | null;
   onReveal: () => void;
+  /**
+   * Copies to the Research Drive again. Null when there is nothing to retry —
+   * either it is already filed, or there is no finished file to file.
+   *
+   * This one button is the whole of the retry machinery. The offline queue,
+   * the flush on launch and the "N recordings waiting to be filed" panel went
+   * with the Round Robin round trip they existed to retry (2026-09-24); the
+   * local file is complete and verified either way, and an RA who can see the
+   * share is back presses this.
+   */
+  onArchiveAgain: (() => void) | null;
   onAnother: () => void;
 }
 
@@ -187,17 +198,16 @@ export default function FinishScreen(props: Props) {
             )}
 
             {/* Filing is reported separately from recording, because the two
-                succeed and fail independently. A queued copy is not a lost one. */}
+                succeed and fail independently. A copy that did not happen is
+                not a lost take — the file is on this computer either way. */}
             {props.archive && (
               <div className="mt-4 border-t border-(--color-panel-edge) pt-4">
-                <div className="field-label">Research Drive &amp; Round Robin</div>
+                <div className="field-label">Research Drive</div>
                 <p
                   className={`text-sm leading-relaxed ${
-                    props.archive.registered
+                    props.archive.archived
                       ? "text-(--color-good)"
-                      : props.archive.queued
-                        ? "text-(--color-warn)"
-                        : "text-(--color-ink-dim)"
+                      : "text-(--color-warn)"
                   }`}
                 >
                   {props.archive.message}
@@ -208,11 +218,14 @@ export default function FinishScreen(props: Props) {
                     {props.archive.archived.verified && " · checksum matched"}
                   </p>
                 )}
-                {props.archive.queued && (
-                  <p className="mt-1 text-xs text-(--color-ink-faint)">
-                    It will be retried automatically the next time this app opens, or from the
-                    Round Robin panel on the setup screen.
-                  </p>
+                {!props.archive.archived && props.onArchiveAgain && (
+                  <button
+                    type="button"
+                    onClick={props.onArchiveAgain}
+                    className="mt-2 rounded-lg border border-(--color-warn)/40 px-3 py-1.5 text-xs font-semibold text-(--color-warn) hover:bg-(--color-warn)/10"
+                  >
+                    Copy to the Research Drive
+                  </button>
                 )}
               </div>
             )}

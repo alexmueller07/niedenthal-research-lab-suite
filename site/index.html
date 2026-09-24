@@ -441,7 +441,7 @@
   }
 </style>
 </head>
-<body data-documents="1.0.0">
+<body data-documents="1.4.0">
 
 <div class="bar">
   <div class="wrap">
@@ -724,8 +724,14 @@
     <p>
       Choose the camera and microphone the first time. <strong>Talk and watch
       the microphone bar move</strong> — a silent recording looks completely
-      normal until someone needs the audio. Today’s session and this room’s
-      number are filled in for you.
+      normal until someone needs the audio.
+    </p>
+    <p>
+      Type the <strong>dyad number</strong>. It is the only thing this screen
+      asks for, and it is the whole link to the rating stations: the screen
+      echoes back the folder the recording will be filed in
+      (<code>dyad-014</code>), so you can see the answer rather than trust it.
+      <code>14</code> and <code>014</code> are the same dyad.
     </p>
     <p>
       Press <strong>RECORD</strong>. The screen immediately shows only “Please
@@ -735,9 +741,11 @@
       while it finishes the file.
     </p>
     <p>
-      Three things should go right: the recording verified, filed to the
-      Research Drive, and registered with Round Robin. That third one is what
-      lets the rating stations find it.
+      Two things should go right: the recording verified, and filed to the
+      Research Drive under its dyad folder. That second one is what lets the
+      rating stations find it. If the drive was not reachable, the finish
+      screen says so and has a button to copy it again — the recording itself
+      is safe on the computer either way.
     </p>
 
     <p class="rolelabel">Room 385</p>
@@ -749,11 +757,14 @@
       <strong>Start</strong> and hand the computer over.
     </p>
     <p>
+      The conversation video is found by that dyad number, straight off the
+      Research Drive — nothing is typed for it and no server is asked. The copy
+      starts while you are still at the machine, so the rating task begins with
+      the video ready. Nobody browses for files.
+    </p>
+    <p>
       From there the participant signs in with their email and works through the
-      study. While they answer the first questionnaire, the app is already
-      fetching their conversation video off the Research Drive and checking it
-      arrived intact — so the rating task starts with the video ready. Nobody
-      browses for files.
+      study.
     </p>
     <p>
       Researcher save-and-quit is still
@@ -814,8 +825,11 @@
         <dd>It offers the conversations recorded recently so you can pick one, and the manual file picker is always there. Nothing blocks the session.</dd>
       </div>
       <div class="symptom">
-        <dt>“This take was not linked to a Round Robin session”</dt>
-        <dd>The conversation is recorded and safe, but the rating stations will not find it by themselves — so deal with it now rather than later. Press <strong>Record another</strong> and read the Round Robin panel; it says why. If it says a recording is already open for the room, and no other computer is recording that room, press <strong>Take over this room</strong>.</dd>
+        <dt>“No dyad number — this take will be filed under ‘unfiled’”</dt>
+        <dd>Said next to the RECORD button, before you press it. The conversation would still be recorded, but it lands in <code>unfiled</code> instead of <code>dyad-014</code> and no rating station will find it. Type the dyad number and the warning goes.</dd>
+
+        <dt>A rating station says “No video found for dyad 014”</dt>
+        <dd>Usually the recording room is still copying — wait a moment and press <strong>Look again</strong>. Otherwise the dyad numbers do not match: check what the recording room typed against what the session board says. You can always point at the file by hand; it is in <code>dyad-014</code> on the Research Drive.</dd>
       </div>
       <div class="symptom">
         <dt>“This dyad already has data on disk”</dt>
