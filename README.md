@@ -17,17 +17,26 @@ Research Drive folder.
 
 ## How the pipeline works
 
-An RA presses Record in a conversation room and later presses Stop. The video
-is verified frame by frame, checksummed, copied to the Research Drive, and
-registered to the right session, room, and pair of participants. When those
-participants sit down at rating stations and sign in, the station asks Round
-Robin for their conversation, fetches it off the drive, re-checks the
-checksum, and plays it. Nobody browses for files, and the control board
-follows every station live.
+**One number ties it together: the dyad ID.**
 
-If the network or the drive is down at any step, nothing blocks: recordings
-queue and retry, stations fall back to the manual file picker. **Never delay
-a session over a network problem.**
+An RA in a conversation room types the dyad number and presses Record. On
+Stop, the video is verified frame by frame, checksummed, and copied to
+`<Research Drive>/dyad-014/`. When that pair sits down at rating stations, the
+station — which already has the dyad number off the session board — reads the
+recording straight off the drive and plays it. Nobody types an email, nobody
+browses for a file, and no server is involved in finding the video.
+
+That replaced a chain that ran through Round Robin: a session had to exist for
+today, a room rotation had to have been generated, the room had to be claimed,
+the participant had to be on the schedule, and the address they signed in with
+had to match the one the schedule had. Five things, each of which could be
+wrong while a perfectly good recording sat on the drive. See the 2026-09-24
+entry in [docs/station/CHANGELOG.md](docs/station/CHANGELOG.md).
+
+If the drive is not reachable, nothing blocks: the take is complete and
+verified on the local disk, the finish screen offers the copy again, and
+stations fall back to the manual file picker. **Never delay a session over a
+technical problem.**
 
 ## Getting the app
 
@@ -97,16 +106,15 @@ apps are untouched and keep working as a fallback.
 
 ## Day-to-day use
 
-- **Recording rooms:** camera/mic/quality, Preflight, Record/Stop, discreet
-  mode (`Ctrl+Shift+R` reveals the controls, "Hide the screen again"
-  re-covers). Today's session is preselected automatically and the room
-  number is remembered per machine — a routine session needs zero dropdown
-  clicks. Full guide:
+- **Recording rooms:** camera/mic/quality, the dyad number, Preflight,
+  Record/Stop, discreet mode (`Ctrl+Shift+R` reveals the controls, "Hide the
+  screen again" re-covers). The dyad number is the only thing typed, and the
+  screen echoes back the folder it will be filed in. Full guide:
   [docs/recorder/README-standalone.md](docs/recorder/README-standalone.md).
 - **Rating stations:** the RA sets the station up first — tap the nametag
-  colour, everything else is filled in — then hands the computer over, and the
-  participant signs in with their email. The conversation video loads by
-  itself. Researcher save-and-quit stays `Ctrl+Shift+Q`. Guide:
+  colour, everything else is filled in, including the dyad — then hands the
+  computer over. The conversation video is found by that dyad number and loads
+  by itself. Researcher save-and-quit stays `Ctrl+Shift+Q`. Guide:
   [docs/station/README-standalone.md](docs/station/README-standalone.md).
 - **Control Center:** the Round Robin site, full screen. Log in as usual.
 
@@ -143,6 +151,17 @@ Engineering notes: [docs/recorder/DESIGN.md](docs/recorder/DESIGN.md).
 
 ## Status
 
+- **The video linkage is the dyad number as of v1.4.0 (2026-09-24).** A
+  conversation room types a dyad ID and nothing else; the take is filed under
+  `dyad-014/` on the Research Drive; a rating station set to the same dyad
+  finds it with no server in between. The recorder's Round Robin session/room
+  panel, the offline registration queue and the station's "participant's
+  email" box are all gone with it. Every email format check in the suite and
+  on the Round Robin site is gone too — addresses are normalised and saved.
+  Preflight's two rate checks were measuring against the wall clock and
+  failing healthy laptops; they now measure what was written. **Randy: the
+  Control Center no longer gets a row per recording. The files are on the
+  drive with their `.json` receipts — worth a decision before a real session.**
 - **A session is several rounds as of v1.2.0 (2026-09-19).** A participant
   stays at one rating station and has conversation after conversation with
   different partners, sometimes across days. Every round writes its own
