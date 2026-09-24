@@ -34,12 +34,19 @@ export function emptyData(): RRData {
   return { version: 1, groupSize: GROUP_SIZE, participants: [], meetings: {} };
 }
 
+/**
+ * Trimmed and lower-cased, and that is all.
+ *
+ * There is no isValidEmail any more (2026-09-24). It pattern-matched for
+ * `name@host.tld`, and the lab's test sessions kept hitting it — a trailing
+ * space, an address with no dot, a department alias — with the only feedback
+ * being "Please enter a valid email address" next to an address that was
+ * perfectly real. What a checked-in participant needs is to be recognised
+ * again next week, and that needs the address to be stored the same way
+ * twice, which is exactly what this does and all it has to do.
+ */
 export function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
-}
-
-export function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email === ADMIN_EMAIL;
 }
 
 export function pairKey(a: string, b: string): string {

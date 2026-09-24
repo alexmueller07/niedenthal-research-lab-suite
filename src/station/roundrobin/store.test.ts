@@ -4,7 +4,6 @@ import {
   groupMembers,
   groupNumbers,
   groupPairs,
-  isValidEmail,
   mergeData,
   normalizeEmail,
   pairKey,
@@ -28,10 +27,21 @@ describe("email handling", () => {
     expect(normalizeEmail("  A@B.Com ")).toBe("a@b.com");
   });
 
-  it("validates emails and accepts the admin sentinel", () => {
-    expect(isValidEmail("student@wisc.edu")).toBe(true);
-    expect(isValidEmail("admin@admin")).toBe(true);
-    expect(isValidEmail("not-an-email")).toBe(false);
+  it("takes whatever was typed — there is no format check any more", () => {
+    // Removed 2026-09-24. The old isValidEmail wanted name@host.tld and turned
+    // down real addresses during the lab's test sessions. Normalising is the
+    // only thing that has to happen: it is what makes a returning participant
+    // the same participant next week.
+    expect(normalizeEmail("Student@WISC.edu ")).toBe("student@wisc.edu");
+    expect(normalizeEmail("admin@admin")).toBe("admin@admin");
+    expect(normalizeEmail("not-an-email")).toBe("not-an-email");
+  });
+
+  it("recognises a returning participant however they capitalise it", () => {
+    const data = withParticipants(["Student@WISC.edu"]);
+    const again = signIn(data, "  student@wisc.edu  ");
+    expect(again.isNew).toBe(false);
+    expect(data.participants).toHaveLength(1);
   });
 
   it("pairKey is order-independent", () => {
