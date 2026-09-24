@@ -6,6 +6,28 @@ to collect real participant data.
 
 ---
 
+## 2026-09-24 (later) — "Nothing to enter" has to mean nothing to press
+
+Testing the 1.4.0 build end to end: the station said *"Found by dyad 014 —
+the same number the recording room typed. Nothing to enter"* and then sat
+there. The lookup only ran when the RA pressed **Look again**, or when they
+pressed Start — by which point the head start the section exists for is gone.
+
+The whole reason the video section sits on the setup screen is that the ~1 GB
+copy off the Research Drive should be happening while the RA finishes the form
+and hands the computer over. So it now starts the moment the station knows
+which dyad it is: tap a nametag colour, and the search and the copy are
+already running.
+
+Debounced by 600 ms, because an RA typing `014` by hand produces `0`, `01` and
+`014`, and the first two are other people's dyads. Without the wait all three
+searches run and the one that finishes last wins rather than the one that
+asked last — which is how a station ends up holding dyad 1's conversation
+while the screen says 014. Tapping a colour sets the whole number at once and
+only pays the delay.
+
+---
+
 ## 2026-09-24 — One number instead of five things
 
 The lab ran test sessions and two things came back. The linkage between a
