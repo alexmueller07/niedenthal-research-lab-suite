@@ -79,7 +79,7 @@ fn fill_screen<'a>(
 
 use crate::machine::Role;
 use crate::recorder::capture::{RecorderState, SessionKind};
-use crate::recorder::{commands, roundrobin};
+
 
 pub const RECORDER_LABEL: &str = "recorder";
 pub const STATION_LABEL: &str = "station";
@@ -145,18 +145,6 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
             .build()?;
             disable_browser_accelerator_keys(&window);
 
-            // Anything left queued by a previous session — a network drop, a
-            // Research Drive that was not mounted — gets another attempt as
-            // soon as the recorder opens, without anyone having to remember.
-            let handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let (url, secret) = commands::round_robin_credentials(&handle);
-                if let Ok(report) = roundrobin::flush(&handle, &url, &secret).await {
-                    if report.attempted > 0 {
-                        let _ = handle.emit("registrations-flushed", &report);
-                    }
-                }
-            });
         }
         Role::Station => {
             let window = fill_screen(

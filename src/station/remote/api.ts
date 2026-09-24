@@ -26,30 +26,24 @@ export interface RemoteUpdate {
   researchDriveRoot?: string;
 }
 
-export interface ClipPartner {
-  id: string;
-  fullName: string;
-  email: string;
-}
-
-/** One conversation the participant appears in, as Round Robin reports it. */
-export interface RemoteClip {
+/**
+ * One conversation recording found on the Research Drive, under a dyad number.
+ *
+ * This replaced a Round Robin lookup keyed on the participant's email address
+ * (2026-09-24). That lookup needed a session on the server, a generated
+ * rotation, a claimed room, the participant on the schedule, and the address
+ * they signed in with to match the one the schedule had — five things that
+ * could each be wrong while the recording sat on the drive. A dyad number is
+ * one thing, and the recording room and this station both already have it.
+ */
+export interface DyadVideo {
+  path: string;
+  fileName: string;
+  bytes: number;
+  /** Seconds since the epoch, off the file itself. Newest first. */
+  modifiedAt: number;
+  /** Stable per file, so re-picking one reuses the local copy. */
   recordingId: string;
-  slotId: string;
-  sessionDate: string | null;
-  round: number;
-  roomIndex: number;
-  durationMs: number | null;
-  mimeType: string | null;
-  partner: ClipPartner | null;
-  url: string;
-  storageKey?: string | null;
-  sha256?: string | null;
-}
-
-export interface ClipsResponse {
-  participant: { id: string; email: string; fullName: string };
-  clips: RemoteClip[];
 }
 
 export interface PreparedVideo {
@@ -92,26 +86,15 @@ export const leaveMode = (role: "record" | "station" | "control" | null = null) 
 /** Proves the server answers and the Research Drive is mounted, in RA words. */
 export const remoteTest = () => invoke<string>("remote_test");
 
-export const listConversationClips = (email: string) =>
-  invoke<ClipsResponse>("list_conversation_clips", { email });
-
-export const prepareConversationVideo = (
-  recordingId: string,
-  storageKey: string,
-  sha256: string | null
-) =>
-  invoke<PreparedVideo>("prepare_conversation_video", {
-    request: { recordingId, storageKey, sha256 },
-  });
-
 /**
- * Where a recording sits on this computer's Research Drive, without copying it.
+ * Every conversation filed under this dyad on the Research Drive, newest first.
  *
- * The setup screen needs a path before the ~1 GB copy has started, so it can
- * show the RA a frame and let them confirm the right conversation.
+ * An empty list is an ordinary answer, not a failure — the recording room may
+ * still be copying. The setup screen says so and keeps the file picker open,
+ * exactly as it always did.
  */
-export const resolveClipPath = (storageKey: string) =>
-  invoke<string>("resolve_clip_path", { storageKey });
+export const findDyadVideos = (dyadId: string) =>
+  invoke<DyadVideo[]>("find_dyad_videos", { dyadId });
 
 /**
  * One frame from a video file, as a blob URL the caller owns.
@@ -145,31 +128,15 @@ export const reportStudyProgress = (
     needsHelp,
   });
 
-/**
- * Which recording a fresh session should rate: the newest one — latest
- * session date, then highest round within it. In the current dyadic protocol
- * a participant has exactly one, and this returns it; in a multi-round
- * round-robin session it returns the conversation that just ended, and the
- * setup screen offers the rest for the RA to choose from.
- */
-export function newestClip(clips: RemoteClip[]): RemoteClip | null {
-  if (clips.length === 0) return null;
-  return [...clips].sort(
-    (a, b) =>
-      (b.sessionDate ?? "").localeCompare(a.sessionDate ?? "") ||
-      b.round - a.round ||
-      a.roomIndex - b.roomIndex
-  )[0];
-}
-
-/** "Round 2 with Jordan P. — Aug 13" — how a clip is named for the RA. */
-export function describeClip(clip: RemoteClip): string {
-  const who = clip.partner ? ` with ${clip.partner.fullName}` : "";
-  const when = clip.sessionDate ? ` — ${clip.sessionDate}` : "";
-  return `Round ${clip.round}${who}${when}`;
-}
-
-/** Clips the desktop app can actually fetch off the Research Drive. */
-export function fetchableClips(clips: RemoteClip[]): RemoteClip[] {
-  return clips.filter((c) => Boolean(c.storageKey));
+/** "dyad-014_20260924-140312.mp4 · 842 MB · today 14:03" — a clip, for the RA. */
+export function describeVideo(video: DyadVideo): string {
+  const when = new Date(video.modifiedAt * 1000);
+  const stamp = Number.isNaN(when.getTime())
+    ? ""
+    : ` · ${when.toLocaleDateString()} ${when.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+  const size = video.bytes > 0 ? ` · ${Math.round(video.bytes / 1048576)} MB` : "";
+  return `${video.fileName}${size}${stamp}`;
 }

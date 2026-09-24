@@ -1,10 +1,13 @@
-// Filenames for recordings.
+// Filenames for recordings, and the dyad number they are filed under.
 //
-// The lab's hard rule (CLAUDE.md): no participant identifiers in filenames.
-// Codes only. This module enforces the mechanical half of that — stripping
-// anything that would break a path — and flags the cases a machine can
-// recognise, which is a genuine help but not a substitute for the operator
-// knowing the rule.
+// One number ties the whole pipeline together. An RA in the conversation room
+// types the dyad ID and nothing else; the finished file is filed under it on
+// the Research Drive; a rating station that knows the same dyad ID finds the
+// video without asking a server, an email, or a person.
+//
+// Codes only — the lab's rule about identifiers applies to filenames as much
+// as to source code — and a dyad number cannot name anybody, which is most of
+// why it is the only thing this screen asks for.
 
 /** Characters that survive into a filename, on every filesystem we target. */
 export function sanitizeCode(code: string): string {
@@ -14,6 +17,32 @@ export function sanitizeCode(code: string): string {
     .replace(/-{2,}/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "")
     .slice(0, 60);
+}
+
+/**
+ * The dyad number as everything downstream spells it: digits only, padded to
+ * three. 14, 014 and " 14 " are the same dyad, and a station looking for 014
+ * has to find a take an RA entered as 14.
+ *
+ * The FIRST run of digits, not all of them. RAs typed `dyad-014-room2` into
+ * the field this replaced, and an RA who does it again out of habit must land
+ * on dyad 014 — stripping every non-digit instead would read that as 0142 and
+ * file the conversation under a dyad that does not exist.
+ *
+ * Returns "" for anything with no digits in it, which callers read as "not
+ * filed under a dyad".
+ */
+export function normalizeDyadId(raw: string): string {
+  const match = /\d+/.exec(raw);
+  if (!match) return "";
+  const trimmed = match[0].replace(/^0+(?=\d)/, "");
+  return trimmed.padStart(3, "0");
+}
+
+/** `dyad-014` — the folder on the Research Drive a take is filed into. */
+export function dyadFolder(dyadId: string): string {
+  const id = normalizeDyadId(dyadId);
+  return id ? `dyad-${id}` : "unfiled";
 }
 
 function pad(n: number): string {
@@ -29,35 +58,14 @@ export function timestamp(when: Date): string {
 }
 
 /**
- * The filename stem. Always carries a timestamp so two takes with the same
- * session code cannot collide and silently overwrite each other.
+ * The filename stem. Always carries a timestamp so two takes of the same dyad
+ * cannot collide and silently overwrite each other.
  */
 export function fileStem(code: string, when: Date): string {
+  const dyad = normalizeDyadId(code);
+  if (dyad) return `dyad-${dyad}_${timestamp(when)}`;
   const clean = sanitizeCode(code);
   return clean ? `${clean}_${timestamp(when)}` : `session_${timestamp(when)}`;
-}
-
-/**
- * Warns when a session code looks like it names a person.
- *
- * Catches the two mistakes a machine can actually see — an email address, and
- * something shaped like a first and last name. It cannot catch everything, so
- * it is worded as a question rather than a verdict.
- */
-export function identifierWarning(code: string): string | null {
-  const trimmed = code.trim();
-  if (!trimmed) return null;
-
-  if (trimmed.includes("@")) {
-    return "That looks like an email address. Session codes must not contain participant identifiers.";
-  }
-  if (/^[A-Z][a-z]{1,}\s+[A-Z][a-z]{1,}$/.test(trimmed)) {
-    return "That looks like a person's name. Use a dyad or session code instead.";
-  }
-  if (/\b[a-z]{2,8}\d{3,8}\b/i.test(trimmed) && /wisc|netid/i.test(trimmed)) {
-    return "That looks like a NetID. Use a dyad or session code instead.";
-  }
-  return null;
 }
 
 /**

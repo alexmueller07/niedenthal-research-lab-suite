@@ -172,14 +172,11 @@ function Preview() {
             driveIsShared: false,
             recentDriveRoots: [],
           }}
-          roster={[]}
           video={{
-            canSearch: false,
-            email: "",
-            onEmailChange: () => {},
+            dyadId: form.dyadId,
             onFind: () => {},
             prep: { status: "idle" },
-            onUseClip: () => {},
+            onUseVideo: () => {},
             onUseFile: () => {},
           }}
           onSettingsChange={() => {}}

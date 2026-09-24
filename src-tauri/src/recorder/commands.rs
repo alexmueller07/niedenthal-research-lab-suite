@@ -28,7 +28,7 @@ use super::disk::{DiskInfo, SpaceEstimate};
 use super::ffmpeg::RecordSettings;
 use super::manifest::{DeviceRecord, RecordingManifest};
 use super::probe::Verification;
-use super::{archive, capture, devices, disk, ffmpeg, manifest, probe, roundrobin, settings};
+use super::{archive, capture, devices, disk, ffmpeg, manifest, probe, settings};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -531,43 +531,92 @@ pub async fn preflight(
             .ok();
     }
 
-    // Frames over the requested five seconds, which is what "did it keep up?"
-    // actually means for a camera.
-    let achieved_fps = last.frames as f64 / 5.0;
-    let rate_ok = last.dropped_frames == 0
-        && (achieved_fps - f64::from(settings.fps)).abs() <= f64::from(settings.fps) * 0.05;
+    // How fast the frames that WERE written arrived.
+    //
+    // Divided by the duration FFmpeg actually wrote, not by the five seconds
+    // it was asked for. A camera takes a moment to wake up — around a second
+    // on a laptop — and those are five seconds the camera was not delivering
+    // into. Dividing by five turned that warm-up into "24.2 fps delivered
+    // against 30 requested" and failed a machine that records perfectly,
+    // which is what the laptop in Room A saw on 2026-09-23. out_time is what
+    // landed in the file, so warm-up cannot bias it either way.
+    let written_seconds = if last.out_time_us > 0 {
+        last.out_time_us as f64 / 1_000_000.0
+    } else {
+        5.0
+    };
+    let achieved_fps = if written_seconds > 0.0 {
+        last.frames as f64 / written_seconds
+    } else {
+        0.0
+    };
+    // A tenth, not a twentieth. The measurement is five seconds long, so one
+    // frame either way is already most of a percent, and nothing the lab does
+    // with this video cares about a two-percent rate error — what it cares
+    // about is a camera running at half rate, which misses by a mile.
+    let rate_ok = last.frames > 0
+        && (achieved_fps - f64::from(settings.fps)).abs() <= f64::from(settings.fps) * 0.10;
     checks.push(PreflightCheck {
-        label: "Frame rate holds".into(),
+        label: "Frames arrive on time".into(),
         // No frames is an encoder verdict, not a frame-rate one. Room C read
         // "0.0 fps delivered against 30 requested" and looked at the camera.
         passed: rate_ok || encoder_refused,
         detail: if encoder_refused {
             "Not tested — the video encoder never started, so no frame was written.".into()
+        } else if rate_ok {
+            format!(
+                "The camera delivered {achieved_fps:.1} fps, which is the {} it was asked \
+                 for. Frame timing is what the study measures against, so this \
+                 is the check that matters most.",
+                settings.fps
+            )
         } else {
             format!(
-                "{achieved_fps:.1} fps delivered against {} requested, {} dropped",
-                settings.fps, last.dropped_frames
+                "The camera delivered {achieved_fps:.1} fps, not the {} it was asked \
+                 for. Usually that means the camera cannot do this resolution at \
+                 this rate — try a lower frame rate or a lower resolution above. \
+                 Recording still works; the video just will not be at the rate \
+                 the settings claim.",
+                settings.fps
             )
         },
     });
 
-    // `speed` is meaningless without frames. An encoder that never opened
-    // finishes the five seconds of input instantly and FFmpeg dutifully
-    // reports a huge multiple of real time — which is how Room C saw
+    // Did the computer fall behind the camera?
+    //
+    // Judged on dropped frames, not on FFmpeg's `speed`. Speed is encoded
+    // seconds over wall seconds, and the wall clock here includes FFmpeg
+    // starting up and the camera waking up — so a five-second test on a
+    // perfectly capable laptop reports something like 0.84x and looks like a
+    // failure. It is not one: the machine only actually fell behind if frames
+    // were thrown away, and that is counted exactly.
+    //
+    // Frames are also the reason this is not just read off `speed` when there
+    // are none. An encoder that never opened finishes instantly and FFmpeg
+    // dutifully reports a huge multiple of real time — which is how Room C saw
     // "Encoder keeps up — 8.29x real time ✓" against `frame=0` while the take
     // was being lost (2026-09-11).
-    let encoder_ok = last.frames > 0 && last.speed >= 0.98;
+    let encoder_ok = last.frames > 0 && last.dropped_frames == 0;
     checks.push(PreflightCheck {
-        label: "Encoder keeps up".into(),
-        passed: encoder_ok,
+        label: "This computer keeps up".into(),
+        passed: encoder_ok || encoder_refused,
         detail: if encoder_refused {
             "Not measured — the encoder never started. Fix that first.".into()
         } else if last.frames == 0 {
-            "No frames were encoded, so there was no speed to measure.".into()
-        } else if last.speed > 0.0 {
-            format!("{:.2}x real time", last.speed)
+            "No frames were encoded, so there was nothing to keep up with.".into()
+        } else if encoder_ok {
+            format!(
+                "Nothing was dropped. {} encoded every one of the {} frames the camera sent.",
+                settings.encoder, last.frames
+            )
         } else {
-            "not measured".into()
+            format!(
+                "{} frames were thrown away because this computer could not encode \
+                 them fast enough. Close other programs and run the check again; \
+                 if it keeps happening, drop the frame rate or the resolution \
+                 above.",
+                last.dropped_frames
+            )
         },
     });
 
@@ -916,194 +965,93 @@ pub fn recorder_save_settings(
     Ok(settings::compose_public(&merged, &crate::machine::load(&app)))
 }
 
-/// Base URL plus this build's device key. Reads the machine-wide store — the
-/// same credentials every mode uses. Infallible since the key stopped being
-/// something a person types (see machine::credentials).
-pub fn round_robin_credentials(app: &tauri::AppHandle) -> (String, String) {
-    crate::machine::credentials(app)
-}
-
-#[tauri::command]
-pub async fn rr_sessions(app: tauri::AppHandle) -> Result<Vec<roundrobin::SessionSummary>, String> {
-    let (url, secret) = round_robin_credentials(&app);
-    roundrobin::list_sessions(&url, &secret).await
-}
-
-#[tauri::command]
-pub async fn rr_open(
-    app: tauri::AppHandle,
-    slot_id: String,
-    room_index: i32,
-    round: Option<i32>,
-    force: bool,
-) -> Result<roundrobin::OpenedRecording, String> {
-    let (url, secret) = round_robin_credentials(&app);
-    roundrobin::open_recording(&url, &secret, &slot_id, room_index, round, force).await
-}
-
-#[tauri::command]
-pub fn rr_pending(app: tauri::AppHandle) -> Vec<roundrobin::PendingRegistration> {
-    roundrobin::load_queue(&app)
-}
-
-#[tauri::command]
-pub async fn rr_flush(app: tauri::AppHandle) -> Result<roundrobin::FlushReport, String> {
-    let (url, secret) = round_robin_credentials(&app);
-    roundrobin::flush(&app, &url, &secret).await
-}
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveRequest {
     pub local_path: String,
     pub sha256: String,
-    /// Present only when the take was opened against Round Robin beforehand.
-    pub recording_id: Option<String>,
-    pub storage_key: Option<String>,
-    pub payload: roundrobin::ClosePayload,
+    /// The dyad number the RA typed on the setup screen — whatever they typed.
+    /// It is normalised here (see archive::normalize_dyad_id), not validated
+    /// at them.
+    pub dyad_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveReport {
     pub archived: Option<archive::ArchiveOutcome>,
-    pub registered: bool,
-    pub queued: bool,
     pub message: String,
 }
 
-/// Copies the finished recording to the Research Drive and closes its Round
-/// Robin row.
+/// Files the finished recording on the Research Drive, under its dyad number.
 ///
-/// Every failure path here ends with the local file untouched and, where there
-/// is something to retry, an entry in the offline queue. Losing the network
-/// after a conversation has been recorded is an inconvenience; it must never
-/// become a lost recording.
+/// This is the entire hand-off to the rating stations. The conversation room
+/// types a dyad number, the file lands in `<drive>/dyad-014/`, and a station
+/// that knows the same number finds it. No server is asked, no session has to
+/// exist, no rotation has to have been generated and no room has to be
+/// claimed — every one of which could previously record a perfect conversation
+/// that no rating station was ever able to play.
+///
+/// The copy is still re-read and re-hashed on the far side. That is not a
+/// check on the RA; it is a check on SMB, which can truncate a copy and report
+/// success either way, and a conversation between two people who have just met
+/// cannot be recorded a second time.
+///
+/// Failure here never costs the recording: the local file is complete and
+/// verified before this runs, and the finish screen offers the copy again.
 #[tauri::command]
 pub async fn archive_recording(
     app: tauri::AppHandle,
     request: ArchiveRequest,
 ) -> Result<ArchiveReport, String> {
-    // The version stamped into the database is the version that actually ran,
-    // not whatever the webview believed it was running.
-    let mut request = request;
-    request.payload.recorder_version = env!("CARGO_PKG_VERSION").to_string();
-
-    let (Some(recording_id), Some(storage_key)) =
-        (request.recording_id.clone(), request.storage_key.clone())
-    else {
+    let Some(drive_root) = crate::machine::drive_root(&app) else {
         return Ok(ArchiveReport {
             archived: None,
-            registered: false,
-            queued: false,
-            message: "This take was not linked to a Round Robin session, so it stays local only."
+            message: "No Research Drive folder is set on this computer, so the \
+                      recording stays here. Set it in Settings, then press \
+                      Copy to the Research Drive."
                 .into(),
         });
     };
 
-    let queue_entry = |archived: bool, error: &str| roundrobin::PendingRegistration {
-        recording_id: recording_id.clone(),
-        storage_key: storage_key.clone(),
-        local_path: request.local_path.clone(),
-        archived,
-        payload: request.payload.clone(),
-        attempts: 1,
-        last_error: Some(error.to_string()),
-        queued_at: chrono::Utc::now().to_rfc3339(),
-    };
-
-    let drive_root = crate::machine::drive_root(&app);
-    let Some(drive_root) = drive_root else {
-        let message =
-            "No Research Drive folder is configured, so the recording stays on this computer."
-                .to_string();
-        roundrobin::enqueue(&app, queue_entry(false, &message))?;
-        return Ok(ArchiveReport {
-            archived: None,
-            registered: false,
-            queued: true,
-            message,
-        });
-    };
+    let dyad_id = request.dyad_id.clone().unwrap_or_default();
+    let source = PathBuf::from(&request.local_path);
+    let expected = request.sha256.clone();
 
     // Copy on a blocking thread: a 900 MB file over SMB would otherwise stall
     // the async runtime for the whole transfer.
-    let source = PathBuf::from(&request.local_path);
-    let expected = request.sha256.clone();
-    let key = storage_key.clone();
+    let root = drive_root.clone();
+    let dyad = dyad_id.clone();
     let copy = tauri::async_runtime::spawn_blocking(move || {
-        let destination = archive::resolve_storage_path(Path::new(&drive_root), &key)?;
-        archive::copy_verified(&source, &destination, &expected)
+        let destination = archive::dyad_destination(Path::new(&root), &dyad, &source)?;
+        let outcome = archive::copy_verified(&source, &destination, &expected)?;
+        // The manifest travels with the take. It is what makes a file on the
+        // drive self-describing months later, and it costs nothing to copy.
+        let sidecar = source.with_extension("json");
+        if sidecar.exists() {
+            let _ = std::fs::copy(&sidecar, destination.with_extension("json"));
+        }
+        Ok::<_, String>(outcome)
     })
     .await
     .map_err(|e| format!("copy task failed: {e}"))?;
 
-    let outcome = match copy {
-        Ok(outcome) => outcome,
-        Err(e) => {
-            roundrobin::enqueue(&app, queue_entry(false, &e))?;
-            return Ok(ArchiveReport {
-                archived: None,
-                registered: false,
-                queued: true,
-                message: format!("{e} The recording is safe on this computer and will be retried."),
-            });
-        }
-    };
-
-    let (url, secret) = round_robin_credentials(&app);
-
-    match roundrobin::close_recording(&url, &secret, &recording_id, &request.payload).await {
-        Ok(()) => Ok(ArchiveReport {
+    match copy {
+        Ok(outcome) => Ok(ArchiveReport {
+            message: format!(
+                "Filed on the Research Drive under {}. The rating stations will find it.",
+                archive::dyad_folder(&dyad_id)
+            ),
             archived: Some(outcome),
-            registered: true,
-            queued: false,
-            message: "Copied to the Research Drive and registered with Round Robin.".into(),
         }),
-        Err(e) => {
-            roundrobin::enqueue(&app, queue_entry(true, &e))?;
-            Ok(ArchiveReport {
-                archived: Some(outcome),
-                registered: false,
-                queued: true,
-                message: format!("Copied to the Research Drive, but {e} It will be retried."),
-            })
-        }
+        Err(e) => Ok(ArchiveReport {
+            archived: None,
+            message: format!(
+                "{e} The recording is safe on this computer — press Copy to the \
+                 Research Drive once the share is back."
+            ),
+        }),
     }
-}
-
-/// Releases a Round Robin row whose take never produced a usable file.
-///
-/// Opening the row happens before the take, so a take that dies leaves it
-/// sitting `in_progress`. Nothing closed it, and the open guard then refused
-/// every later take for that room — the recordings kept working and kept
-/// coming back unlinked, which is invisible until a participant sits down at
-/// a rating station and their conversation cannot be found.
-///
-/// Closing with nothing to report is exactly right: the server marks a
-/// zero-byte take `failed`, the room frees up immediately, and the failure
-/// stays visible on the Control Center's coverage matrix instead of being
-/// quietly erased. (2026-08-18)
-#[tauri::command]
-pub async fn rr_abandon(app: tauri::AppHandle, recording_id: String) -> Result<(), String> {
-    let (url, secret) = round_robin_credentials(&app);
-    roundrobin::close_recording(
-        &url,
-        &secret,
-        &recording_id,
-        &roundrobin::ClosePayload {
-            duration_ms: 0,
-            capture_fps: 0,
-            frames_dropped: 0,
-            frames_duplicated: 0,
-            sha256: String::new(),
-            profile_hash: String::new(),
-            recorder_version: String::new(),
-            cfr: false,
-            bytes: 0,
-        },
-    )
-    .await
 }
 
 // ---------------------------------------------------------------------------

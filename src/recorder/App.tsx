@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import * as api from "./api";
 import DiscreetOverlay from "./components/DiscreetOverlay";
 import WindowControls from "../shared/WindowControls";
-import { fileStem, identifierWarning } from "./naming";
+import { fileStem, normalizeDyadId } from "./naming";
 import { DEFAULT_PRESET_ID, presetById, settingsFromPreset } from "./presets";
 import FinishScreen from "./screens/FinishScreen";
 import RecordScreen from "./screens/RecordScreen";
@@ -18,12 +18,10 @@ import type {
   DeviceRecord,
   DiskInfo,
   FinalizeResult,
-  OpenedRecording,
   PreflightReport,
   ProgressSnapshot,
   PublicSettings,
   RecordSettings,
-  SessionSummary,
   SpaceEstimate,
   StopOutcome,
 } from "./types";
@@ -52,7 +50,7 @@ export default function App() {
   const [fps, setFps] = useState(30);
 
   const [outputDir, setOutputDir] = useState("");
-  const [sessionCode, setSessionCode] = useState("");
+  const [dyadId, setDyadId] = useState("");
   const [sessionMinutes, setSessionMinutes] = useState(10);
   // Recording is ALWAYS discreet — the participant-facing cover is the only
   // thing a running take shows, by lab decision (2026-08-17). This flag is
@@ -75,13 +73,6 @@ export default function App() {
 
   const [machineSettings, setMachineSettings] = useState<PublicSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [slotId, setSlotId] = useState("");
-  const [roomIndex, setRoomIndex] = useState(1);
-  const [opened, setOpened] = useState<OpenedRecording | null>(null);
-  const [rrError, setRrError] = useState<string | null>(null);
-  const [pendingCount, setPendingCount] = useState(0);
   const [archiveReport, setArchiveReport] = useState<ArchiveReport | null>(null);
 
   const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null);
@@ -152,28 +143,6 @@ export default function App() {
     }
   }, []);
 
-  const refreshPending = useCallback(() => {
-    void api
-      .rrPending()
-      .then((q) => setPendingCount(q.length))
-      .catch(() => setPendingCount(0));
-  }, []);
-
-  const refreshSessions = useCallback(() => {
-    setSessionsLoading(true);
-    void api
-      .rrSessions()
-      .then((s) => {
-        setSessions(s);
-        setRrError(null);
-      })
-      .catch((e) => {
-        setSessions([]);
-        setRrError(String(e));
-      })
-      .finally(() => setSessionsLoading(false));
-  }, []);
-
   useEffect(() => {
     void refreshDevices();
     api.ffmpegInfo().then(setFfmpegVersion).catch(() => setFfmpegVersion(""));
@@ -184,16 +153,12 @@ export default function App() {
         if (s.outputDir) setOutputDir(s.outputDir);
         if (s.presetId) setPresetId(s.presetId);
         if (s.sessionMinutes) setSessionMinutes(s.sessionMinutes);
-        if (s.roomIndex) setRoomIndex(s.roomIndex);
         settingsLoaded.current = true;
-        // Only reach for the network once there is something to reach with.
-        if (s.roundRobinUrl) refreshSessions();
       })
       .catch(() => {
         settingsLoaded.current = true;
       });
-    refreshPending();
-  }, [refreshDevices, refreshSessions, refreshPending]);
+  }, [refreshDevices]);
 
   // If the webview reloaded mid-take — a crash, a stray browser shortcut on a
   // build without the WebView2 fix — the take is still running in Rust. Rebuild
@@ -219,10 +184,9 @@ export default function App() {
         setStartedAtMs(Date.now() - info.elapsedMs);
         setElapsedMs(info.elapsedMs);
         if (ctx) {
-          setSessionCode(ctx.sessionCode);
+          setDyadId(ctx.sessionCode);
           setPresetId(ctx.presetId);
           setProfileHash(ctx.profileHash);
-          setOpened(ctx.opened);
         }
         // Participants may still be in the room: always come back covered.
         setDiscreetActive(true);
@@ -245,30 +209,12 @@ export default function App() {
           ...(outputDir ? { outputDir } : {}),
           presetId,
           sessionMinutes,
-          roomIndex,
         })
         .catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
-  }, [outputDir, presetId, sessionMinutes, roomIndex]);
+  }, [outputDir, presetId, sessionMinutes]);
 
-  // The session list arrives sorted today-first. An RA standing in a
-  // conversation room should not have to pick "today" from a dropdown every
-  // single session — preselect it, leave the dropdown for the exceptions.
-  useEffect(() => {
-    if (!slotId && sessions.length > 0) {
-      setSlotId(sessions[0].slotId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions]);
-
-  // The launch-time flush retries anything a previous session left queued.
-  useEffect(() => {
-    const unlisten = listen("registrations-flushed", () => refreshPending());
-    return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, [refreshPending]);
 
   // The chooser asking this window to hand the computer over to another mode.
   // Recording mode keeps nothing unsaved between takes — a finished take is
@@ -461,6 +407,26 @@ export default function App() {
 
   // ---- actions ------------------------------------------------------------
 
+  /**
+   * Puts the finished take on the Research Drive, under its dyad number.
+   *
+   * Separate from handleStop so the finish screen can call it again. That
+   * button is the whole of the retry machinery now: the offline queue, the
+   * launch-time flush and the "N recordings waiting to be filed" panel are
+   * gone with the server round trip they existed to retry. The local file is
+   * complete and verified either way, and an RA who can see the share is back
+   * presses one button.
+   */
+  const archive = useCallback(
+    async (finalized: FinalizeResult) =>
+      api.archiveRecording({
+        localPath: finalized.path,
+        sha256: finalized.sha256,
+        dyadId: dyadId || null,
+      }),
+    [dyadId]
+  );
+
   const handleStop = useCallback(async () => {
     if (phase !== "recording" || stopping) return;
     // After a mid-take reload, Rust's copy of the settings and device is the
@@ -486,69 +452,25 @@ export default function App() {
         outcome: stopped,
         settings: liveSettings,
         device: liveDevice,
-        sessionCode: sessionCode || null,
+        sessionCode: dyadId || null,
         notes: null,
         discreetMode: true,
         profileName: presetById(presetId).name,
       });
       setResult(finalized);
 
-      // The local file is complete and verified at this point. Everything from
-      // here — the Research Drive copy, the Round Robin row — can fail without
-      // costing the recording, and is queued for retry if it does.
-      const report = await api.archiveRecording({
-        localPath: finalized.path,
-        sha256: finalized.sha256,
-        recordingId: opened?.id ?? null,
-        storageKey: opened?.storageKey ?? null,
-        payload: {
-          durationMs: stopped.wallDurationMs,
-          captureFps: liveSettings.fps,
-          framesDropped: stopped.progress.droppedFrames,
-          framesDuplicated: stopped.progress.duplicatedFrames,
-          sha256: finalized.sha256,
-          profileHash,
-          recorderVersion: "",
-          cfr: finalized.verification.cfr,
-          bytes: finalized.sizeBytes,
-        },
-      });
-      setArchiveReport(report);
-      setOpened(null);
+      // The local file is complete and verified at this point. The Research
+      // Drive copy can fail without costing the recording, and the finish
+      // screen offers it again.
+      setArchiveReport(await archive(finalized));
       setRecovered(null);
-      refreshPending();
     } catch (e) {
       setError(String(e));
-      // The take did not survive to produce a file, so the row opened for it
-      // never got closed. Left alone it sits "in progress" and Round Robin
-      // refuses the room's next take — so the retry records perfectly and
-      // comes back unlinked, and the rating stations never see either take.
-      // Give the row back before anyone presses Record again.
-      if (opened) {
-        try {
-          await api.rrAbandon(opened.id);
-          setOpened(null);
-        } catch {
-          // Best effort. The server also releases a row it has not heard
-          // about for an hour, and the RA has "Take over this room".
-        }
-      }
     } finally {
       setStopping(false);
       setPhase("done");
     }
-  }, [
-    phase,
-    stopping,
-    settings,
-    recovered,
-    camera,
-    sessionCode,
-    presetId,
-    opened,
-    profileHash,
-    refreshPending,
-  ]);
+  }, [phase, stopping, settings, recovered, camera, dyadId, presetId, archive]);
 
   const handlePreflight = useCallback(async () => {
     if (!settings || !outputDir || preflightRunning) return;
@@ -575,38 +497,20 @@ export default function App() {
       // The preview holds the camera. On Windows a DirectShow device is
       // usually exclusive access, so the record spawn fails outright if the
       // preview is still attached.
-      // Open the Round Robin row first, so the dyad is stamped from the
-      // rotation as it stands right now. Doing it afterwards would risk
-      // stamping a round that has since advanced.
-      //
-      // A failure here is reported and then ignored: the take proceeds
-      // unlinked rather than not happening at all.
-      let linked = opened;
-      if (slotId && !linked) {
-        try {
-          linked = await api.rrOpen(slotId, roomIndex, null, false);
-          setOpened(linked);
-          setRrError(null);
-        } catch (e) {
-          setRrError(String(e));
-        }
-      }
-
       await api.stopPreview();
       setPreviewLive(false);
 
       const path = await api.startRecording(
         settings,
         outputDir,
-        fileStem(sessionCode, new Date()),
+        fileStem(dyadId, new Date()),
         // Held by Rust for the length of the take, so a webview reload can
         // rebuild this screen exactly as it was.
         {
-          sessionCode,
+          sessionCode: dyadId,
           discreet: true,
           presetId,
           profileHash,
-          opened: linked,
           device: {
             name: camera?.name ?? "unknown",
             fingerprint: camera?.fingerprint ?? "",
@@ -628,18 +532,7 @@ export default function App() {
     } catch (e) {
       setError(String(e));
     }
-  }, [
-    settings,
-    outputDir,
-    sessionCode,
-    phase,
-    slotId,
-    roomIndex,
-    opened,
-    presetId,
-    profileHash,
-    camera,
-  ]);
+  }, [settings, outputDir, dyadId, phase, presetId, profileHash, camera]);
 
   // ---- discreet mode auto-stop -------------------------------------------
 
@@ -684,8 +577,6 @@ export default function App() {
 
   // ---- what blocks recording ---------------------------------------------
 
-  const codeWarning = identifierWarning(sessionCode);
-  const rrConfigured = Boolean(machineSettings?.roundRobinUrl);
   const blockedReason =
     !camera
       ? "Choose a camera first"
@@ -703,34 +594,25 @@ export default function App() {
             // are sitting in the room for — over a number that may be wrong —
             // costs more than the full disk it is guarding against. The
             // estimate is still shown and still warns; see disk.rs.
-            : codeWarning
-              ? "Fix the session code first"
-              : !cameraDelivering
-                  // A camera that never produced a preview frame would record
-                  // nothing. The button unlocks the moment the preview moves.
-                  ? "Waiting for the camera's first frame…"
-                  : rrConfigured && sessionsLoading
-                    // A take started in this one- or two-second window records
-                    // perfectly and is stamped with NO session, so the rating
-                    // stations can never find it — the take is fine and the
-                    // study still breaks. The list resolves in about a second,
-                    // so waiting costs nothing and closes the race for good.
-                    // (2026-08-18: hit exactly this by pressing Record straight
-                    // after the window opened.)
-                    ? "Checking Round Robin for today's session…"
-                    : null;
+            : !cameraDelivering
+              // A camera that never produced a preview frame would record
+              // nothing. The button unlocks the moment the preview moves.
+              ? "Waiting for the camera's first frame…"
+              : null;
 
-  // Not a blocker. An unlinked take is a legitimate choice — a walk-in, or the
-  // server being down mid-session — and the lab's standing rule is that a
-  // technical problem never delays a session. But it must be a *choice*, said
-  // out loud before the button is pressed, not a surprise discovered on the
-  // summary screen after the participants have gone home.
+  // Not a blocker, and the only thing left that the RA has to have got right.
+  // A take with no dyad number still records and still reaches the drive — it
+  // lands in `unfiled` instead of `dyad-014`, and a rating station looking for
+  // dyad 14 will not find it. Said here, before the button, because it cannot
+  // be repaired after the participants have gone home.
+  //
+  // Everything that used to live in this space — no session for today, no
+  // rotation generated, the room already claimed, Round Robin unreachable —
+  // is gone with the server round trip. There is one number, and this is it.
   const linkNotice =
-    phase !== "setup" || !rrConfigured || sessionsLoading || slotId
+    phase !== "setup" || normalizeDyadId(dyadId) !== ""
       ? null
-      : sessions.length === 0
-        ? "No session found for today — this take will save locally only, and the rating stations will not find it by themselves."
-        : "No session selected — this take will save locally only, and the rating stations will not find it by themselves.";
+      : "No dyad number — this take will be filed under “unfiled”, and the rating stations will not find it by themselves.";
 
   // ---- render -------------------------------------------------------------
 
@@ -781,6 +663,16 @@ export default function App() {
           const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
           await revealItemInDir(result.path);
         }}
+        onArchiveAgain={
+          result && !archiveReport?.archived
+            ? () => {
+                setArchiveReport(null);
+                void archive(result)
+                  .then(setArchiveReport)
+                  .catch((e) => setError(String(e)));
+              }
+            : null
+        }
         onAnother={() => {
           setPhase("setup");
           setOutcome(null);
@@ -810,7 +702,7 @@ export default function App() {
       height={height}
       fps={fps}
       outputDir={outputDir}
-      sessionCode={sessionCode}
+      dyadId={dyadId}
       sessionMinutes={sessionMinutes}
       estimate={estimate}
       disk={disk}
@@ -820,51 +712,11 @@ export default function App() {
       profileHash={profileHash}
       blockedReason={blockedReason}
       linkNotice={linkNotice}
-      error={error ?? codeWarning}
+      error={error}
       busy={preflightRunning}
       preflightReport={preflightReport}
       preflightRunning={preflightRunning}
       onPreflight={handlePreflight}
-      roundRobin={{
-        configured: rrConfigured,
-        sessions,
-        loading: sessionsLoading,
-        slotId,
-        roomIndex,
-        opened,
-        error: rrError,
-        pendingCount,
-        onSlot: (id) => {
-          setSlotId(id);
-          setOpened(null);
-        },
-        onRoom: setRoomIndex,
-        onRefresh: refreshSessions,
-        onClear: () => setOpened(null),
-        // Claims the room even though Round Robin still has a row open for it.
-        // The RA is the only one who can know whether the other "recording" is
-        // a real second camera or the remains of a take that died, so this is
-        // deliberately a button and not something the app decides by itself.
-        onTakeOver: () => {
-          if (!slotId) return;
-          void api
-            .rrOpen(slotId, roomIndex, null, true)
-            .then((row) => {
-              setOpened(row);
-              setRrError(null);
-            })
-            .catch((e) => setRrError(String(e)));
-        },
-        onFlush: () => {
-          void api
-            .rrFlush()
-            .then((r) => {
-              setRrError(r.errors[0] ?? null);
-              refreshPending();
-            })
-            .catch((e) => setRrError(String(e)));
-        },
-      }}
       machineSettings={{
         value: machineSettings,
         saving: savingSettings,
@@ -872,10 +724,7 @@ export default function App() {
           setSavingSettings(true);
           void api
             .saveSettings(update)
-            .then((s) => {
-              setMachineSettings(s);
-              if (s.roundRobinUrl) refreshSessions();
-            })
+            .then(setMachineSettings)
             .catch((e) => setError(String(e)))
             .finally(() => setSavingSettings(false));
         },
@@ -924,7 +773,7 @@ export default function App() {
         const picked = await open({ directory: true, multiple: false });
         if (typeof picked === "string") setOutputDir(picked);
       }}
-      onSessionCode={setSessionCode}
+      onDyadId={setDyadId}
       onSessionMinutes={setSessionMinutes}
       onCameraSignal={setCameraDelivering}
       onRefreshDevices={refreshDevices}

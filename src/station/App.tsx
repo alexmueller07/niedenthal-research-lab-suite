@@ -31,19 +31,16 @@ import {
 } from "./roundrobin/progress";
 import type { RRProgress, StageKey } from "./roundrobin/progress";
 import {
-  describeClip,
-  fetchableClips,
+  describeVideo,
+  findDyadVideos,
   hasTauri,
   leaveMode,
-  listConversationClips,
-  newestClip,
-  prepareConversationVideo,
   prepareLocalVideo,
   remoteConfigure,
   remoteStatus,
   reportStudyProgress,
 } from "./remote/api";
-import type { CopyProgress, RemoteClip, RemotePublic } from "./remote/api";
+import type { CopyProgress, DyadVideo, RemotePublic } from "./remote/api";
 import { EMPTY_SETTINGS, loadSettings, saveSettings } from "./utils/settings";
 import type { AppSettings } from "./utils/settings";
 import { flushAll } from "./utils/flushRegistry";
@@ -93,41 +90,48 @@ export interface FormData {
 }
 
 /**
- * Where the automatic conversation-video fetch currently stands. Kicked off the
- * moment the participant signs in, so the ~1 GB copy off the Research Drive
- * runs while they answer the post-conversation questionnaire — by the time the
- * rating task wants the video, it is usually already local and
- * checksum-verified.
+ * Where the automatic conversation-video fetch currently stands.
  *
- * "choose" appears only when the participant has more than one recording
- * (a multi-round session): which conversation gets rated is a protocol
- * decision, so the RA picks rather than the app guessing. Every state leaves
- * the manual file picker reachable — the pipeline must never block a session.
+ * Kicked off the moment the RA picks who is sitting here, so the ~1 GB copy
+ * off the Research Drive runs while the handover and the first questionnaire
+ * happen — by the time the rating task wants the video, it is usually already
+ * local.
+ *
+ * Keyed on the dyad number since 2026-09-24. It used to be keyed on the
+ * participant's email address through Round Robin, which needed a session, a
+ * rotation, a claimed room, the participant on the schedule and the address
+ * they signed in with all to line up before a file three feet away could be
+ * played.
+ *
+ * "choose" appears only when more than one recording is filed under the dyad:
+ * which conversation gets rated is a protocol decision, so the RA picks rather
+ * than the app guessing. Every state leaves the manual file picker reachable —
+ * the pipeline must never block a session.
  */
 export type ConversationPrep =
   | { status: "idle" }
   | { status: "finding" }
-  | { status: "choose"; clips: RemoteClip[]; recommended: RemoteClip }
+  | { status: "choose"; videos: DyadVideo[]; recommended: DyadVideo }
   | {
       status: "copying";
-      /** Null for a file the RA browsed to — there is no Round Robin clip. */
-      clip: RemoteClip | null;
+      /** Null for a file the RA browsed to — there is no dyad video behind it. */
+      video: DyadVideo | null;
       /**
        * What the Rust copier is emitting progress under. Held explicitly rather
-       * than read off `clip`, because a hand-picked file has no clip and its
-       * copy still has to be able to report progress.
+       * than read off `video`, because a hand-picked file has no dyad video and
+       * its copy still has to be able to report progress.
        */
       recordingId: string;
-      clips: RemoteClip[];
+      videos: DyadVideo[];
       copiedBytes: number;
       totalBytes: number;
     }
   /**
-   * Playable. `clip` is null for a file the RA browsed to by hand — there is no
-   * Round Robin recording behind it, and nothing downstream needs one.
+   * Playable. `video` is null for a file the RA browsed to by hand — there is
+   * no dyad recording behind it, and nothing downstream needs one.
    */
-  | { status: "ready"; clip: RemoteClip | null; clips: RemoteClip[]; localPath: string }
-  | { status: "failed"; message: string; clips: RemoteClip[] };
+  | { status: "ready"; video: DyadVideo | null; videos: DyadVideo[]; localPath: string }
+  | { status: "failed"; message: string; videos: DyadVideo[] };
 
 /**
  * Where the session is.
@@ -245,14 +249,10 @@ function App() {
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [prep, setPrep] = useState<ConversationPrep>({ status: "idle" });
   /**
-   * The address the RA typed on the setup screen to find the video early.
-   *
-   * Only a head start. The participant signs in for themselves afterwards, and
-   * if they sign in as somebody else it is their address the search is redone
-   * for — an RA's guess must never decide whose conversation gets rated.
+   * The dyad the video search has already run for, so picking the same person
+   * twice does not throw away a copy that is nearly done.
    */
-  const [setupEmail, setSetupEmail] = useState<string>("");
-  const searchedEmailRef = useRef<string>("");
+  const searchedDyadRef = useRef<string>("");
 
   useEffect(() => {
     void loadData().then(setRrData);
@@ -491,35 +491,23 @@ function App() {
     [rrParticipant, remoteReady]
   );
 
-  const prepareClip = useCallback(
-    (clip: RemoteClip, clips: RemoteClip[]) => {
-      if (!clip.storageKey) {
-        setPrep({
-          status: "failed",
-          message:
-            "Round Robin did not include a storage key for this recording — it may predate the native recorder.",
-          clips,
-        });
-        return;
-      }
+  const prepareVideo = useCallback(
+    (video: DyadVideo, videos: DyadVideo[]) => {
       setPrep({
         status: "copying",
-        clip,
-        recordingId: clip.recordingId,
-        clips,
+        video,
+        recordingId: video.recordingId,
+        videos,
         copiedBytes: 0,
         totalBytes: 0,
       });
-      void prepareConversationVideo(clip.recordingId, clip.storageKey, clip.sha256 ?? null)
+      void prepareLocalVideo(video.recordingId, video.path)
         .then((prepared) => {
-          setPrep({ status: "ready", clip, clips, localPath: prepared.localPath });
-          reportStationEvent(
-            `Conversation video ready — ${describeClip(clip)}`,
-            false
-          );
+          setPrep({ status: "ready", video, videos, localPath: prepared.localPath });
+          reportStationEvent(`Conversation video ready — ${describeVideo(video)}`, false);
         })
         .catch((err) => {
-          setPrep({ status: "failed", message: String(err), clips });
+          setPrep({ status: "failed", message: String(err), videos });
           reportStationEvent("Conversation video fetch FAILED — check station", true);
         });
     },
@@ -540,9 +528,9 @@ function App() {
       const recordingId = `manual-${fnv1aHex(path)}`;
       setPrep({
         status: "copying",
-        clip: null,
+        video: null,
         recordingId,
-        clips: [],
+        videos: [],
         copiedBytes: 0,
         totalBytes: 0,
       });
@@ -550,54 +538,50 @@ function App() {
         .then((prepared) => {
           setPrep({
             status: "ready",
-            clip: null,
-            clips: [],
+            video: null,
+            videos: [],
             localPath: prepared.localPath,
           });
         })
-        .catch((err) => setPrep({ status: "failed", message: String(err), clips: [] }));
+        .catch((err) => setPrep({ status: "failed", message: String(err), videos: [] }));
     },
     []
   );
 
   /**
-   * Finds this participant's conversation recording through Round Robin and
-   * starts fetching it. Fire-and-forget from the sign-in: the participant
-   * moves on to the questionnaire either way, and the dyad task falls back to
-   * the manual picker if this never succeeds.
+   * Finds the conversation filed under this dyad and starts copying it.
+   *
+   * Fire-and-forget: the session moves on either way, and the dyad task falls
+   * back to the manual picker if this never succeeds. The lab's standing rule
+   * is that the pipeline never delays a session.
    */
   const startConversationSearch = useCallback(
-    (email: string) => {
-      if (!hasTauri() || !remoteReady || !email) return;
-      searchedEmailRef.current = email;
+    (dyadId: string) => {
+      if (!hasTauri() || !dyadId) return;
+      searchedDyadRef.current = dyadId;
       setPrep({ status: "finding" });
-      void listConversationClips(email)
-        .then((response) => {
-          const clips = fetchableClips(response.clips);
-          const recommended = newestClip(clips);
+      void findDyadVideos(dyadId)
+        .then((videos) => {
+          const recommended = videos[0];
           if (!recommended) {
             setPrep({
               status: "failed",
-              message: `Round Robin has no stored recording for ${email}. If the conversation just ended, the recorder may still be filing it.`,
-              clips: [],
+              message: `Nothing is filed under dyad ${dyadId} on the Research Drive yet. If the conversation just ended, the recording room may still be copying it — press "Look again" in a moment.`,
+              videos: [],
             });
-            reportStationEvent("No conversation recording on file — check station", true);
             return;
           }
-          if (clips.length === 1) {
-            prepareClip(recommended, clips);
+          if (videos.length === 1) {
+            prepareVideo(recommended, videos);
           } else {
-            // More than one conversation on file — which one gets rated is a
-            // protocol decision, so the RA picks. The newest is preselected.
-            setPrep({ status: "choose", clips, recommended });
+            // More than one conversation filed under this dyad — which one gets
+            // rated is a protocol decision, so the RA picks. Newest preselected.
+            setPrep({ status: "choose", videos, recommended });
           }
         })
-        .catch((err) => {
-          setPrep({ status: "failed", message: String(err), clips: [] });
-          reportStationEvent("Conversation video lookup FAILED — check station", true);
-        });
+        .catch((err) => setPrep({ status: "failed", message: String(err), videos: [] }));
     },
-    [remoteReady, prepareClip, reportStationEvent]
+    [prepareVideo]
   );
 
   /**
@@ -632,11 +616,11 @@ function App() {
       // welcome screens would be asking a person who is already sitting there
       // to identify themselves again.
       if (rrParticipant) {
-        // Their new conversation has to be found afresh. Skipped when the RA
-        // already started it from the setup screen, so a copy that is nearly
-        // done is not thrown away and restarted.
-        if (searchedEmailRef.current !== rrParticipant.email) {
-          startConversationSearch(rrParticipant.email);
+        // Their new conversation has to be found afresh — a new round is a new
+        // dyad. Skipped when the search already ran for this dyad, so a copy
+        // that is nearly done is not thrown away and restarted.
+        if (searchedDyadRef.current !== formData.dyadId) {
+          startConversationSearch(formData.dyadId);
         }
         beginRound();
         return;
@@ -669,18 +653,6 @@ function App() {
     setRrParticipant(result.participant);
     setRrIsNew(result.isNew);
     setStage("welcome");
-
-    // Start pulling the conversation video now, so the ~1 GB copy runs while
-    // the participant reads the welcome screen and answers the first
-    // questionnaire.
-    //
-    // Skipped when the RA already started it for this same address on the setup
-    // screen — restarting would throw away a copy that may be nearly done. A
-    // participant who signs in as somebody else DOES redo it: their address is
-    // the authority on whose conversation this is, not the RA's guess.
-    if (searchedEmailRef.current !== result.participant.email) {
-      startConversationSearch(result.participant.email);
-    }
 
     writeProgress(result.participant.email, {
       stage: "checkin",
@@ -834,7 +806,7 @@ function App() {
     setSessionFolder("");
     transitionsWriterRef.current = null;
     setPrep({ status: "idle" });
-    searchedEmailRef.current = "";
+    searchedDyadRef.current = "";
     setStage("setup");
   };
 
@@ -918,20 +890,12 @@ function App() {
           lastCompletedRound={lastCompletedRound}
           settings={settings}
           remote={remote}
-          roster={rrData?.participants ?? []}
           video={{
-            // Without a server there is nothing to ask, so the section says so
-            // rather than leaving Find video looking broken.
-            canSearch: hasTauri() && remoteReady,
-            email: setupEmail,
-            onEmailChange: setSetupEmail,
-            onFind: () => startConversationSearch(setupEmail.trim()),
+            dyadId: formData.dyadId,
+            onFind: () => startConversationSearch(formData.dyadId),
             prep,
-            onUseClip: (clip) =>
-              prepareClip(
-                clip,
-                prep.status === "choose" ? prep.clips : [clip]
-              ),
+            onUseVideo: (video) =>
+              prepareVideo(video, prep.status === "choose" ? prep.videos : [video]),
             onUseFile: prepareFile,
           }}
           onSettingsChange={handleSettingsChange}
@@ -999,12 +963,12 @@ function App() {
           taskOrder={taskOrder}
           conversation={{
             prep,
-            onUseClip: (clip) =>
-              prepareClip(
-                clip,
-                prep.status === "idle" || prep.status === "finding" ? [clip] : prep.clips
+            onUseVideo: (video) =>
+              prepareVideo(
+                video,
+                prep.status === "idle" || prep.status === "finding" ? [video] : prep.videos
               ),
-            onRetry: () => startConversationSearch(rrParticipant?.email ?? ""),
+            onRetry: () => startConversationSearch(formData.dyadId),
           }}
           onComplete={handleDyadTaskComplete}
           onCsvError={handleCsvError}

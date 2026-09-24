@@ -22,7 +22,7 @@
 //   machines (IRB 2020-1657).
 
 use std::io::{Read, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -180,147 +180,6 @@ async fn describe_failure(response: reqwest::Response) -> String {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClipPartner {
-    pub id: String,
-    pub full_name: String,
-    pub email: String,
-}
-
-/// One conversation the participant appears in, as Round Robin reports it.
-/// `storage_key` and `sha256` are only present for secret-authenticated
-/// callers — which this app is.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteClip {
-    pub recording_id: String,
-    pub slot_id: String,
-    pub session_date: Option<String>,
-    pub round: i32,
-    pub room_index: i32,
-    pub duration_ms: Option<u64>,
-    pub mime_type: Option<String>,
-    pub partner: Option<ClipPartner>,
-    pub url: String,
-    #[serde(default)]
-    pub storage_key: Option<String>,
-    #[serde(default)]
-    pub sha256: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClipsParticipant {
-    pub id: String,
-    pub email: String,
-    pub full_name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClipsResponse {
-    pub participant: ClipsParticipant,
-    pub clips: Vec<RemoteClip>,
-}
-
-/// The conversations this participant appears in, stamped with their partner
-/// at capture time. This is the whole routing answer: the RA types nothing
-/// about files, the sign-in email finds the video.
-#[tauri::command]
-pub async fn list_conversation_clips(
-    app: AppHandle,
-    email: String,
-) -> Result<ClipsResponse, String> {
-    let (url, secret) = credentials(&app);
-
-    // First choice: this participant's own conversations, keyed on the email
-    // they signed in with.
-    let by_email = clips_for_email(&url, &secret, &email).await;
-
-    match by_email {
-        Ok(response) if response.clips.iter().any(|c| c.storage_key.is_some()) => Ok(response),
-        // The email is not the only way in, and being unknown to the schedule
-        // must not strand a station in front of a conversation that plainly
-        // exists. Fall back to everything recorded today and let the RA pick
-        // — the chooser for that is already on screen whenever more than one
-        // conversation comes back.
-        other => {
-            let today = clips_today(&url, &secret).await;
-            match today {
-                Ok(clips) if !clips.is_empty() => Ok(ClipsResponse {
-                    participant: ClipsParticipant {
-                        id: String::new(),
-                        email: email.clone(),
-                        full_name: String::new(),
-                    },
-                    clips,
-                }),
-                // Nothing today either: report whichever failure is the more
-                // useful thing to act on.
-                _ => match other {
-                    Ok(_) => Err(format!(
-                        "Nothing to play yet. The server has no finished recording for {email}, \
-                         and no recording from the last two weeks either.\n\n\
-                         Two things this usually means. Either the conversation has not been \
-                         recorded and filed yet — the recording room finishes that a few seconds \
-                         after Stop, so wait a moment and press Try again. Or this participant \
-                         signed in with an email that is not the one on the schedule, in which \
-                         case the recording exists under their real address; check the roster on \
-                         the Control Center. You can always choose the file by hand below."
-                    )),
-                    Err(e) => Err(e),
-                },
-            }
-        }
-    }
-}
-
-async fn clips_for_email(
-    url: &str,
-    secret: &str,
-    email: &str,
-) -> Result<ClipsResponse, String> {
-    let response = client()?
-        .get(endpoint(url, "api/pps/recordings"))
-        .query(&[("email", email)])
-        .bearer_auth(secret)
-        .send()
-        .await
-        .map_err(|e| format!("Could not reach Round Robin at {url}: {e}"))?;
-
-    if !response.status().is_success() {
-        return Err(describe_failure(response).await);
-    }
-    response
-        .json::<ClipsResponse>()
-        .await
-        .map_err(|e| format!("Round Robin sent something unexpected: {e}"))
-}
-
-/// Every conversation recorded and stored today, whoever it belongs to.
-async fn clips_today(url: &str, secret: &str) -> Result<Vec<RemoteClip>, String> {
-    #[derive(Deserialize)]
-    struct Wrapper {
-        clips: Vec<RemoteClip>,
-    }
-    let response = client()?
-        .get(endpoint(url, "api/pps/session-clips"))
-        .bearer_auth(secret)
-        .send()
-        .await
-        .map_err(|e| format!("Could not reach Round Robin at {url}: {e}"))?;
-
-    if !response.status().is_success() {
-        return Err(describe_failure(response).await);
-    }
-    response
-        .json::<Wrapper>()
-        .await
-        .map(|w| w.clips)
-        .map_err(|e| format!("Round Robin sent something unexpected: {e}"))
-}
-
 /// Mirrors the participant's live progress to the Round Robin session board,
 /// so the RAs running the session see every rating station without walking
 /// over. Display-only for the researchers — never study data — so the caller
@@ -403,29 +262,115 @@ pub async fn remote_test(app: AppHandle) -> Result<String, String> {
 // Fetching the video off the Research Drive
 // ---------------------------------------------------------------------------
 
-/// Resolves a server-supplied storage key against the local Research Drive
-/// mount. The key arrives over the network, so it is treated as untrusted even
-/// though we made the request that produced it — a key containing `..` would
-/// otherwise read anywhere on the drive.
-pub fn resolve_storage_path(root: &Path, storage_key: &str) -> Result<PathBuf, String> {
-    if storage_key.trim().is_empty() {
-        return Err("The storage key is empty.".into());
+/// The conversation recordings filed under a dyad number.
+///
+/// This replaced a round trip to Round Robin keyed on the participant's email
+/// address (2026-09-24). That lookup needed a session to exist on the server,
+/// a rotation to have been generated, the room to have been claimed, the
+/// participant to be on the schedule, and the address they signed in with to
+/// be the one the schedule had — five things, any of which could be wrong
+/// while a perfectly good recording sat on the drive three feet away.
+///
+/// A dyad number is one thing, and both ends of the pipeline already know it:
+/// the recording room typed it, and this station has it off the session board.
+/// So the station reads the drive directly and nothing is asked of anybody.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DyadVideo {
+    pub path: String,
+    pub file_name: String,
+    pub bytes: u64,
+    /// Newest first is the order that matters, and this is what it sorts on.
+    /// Seconds since the epoch, from the file itself.
+    pub modified_at: u64,
+    /// Stable per file, so re-picking one reuses the local copy instead of
+    /// moving the gigabyte again. Safe as a filename by construction.
+    pub recording_id: String,
+}
+
+/// Extensions the rating task can play. A `.json` manifest and a `.partial`
+/// half-copy both live in the same folder, and neither is a conversation.
+const VIDEO_EXTENSIONS: [&str; 4] = ["mp4", "mkv", "mov", "m4v"];
+
+/// A filename-safe id for a path. FNV-1a, same idea as utils/hash.ts on the
+/// frontend — it only has to be stable and collision-free enough to name a
+/// cache file.
+fn id_for_path(path: &Path) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in path.to_string_lossy().to_lowercase().bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
     }
-    let relative = Path::new(storage_key);
-    if relative.is_absolute() {
-        return Err(format!("Storage key must be relative, got {storage_key}"));
-    }
-    for component in relative.components() {
-        match component {
-            Component::Normal(_) => {}
-            _ => {
-                return Err(format!(
-                    "Storage key must not contain path traversal, got {storage_key}"
-                ))
+    format!("dyadvid-{hash:016x}")
+}
+
+fn collect_videos(dir: &Path, prefix: Option<&str>, out: &mut Vec<DyadVideo>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let extension = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if !VIDEO_EXTENSIONS.contains(&extension.as_str()) {
+            continue;
+        }
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if let Some(prefix) = prefix {
+            if !file_name.to_lowercase().starts_with(&prefix.to_lowercase()) {
+                continue;
             }
         }
+        let metadata = entry.metadata().ok();
+        let bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+        let modified_at = metadata
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        out.push(DyadVideo {
+            recording_id: id_for_path(&path),
+            path: path.to_string_lossy().to_string(),
+            file_name,
+            bytes,
+            modified_at,
+        });
     }
-    Ok(root.join(relative))
+}
+
+/// Everything filed under this dyad on the Research Drive, newest first.
+///
+/// An empty list is an ordinary answer, not an error: the conversation may
+/// simply not have finished filing yet. The setup screen says so and offers
+/// the file picker, exactly as it always did.
+#[tauri::command]
+pub fn find_dyad_videos(app: AppHandle, dyad_id: String) -> Result<Vec<DyadVideo>, String> {
+    let root = crate::machine::drive_root(&app).ok_or_else(|| {
+        "No Research Drive folder is set on this computer, so there is \
+         nowhere to look. Set it above, or pick the file by hand."
+            .to_string()
+    })?;
+    let root = Path::new(&root);
+    let folder = crate::recorder::archive::dyad_folder(&dyad_id);
+
+    let mut found = Vec::new();
+    collect_videos(&root.join(&folder), None, &mut found);
+    // Also the root itself, for a take filed by an older recorder or dropped
+    // there by hand. Matching on the same `dyad-014` prefix the filename
+    // carries, so this cannot pick up somebody else's conversation.
+    if folder != "unfiled" {
+        collect_videos(root, Some(&folder), &mut found);
+    }
+
+    found.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+    found.dedup_by(|a, b| a.path == b.path);
+    Ok(found)
 }
 
 /// Only characters that can appear in the UUIDs Round Robin generates. Keeps a
@@ -444,9 +389,10 @@ fn file_sha256(path: &Path) -> Result<String, String> {
 #[serde(rename_all = "camelCase")]
 pub struct PrepareRequest {
     pub recording_id: String,
-    pub storage_key: String,
-    /// The checksum Lab Recorder published when it closed the take. When
-    /// present, the local copy must match it exactly.
+    /// The checksum Lab Recorder published beside the take, when there is one.
+    /// There usually is not any more — a file found on the drive by its dyad
+    /// number carries no promise from a server — and `verified` says so rather
+    /// than implying a guarantee nobody made.
     pub sha256: Option<String>,
 }
 
@@ -478,38 +424,6 @@ fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .join("conversation-cache");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
-}
-
-/// Copies the conversation off the Research Drive into the local cache,
-/// hashing as it copies, and only renames the file into place once the hash
-/// matches the recorder's. Progress is emitted so the setup screen can show
-/// the RA something better than a frozen page during a ~1 GB copy.
-#[tauri::command]
-pub async fn prepare_conversation_video(
-    app: AppHandle,
-    request: PrepareRequest,
-) -> Result<PreparedVideo, String> {
-    if !is_safe_id(&request.recording_id) {
-        return Err("Round Robin sent an unusable recording id.".into());
-    }
-    let root = load_config(&app)
-        .research_drive_root
-        .filter(|r| !r.trim().is_empty())
-        .ok_or(
-            "No Research Drive folder is configured on the dashboard, so the recording cannot be fetched automatically.",
-        )?;
-
-    let source = resolve_storage_path(Path::new(&root), &request.storage_key)?;
-    let destination = cache_dir(&app)?.join(format!("{}.mp4", request.recording_id));
-
-    // Copying takes tens of seconds for a full conversation; off the async
-    // runtime it goes.
-    let handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        copy_into_cache(&handle, &source, &destination, request)
-    })
-    .await
-    .map_err(|e| format!("copy task failed: {e}"))?
 }
 
 /// Copies a file the RA browsed to into the same local cache.
@@ -544,7 +458,6 @@ pub async fn prepare_local_video(
     let destination = cache_dir(&app)?.join(format!("{recording_id}.mp4"));
     let request = PrepareRequest {
         recording_id,
-        storage_key: String::new(),
         sha256: None,
     };
     let handle = app.clone();
@@ -682,22 +595,6 @@ fn copy_into_cache(
 // Confirming the video before the session starts
 // ---------------------------------------------------------------------------
 
-/// Where a Round Robin storage key lands on this computer's Research Drive.
-///
-/// The setup screen needs the path before anything has been copied: it shows
-/// the RA a frame from the recording so a wrong pick is caught while they are
-/// still standing at the machine, and a single frame can be read straight off
-/// the share. Same traversal guard as the copy path, for the same reason — the
-/// key arrives over the network.
-#[tauri::command]
-pub fn resolve_clip_path(app: AppHandle, storage_key: String) -> Result<String, String> {
-    let root = crate::machine::drive_root(&app)
-        .ok_or_else(|| "No Research Drive folder is set on this computer.".to_string())?;
-    Ok(resolve_storage_path(Path::new(&root), &storage_key)?
-        .to_string_lossy()
-        .to_string())
-}
-
 /// One frame from a video file, as JPEG bytes.
 ///
 /// This is the RA's "is that the right conversation?" check, and the whole
@@ -793,13 +690,23 @@ mod tests {
     }
 
     #[test]
-    fn storage_keys_cannot_escape_the_drive_root() {
-        let root = Path::new("Z:/recordings");
-        assert!(resolve_storage_path(root, "slot/round-1/room-1-a-b.mp4").is_ok());
-        assert!(resolve_storage_path(root, "../../etc/passwd").is_err());
-        assert!(resolve_storage_path(root, "slot/../../escape.mp4").is_err());
-        assert!(resolve_storage_path(root, "/absolute.mp4").is_err());
-        assert!(resolve_storage_path(root, "  ").is_err());
+    fn a_cache_id_is_stable_per_file_and_safe_as_a_filename() {
+        // Stable: re-picking the same conversation must reuse the local copy
+        // rather than move the gigabyte again.
+        let a = id_for_path(Path::new("R:/niedenthal/recordings/dyad-014/dyad-014_20260924-140312.mp4"));
+        let b = id_for_path(Path::new("R:/niedenthal/recordings/dyad-014/dyad-014_20260924-140312.mp4"));
+        let other = id_for_path(Path::new("R:/niedenthal/recordings/dyad-015/dyad-015_20260924-141500.mp4"));
+        assert_eq!(a, b);
+        assert_ne!(a, other);
+        assert!(is_safe_id(&a), "{a} would have to be usable as a filename");
+    }
+
+    #[test]
+    fn a_dyad_number_reaches_the_folder_the_recorder_wrote() {
+        // The linkage, end to end and in one line: the recording room's
+        // dyad_folder and the station's have to agree.
+        assert_eq!(crate::recorder::archive::dyad_folder("14"), "dyad-014");
+        assert_eq!(crate::recorder::archive::dyad_folder("014"), "dyad-014");
     }
 
     #[test]
@@ -827,6 +734,88 @@ mod tests {
         let json = serde_json::to_string(&public).unwrap();
         assert!(!json.contains("secret"), "the public shape grew a secret field");
         assert!(!json.contains("Key"), "the public shape grew a key field");
+    }
+
+    /// The whole hand-off, both halves, against a real directory.
+    ///
+    /// The recording room files a take under a dyad number and a rating
+    /// station set to the same number finds it — with no server, no session,
+    /// no rotation and nobody's email address in between. If this passes, a
+    /// conversation recorded in Room 386 plays in Room 385.
+    #[test]
+    fn a_take_the_recorder_filed_is_a_take_the_station_finds() {
+        use crate::recorder::archive::{copy_verified, dyad_destination};
+        use crate::recorder::manifest::file_sha256;
+
+        let drive = std::env::temp_dir().join(format!("labsuite-linkage-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&drive);
+        std::fs::create_dir_all(&drive).unwrap();
+
+        // --- the recording room's half. The RA typed "14"; fileStem produced
+        // this name; archive_recording copies it to the drive.
+        let local = drive.join("dyad-014_20260924-140312.mp4");
+        std::fs::write(&local, b"pretend this is a ten minute conversation").unwrap();
+        let sha = file_sha256(&local).unwrap();
+        let destination = dyad_destination(&drive, "14", &local).unwrap();
+        copy_verified(&local, &destination, &sha).unwrap();
+
+        // --- the rating station's half. It has the dyad off the session board
+        // as "014"; the recording room typed "14". Same folder, by construction.
+        let mut found = Vec::new();
+        collect_videos(&drive.join(crate::recorder::archive::dyad_folder("014")), None, &mut found);
+        assert_eq!(found.len(), 1, "the station did not find the filed take: {found:?}");
+        assert_eq!(found[0].file_name, "dyad-014_20260924-140312.mp4");
+        assert!(found[0].bytes > 0);
+
+        // --- and it does not find somebody else's conversation.
+        let mut other = Vec::new();
+        collect_videos(&drive.join(crate::recorder::archive::dyad_folder("15")), None, &mut other);
+        assert!(other.is_empty(), "dyad 15 picked up dyad 14's recording");
+
+        std::fs::remove_dir_all(&drive).ok();
+    }
+
+    /// The manifest and the half-written staging file share the folder with
+    /// the video. Neither is a conversation, and offering one to an RA as a
+    /// clip to rate would be worse than offering nothing.
+    #[test]
+    fn only_video_files_are_offered_as_conversations() {
+        let dir = std::env::temp_dir().join(format!("labsuite-filter-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in [
+            "dyad-014_20260924-140312.mp4",
+            "dyad-014_20260924-140312.json",
+            "dyad-014_20260924-141500.partial",
+            "notes.txt",
+        ] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+
+        let mut found = Vec::new();
+        collect_videos(&dir, None, &mut found);
+        let names: Vec<&str> = found.iter().map(|v| v.file_name.as_str()).collect();
+        assert_eq!(names, vec!["dyad-014_20260924-140312.mp4"]);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A take dropped in the root of the drive rather than in its dyad folder
+    /// is still found, and still only by its own dyad.
+    #[test]
+    fn a_prefix_match_in_the_root_cannot_cross_dyads() {
+        let dir = std::env::temp_dir().join(format!("labsuite-prefix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("dyad-014_20260924-140312.mp4"), b"x").unwrap();
+        std::fs::write(dir.join("dyad-015_20260924-141500.mp4"), b"x").unwrap();
+
+        let mut found = Vec::new();
+        collect_videos(&dir, Some("dyad-014"), &mut found);
+        let names: Vec<&str> = found.iter().map(|v| v.file_name.as_str()).collect();
+        assert_eq!(names, vec!["dyad-014_20260924-140312.mp4"]);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
