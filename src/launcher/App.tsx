@@ -17,6 +17,7 @@ import type { CheckResult, MachineHealth, MachinePublic, RoleName } from "./api"
 // "recent" or "found" folder looks like.
 import DriveRootChips from "../station/remote/DriveRootChips";
 import WindowControls from "../shared/WindowControls";
+import { APP_NAME } from "../shared/version";
 
 // The screen every launch opens on: pick what this computer is doing right
 // now. Nothing is locked — the same machine can record this morning and be a
@@ -240,7 +241,7 @@ export default function App() {
       <WindowControls />
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Niedenthal Lab Suite</h1>
+          <h1 className="text-2xl font-semibold">{APP_NAME}</h1>
           <p className="mt-1 text-sm text-(--color-ink-dim)">
             What is this computer doing right now?
           </p>

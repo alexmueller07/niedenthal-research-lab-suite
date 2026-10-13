@@ -151,6 +151,16 @@ Engineering notes: [docs/recorder/DESIGN.md](docs/recorder/DESIGN.md).
 
 ## Status
 
+- **v1.5.0 (2026-10-13): no check-in, five clips, help without an email.**
+  Setup goes straight to the post-conversation questions (the email check-in
+  and "met N of your group partners" screens are gone). The help button and
+  live progress are keyed by study ID and reach the Control Center through
+  Round Robin's `/api/pps/station`, so **Round Robin has to be on the matching
+  release**. A missing conversation video is re-searched four times on its own
+  before "Try again" appears. "More questions below" is steady. The short-video
+  task shows five clips per round (2 positive, 2 negative, 1 mixed) —
+  **provisional until Ben reviews** [docs/station/CLIP-SELECTION.md](docs/station/CLIP-SELECTION.md).
+  The version is in every window title and the launcher heading.
 - **The video linkage is the dyad number as of v1.4.0 (2026-09-24).** A
   conversation room types a dyad ID and nothing else; the take is filed under
   `dyad-014/` on the Research Drive; a rating station set to the same dyad

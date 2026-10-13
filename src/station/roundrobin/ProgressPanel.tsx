@@ -68,11 +68,11 @@ export default function ProgressPanel({ progress, onClearHelp }: ProgressPanelPr
           </div>
           {needHelp.map((entry) => (
             <div
-              key={entry.email}
+              key={entry.key}
               className="flex items-center justify-between py-1.5 border-b border-red-900 last:border-b-0"
             >
               <span className="text-white">
-                {entry.email}{" "}
+                {entry.label ?? entry.key}{" "}
                 <span className="text-red-300">
                   — {stageLabel(entry.stage)}
                   {entry.detail ? ` · ${entry.detail}` : ""}
@@ -93,7 +93,7 @@ export default function ProgressPanel({ progress, onClearHelp }: ProgressPanelPr
 
       {entries.length === 0 ? (
         <p className="text-gray-400 text-sm">
-          Nothing yet. A participant appears here as soon as they check in on a
+          Nothing yet. A participant appears here as soon as their station is set up on a
           machine that shares this tracking folder.
         </p>
       ) : (
@@ -111,10 +111,10 @@ export default function ProgressPanel({ progress, onClearHelp }: ProgressPanelPr
           </thead>
           <tbody>
             {entries.map((entry) => (
-              <tr key={entry.email} className="border-b border-gray-600">
+              <tr key={entry.key} className="border-b border-gray-600">
                 <td className="text-white p-2">
                   {isHelpOpen(entry) && <span className="text-red-400 mr-2">●</span>}
-                  {entry.email}
+                  {entry.label ?? entry.key}
                 </td>
                 <td className="text-white p-2">{stageLabel(entry.stage)}</td>
                 <td className="text-white p-2">

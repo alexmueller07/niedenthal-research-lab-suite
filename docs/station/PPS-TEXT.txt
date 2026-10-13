@@ -1,7 +1,7 @@
 ================================================================================
 EVERY WORD IN THE PPS RATING STATION APP
-Niedenthal Lab Suite v1.3.2 — Rating Station mode
-Generated for Randy, updated 2026-09-21
+Niedenthal Lab Suite v1.5.0 — Rating Station mode
+Generated for Randy, updated 2026-10-13
 ================================================================================
 
 This is every piece of text the app can put on screen, in the order a session
@@ -21,8 +21,8 @@ CONTENTS
 --------------------------------------------------------------------------------
   0. On screen throughout
   1. [RESEARCHER] Set up this station
-  2. Study Check-In
-  3. Welcome
+  2. (removed in 1.5.0) Study Check-In
+  3. (removed in 1.5.0) Welcome
   4. Post-conversation questions
   5. Conversation rating task (the slider)
   6. Short video task
@@ -64,7 +64,8 @@ being recorded)
   Example:  Green (Left) talking to Orange (Right) · Round R2
 
 
-SCROLL INDICATOR (appears only when a page continues below the fold)
+SCROLL INDICATOR (appears only when a page continues below the fold; steady,
+not flashing, since 1.5.0)
 
     ▼ More questions below — scroll down
 
@@ -187,37 +188,21 @@ DATA SAVE ERROR BANNER (top of the screen, only when a write to disk fails)
   START
 
     Start — hand the computer to the participant
-    The next screen asks the participant for their email. Nothing above is
-    shown to them.
+    The next screen is the participant's first set of questions. Nothing
+    above is shown to them.
 
 
 ================================================================================
-2. STUDY CHECK-IN  (first round only)
+2-3. STUDY CHECK-IN AND WELCOME — REMOVED IN 1.5.0
 ================================================================================
 
-    Study Check-In
-    Please enter your email:
-    (placeholder in the box: you@wisc.edu)
-    [Continue]
+Eddie / Randy, 2026-10-13. These screens no longer exist:
 
-    Please enter a valid email address.
-
-
-================================================================================
-3. WELCOME  (first round only)
-================================================================================
-
-    You're checked in!
-      (or, for somebody who has been here before)
-    Welcome back!
-
-    You are in Group <n>.
+    Study Check-In / Please enter your email: / you@wisc.edu
+    You're checked in! / Welcome back! / You are in Group <n>.
     You have met <n> of your <n> group partners so far.
-      (or, when nobody else has joined yet)
-    Your group partners will be assigned as more participants join.
 
-    Please let the researcher know you have checked in.
-    [Continue]
+After the RA presses Start, the participant's first screen is section 4.
 
 
 ================================================================================
@@ -387,6 +372,10 @@ fetched. A participant normally never sees these.
     Loading the conversation video…
 
     The conversation video could not be fetched automatically.
+    <the reason>
+    Looking again automatically in <n> s (try <n> of 4)
+    Looking again automatically (try <n> of 4)…
+      (after the fourth try only:)
     [Try again]
 
     Select Video File
@@ -420,7 +409,7 @@ INSTRUCTION SCREENS — six, same controls as above.
 WATCH PAGE
 
     Please watch the following video all the way through.
-    Video <n> of 8
+    Video <n> of 5
     [Play video]
     The clip plays once through. You cannot fast-forward.
     Viewing complete. You may watch it again, or continue.
@@ -447,7 +436,7 @@ PERSPECTIVE ANNOUNCEMENT — before each set of questions, held three seconds.
 
 RATING PAGE
 
-    Video <n> of 8
+    Video <n> of 5
     Rating: YOU        (or)  Rating: YOUR PARTNER
     [Watch again]
 
@@ -531,7 +520,7 @@ Three sliders, order shuffled. Ends: "Not at all" … "Very much".
 Ordering note: this page comes at the END of section 6, the short-video task,
 before the partner questions in sections 7 and 8. It is printed here because it
 was written up as its own section when it ran once per session; it now runs
-once per round, over that round's own eight clips.
+once per round, over that round's own five clips.
 
 Pinned header:
 
@@ -548,7 +537,7 @@ Pinned header:
 
     Video <n>
     [▶ Watch again]
-    Selected      <n> of 8      <n> of 8
+    Selected      <n> of 5      <n> of 5
 
     [Continue]
     [Back to the list]    (after clicking a video to re-watch it)
@@ -587,6 +576,18 @@ AdminDashboard.tsx.
 
     Loading…    (the screen between two steps)
 
+
+================================================================================
+WHAT CHANGED IN v1.5.0
+================================================================================
+
+    * The email check-in and the "met <n> of your group partners" screens are
+      gone. Setup -> post-conversation questions -> slider instructions.
+    * "More questions below" is steady instead of flashing.
+    * A missing conversation video is looked for again four times on its own
+      (countdown on screen) before "Try again" appears.
+    * Five short-video clips per round instead of eight: 2 positive, 2
+      negative, 1 mixed. Provisional for Ben; see CLIP-SELECTION.md.
 
 ================================================================================
 WHAT CHANGED IN v1.3.0

@@ -4,6 +4,8 @@ import {
   isHelpOpen,
   mergeProgress,
   overallFraction,
+  participantKey,
+  participantLabel,
   progressFileName,
   stageIndex,
   stageLabel,
@@ -12,7 +14,7 @@ import type { RRProgress } from "./progress";
 
 function entry(patch: Partial<RRProgress> = {}): RRProgress {
   return {
-    email: "p1@wisc.edu",
+    key: "p-0101",
     stage: "video",
     done: 0,
     total: 25,
@@ -23,15 +25,15 @@ function entry(patch: Partial<RRProgress> = {}): RRProgress {
 
 describe("progress file names", () => {
   it("matches the name the Rust side accepts", () => {
-    expect(progressFileName("p1@wisc.edu")).toMatch(/^p-[0-9a-f]{8}\.json$/);
+    expect(progressFileName("p-0101")).toMatch(/^p-[0-9a-f]{8}\.json$/);
   });
 
   it("is stable across case and whitespace, so one person keeps one file", () => {
-    expect(progressFileName("  P1@WISC.EDU ")).toBe(progressFileName("p1@wisc.edu"));
+    expect(progressFileName("  P-0101 ")).toBe(progressFileName("p-0101"));
   });
 
   it("gives different participants different files", () => {
-    expect(progressFileName("a@wisc.edu")).not.toBe(progressFileName("b@wisc.edu"));
+    expect(progressFileName("p-a")).not.toBe(progressFileName("p-b"));
   });
 });
 
@@ -115,7 +117,7 @@ describe("mergeProgress", () => {
   it("keeps fields the patch does not mention", () => {
     const merged = mergeProgress(
       entry({ helpRequestedAt: "2026-07-23T12:05:00.000Z" }),
-      "p1@wisc.edu",
+      "p-0101",
       { done: 7 }
     );
     expect(merged.done).toBe(7);
@@ -123,14 +125,39 @@ describe("mergeProgress", () => {
     expect(merged.helpRequestedAt).toBe("2026-07-23T12:05:00.000Z");
   });
 
-  it("starts a fresh record at check-in when there is nothing yet", () => {
-    const merged = mergeProgress(undefined, "new@wisc.edu", {});
+  it("starts a fresh record when there is nothing yet", () => {
+    const merged = mergeProgress(undefined, "p-new", {});
     expect(merged.stage).toBe("checkin");
-    expect(merged.email).toBe("new@wisc.edu");
+    expect(merged.key).toBe("p-new");
   });
 
   it("always stamps the update time", () => {
-    const merged = mergeProgress(entry(), "p1@wisc.edu", { done: 1 });
+    const merged = mergeProgress(entry(), "p-0101", { done: 1 });
     expect(merged.updatedAt).not.toBe("2026-07-23T12:00:00.000Z");
+  });
+});
+
+describe("the station's identity without an email", () => {
+  it("keys a participant by their study ID", () => {
+    expect(participantKey(" 0123 ")).toBe("p-0123");
+    expect(participantKey("")).toBe("");
+  });
+
+  it("labels a station the way the RAs talk about it", () => {
+    expect(
+      participantLabel({
+        participantId: "0123",
+        participantColor: "Green",
+        computer: "Left",
+        dyadId: "014",
+        round: 2,
+      })
+    ).toBe("Green (Left) · P0123 · Dyad 014 · R2");
+  });
+
+  it("leaves out whatever is not known yet", () => {
+    expect(
+      participantLabel({ participantId: "7", participantColor: "", computer: "", dyadId: "", round: 1 })
+    ).toBe("P7 · R1");
   });
 });

@@ -1,7 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+// The version the lab sees in the app's name (launcher heading). Read from
+// package.json, which the release bumps together with tauri.conf.json and
+// Cargo.toml — the window titles read the Tauri side, this reads the web side.
+const { version } = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8")) as {
+  version: string;
+};
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -10,6 +18,7 @@ const host = process.env.TAURI_DEV_HOST;
 // during the transition.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   clearScreen: false,
   server: {
     port: 1440,

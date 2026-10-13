@@ -115,18 +115,30 @@ export async function videoThumbnailUrl(path: string, atSeconds = 2): Promise<st
 export const prepareLocalVideo = (recordingId: string, path: string) =>
   invoke<PreparedVideo>("prepare_local_video", { recordingId, path });
 
-export const reportStudyProgress = (
-  email: string,
-  stage: string,
-  percent: number | null,
-  needsHelp: boolean
-) =>
+/**
+ * One station report to the Round Robin Control Center. `needsHelp` raises the
+ * help flag and `helpCleared` lowers it; leaving both false leaves it alone.
+ */
+export const reportStudyProgress = (report: {
+  stationKey: string;
+  label: string;
+  stage: string;
+  percent: number | null;
+  needsHelp?: boolean;
+  helpCleared?: boolean;
+}) =>
   invoke<void>("report_study_progress", {
-    email,
-    stage,
-    percent,
-    needsHelp,
+    stationKey: report.stationKey,
+    label: report.label,
+    stage: report.stage,
+    percent: report.percent,
+    needsHelp: report.needsHelp ?? false,
+    helpCleared: report.helpCleared ?? false,
   });
+
+/** Whether the Control Center still has this station's help request open. */
+export const stationHelpStatus = (stationKey: string) =>
+  invoke<boolean>("station_help_status", { stationKey });
 
 /** "dyad-014_20260924-140312.mp4 · 842 MB · today 14:03" — a clip, for the RA. */
 export function describeVideo(video: DyadVideo): string {

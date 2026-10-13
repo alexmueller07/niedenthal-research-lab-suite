@@ -170,39 +170,50 @@ async fn describe_failure(response: reqwest::Response) -> String {
     match status.as_u16() {
         401 => "Round Robin rejected the shared secret. Check it on the dashboard.".into(),
         // A 404 here is ambiguous and the two causes need different actions,
-        // so say both rather than guessing: the participant may be unknown to
-        // the schedule, or the server may not be serving its API at all.
+        // so say both rather than guessing: the server may be older than this
+        // app, or may not be serving its API at that address at all.
         404 => format!(
-            "Round Robin answered 'not found'. Either this participant is not on the \
-             schedule, or the server is not running its API at that address.{detail}"
+            "Round Robin answered 'not found'. Either the server is older than this \
+             app and needs updating, or it is not running its API at that address.{detail}"
         ),
         _ => format!("Round Robin returned {status}.{detail}"),
     }
 }
 
-/// Mirrors the participant's live progress to the Round Robin session board,
+/// Mirrors the participant's live progress to the Round Robin Control Center,
 /// so the RAs running the session see every rating station without walking
 /// over. Display-only for the researchers — never study data — so the caller
 /// treats failures as ignorable.
+///
+/// Keyed by the station's participant key (`p-<study ID>`) since 1.5.0. It
+/// used to be the email the participant typed at check-in, matched against a
+/// Round Robin assignment; that screen is gone, and a key the server has never
+/// heard of now makes a row of its own instead of a 404.
+///
+/// `needs_help` raises the help flag, `help_cleared` lowers it (the
+/// participant pressing "I'm okay now"); neither leaves it as it is.
 #[tauri::command]
 pub async fn report_study_progress(
     app: AppHandle,
-    email: String,
+    station_key: String,
+    label: String,
     stage: String,
     percent: Option<u32>,
     needs_help: Option<bool>,
+    help_cleared: Option<bool>,
 ) -> Result<(), String> {
     let (url, secret) = credentials(&app);
-    let mut body = serde_json::json!({ "email": email, "stage": stage });
-    if let Some(percent) = percent {
-        body["percent"] = serde_json::json!(percent);
-    }
-    if needs_help == Some(true) {
-        body["needsHelp"] = serde_json::json!(true);
-    }
+    let body = station_report_body(
+        &station_key,
+        &label,
+        &stage,
+        percent,
+        needs_help == Some(true),
+        help_cleared == Some(true),
+    );
 
     let response = client()?
-        .post(endpoint(&url, "api/pps/progress"))
+        .post(endpoint(&url, "api/pps/station"))
         .bearer_auth(&secret)
         .json(&body)
         .send()
@@ -213,6 +224,62 @@ pub async fn report_study_progress(
         return Err(describe_failure(response).await);
     }
     Ok(())
+}
+
+/// The JSON a station report carries. Split out so the shape the server
+/// parses is pinned by a test rather than by whoever last edited both ends.
+fn station_report_body(
+    station_key: &str,
+    label: &str,
+    stage: &str,
+    percent: Option<u32>,
+    needs_help: bool,
+    help_cleared: bool,
+) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "stationKey": station_key,
+        "label": label,
+        "stage": stage,
+    });
+    if let Some(percent) = percent {
+        body["percent"] = serde_json::json!(percent.min(100));
+    }
+    if needs_help {
+        body["needsHelp"] = serde_json::json!(true);
+    } else if help_cleared {
+        body["helpCleared"] = serde_json::json!(true);
+    }
+    body
+}
+
+/// Whether the Control Center still shows this station's help request open.
+///
+/// Polled while the participant's "Researcher notified" notice is up, so an RA
+/// who resolves the request from the Control Center — rather than walking over
+/// to this machine's own dashboard — clears the notice too.
+#[tauri::command]
+pub async fn station_help_status(app: AppHandle, station_key: String) -> Result<bool, String> {
+    let (url, secret) = credentials(&app);
+    let response = client()?
+        .get(endpoint(&url, "api/pps/station"))
+        .query(&[("key", station_key.as_str())])
+        .bearer_auth(&secret)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach Round Robin at {url}: {e}"))?;
+    if !response.status().is_success() {
+        return Err(describe_failure(response).await);
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct HelpStatus {
+        needs_help: bool,
+    }
+    response
+        .json::<HelpStatus>()
+        .await
+        .map(|s| s.needs_help)
+        .map_err(|e| format!("Round Robin sent something unexpected: {e}"))
 }
 
 /// One-shot health check for the dashboard: proves the URL resolves, this
@@ -657,6 +724,25 @@ pub async fn video_thumbnail(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn station_report_body_matches_what_the_server_parses() {
+        let body = station_report_body("p-0123", "Green (Left) · P0123", "Conversation rating", Some(140), false, false);
+        assert_eq!(body["stationKey"], "p-0123");
+        assert_eq!(body["label"], "Green (Left) · P0123");
+        assert_eq!(body["stage"], "Conversation rating");
+        assert_eq!(body["percent"], 100);
+        assert!(body.get("needsHelp").is_none());
+        assert!(body.get("helpCleared").is_none());
+
+        let help = station_report_body("p-1", "", "x", None, true, true);
+        assert_eq!(help["needsHelp"], true);
+        assert!(help.get("helpCleared").is_none(), "raising wins over clearing");
+        assert!(help.get("percent").is_none());
+
+        let cleared = station_report_body("p-1", "", "x", None, false, true);
+        assert_eq!(cleared["helpCleared"], true);
+    }
 
     #[test]
     fn endpoint_tolerates_a_trailing_slash() {

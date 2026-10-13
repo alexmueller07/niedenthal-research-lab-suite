@@ -138,6 +138,7 @@ pub fn run() {
             station::remote::video_thumbnail,
             station::remote::prepare_local_video,
             station::remote::report_study_progress,
+            station::remote::station_help_status,
             machine::machine_status,
             machine::detect_drive_roots,
             machine::machine_configure,

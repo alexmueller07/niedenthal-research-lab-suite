@@ -57,6 +57,13 @@ fn work_area_logical(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
 /// Dock and the menu bar until the pointer asks for them, and does not fight
 /// Mission Control the way a Windows fullscreen fights the taskbar. Keeping
 /// decorations on is what puts the traffic lights back within reach.
+/// "PPS Study v1.5.0". Randy, 2026-10-13: the version belongs at the end of
+/// the app's name, so the taskbar says which build a machine is running.
+/// productName stays version-free — it names the install folder.
+fn versioned(app: &AppHandle, name: &str) -> String {
+    format!("{name} v{}", app.package_info().version)
+}
+
 fn fill_screen<'a>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
     app: &AppHandle,
@@ -137,7 +144,7 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
                     RECORDER_LABEL,
                     WebviewUrl::App("recorder.html".into()),
                 )
-                .title("Lab Recorder")
+                .title(versioned(app, "Lab Recorder"))
                 .background_color(DARK)
                 .min_inner_size(960.0, 640.0),
                 app,
@@ -153,7 +160,7 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
                     STATION_LABEL,
                     WebviewUrl::App("station.html".into()),
                 )
-                .title("PPS Study")
+                .title(versioned(app, "PPS Study"))
                 .background_color(DARK),
                 app,
             )
@@ -201,7 +208,7 @@ pub async fn open_for_role(app: &AppHandle, role: Role) -> tauri::Result<()> {
                 return Ok(());
             };
             WebviewWindowBuilder::new(app, CONTROL_LABEL, WebviewUrl::External(url))
-                .title("Round Robin — Control Center")
+                .title(versioned(app, "Round Robin — Control Center"))
                 .inner_size(1440.0, 900.0)
                 .maximized(true)
                 .build()?;
@@ -249,7 +256,7 @@ pub fn open_setup_window(app: &AppHandle) {
             LAUNCHER_LABEL,
             WebviewUrl::App("index.html".into()),
         )
-        .title("Niedenthal Lab Suite")
+        .title(versioned(app, "Niedenthal Lab Suite"))
         .background_color(DARK),
         app,
     )

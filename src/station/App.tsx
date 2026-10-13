@@ -16,16 +16,17 @@ import RoundComplete from "./rounds/RoundComplete";
 import { ratingsFileName, recordRound, transitionsFileName } from "./rounds/rounds";
 import type { RoundRecord } from "./rounds/rounds";
 import { nowHHMM, todayISO } from "./roundrobin/sessionBoard";
-import SignIn from "./roundrobin/SignIn";
-import Welcome from "./roundrobin/Welcome";
 import AdminDashboard from "./roundrobin/AdminDashboard";
-import { emptyData, loadData, mergeData, saveData, signIn as rrSignIn } from "./roundrobin/store";
-import type { RRData, RRParticipant } from "./roundrobin/store";
+import { loadData, saveData } from "./roundrobin/store";
+import type { RRData } from "./roundrobin/store";
 import {
   isHelpOpen,
   loadProgress,
   mergeProgress,
+  normalizeKey,
   overallFraction,
+  participantKey,
+  participantLabel,
   saveProgress,
   stageLabel,
 } from "./roundrobin/progress";
@@ -39,9 +40,11 @@ import {
   remoteConfigure,
   remoteStatus,
   reportStudyProgress,
+  stationHelpStatus,
 } from "./remote/api";
 import type { CopyProgress, DyadVideo, RemotePublic } from "./remote/api";
 import { EMPTY_SETTINGS, loadSettings, saveSettings } from "./utils/settings";
+import { VIDEOS_PER_SET } from "./video-task/videos";
 import type { AppSettings } from "./utils/settings";
 import { flushAll } from "./utils/flushRegistry";
 import { isBlockedShortcut } from "./utils/lockdown";
@@ -134,13 +137,37 @@ export type ConversationPrep =
   | { status: "failed"; message: string; videos: DyadVideo[] };
 
 /**
+ * How many times the station looks for the conversation video on its own once
+ * the participant reaches the video screen, and how far apart.
+ *
+ * Eddie / Randy, 2026-10-13: the search that runs during setup usually comes
+ * up empty, because the conversation is still being recorded then. By the time
+ * the participant has finished the questions the take is normally filed, and
+ * pressing "Try again" found it every time — so the station now presses it
+ * itself. A handful of times, not forever: a recording that is genuinely
+ * missing has to end up in front of an RA, with the button, rather than spin.
+ */
+export const AUTO_RETRY_ATTEMPTS = 4;
+export const AUTO_RETRY_INTERVAL_MS = 10_000;
+
+export interface AutoRetry {
+  /** Automatic searches made so far on the video screen, 0..AUTO_RETRY_ATTEMPTS. */
+  attempt: number;
+  /** When the next one fires (epoch ms), or null when none is scheduled. */
+  nextAt: number | null;
+}
+
+const NO_RETRY: AutoRetry = { attempt: 0, nextAt: null };
+
+/**
  * Where the session is.
  *
- * "setup" comes first as of 2026-08-22. It used to come after the participant
- * had signed in, which meant they sat down, typed their email, and then waited
- * while an RA reached over them to fill in study IDs — the lab flagged it on
- * the first walkthrough. The RA now sets the station up, hands the computer
- * over, and the sign-in screen is the first thing the participant sees.
+ * "setup" comes first as of 2026-08-22: the RA sets the station up and hands
+ * the computer over. Until 1.5.0 the participant then typed their email on a
+ * check-in screen and saw a "you have met N of your group partners" welcome.
+ * Both went on 2026-10-13 (Eddie, Randy) — the lab no longer uses the email
+ * for anything — so the first thing a participant sees is the
+ * post-conversation questions.
  */
 /**
  * "roundComplete" arrived on 2026-09-19 with the multi-round session. It is the
@@ -149,7 +176,7 @@ export type ConversationPrep =
  * is another round or whether the day is over. Before it, the only thing after
  * a session was the end of the session.
  */
-type Stage = "setup" | "signin" | "welcome" | "admin" | "study" | "roundComplete";
+type Stage = "setup" | "admin" | "study" | "roundComplete";
 
 function App() {
   const [formData, setFormData] = useState<FormData>({
@@ -194,16 +221,16 @@ function App() {
   const [showAdminQuit, setShowAdminQuit] = useState<boolean>(false);
 
   const [stage, setStage] = useState<Stage>("setup");
-  /**
-   * Where "Back to setup" on the researcher dashboard returns to. The dashboard
-   * is reachable from two places — the setup screen, and the participant
-   * sign-in via admin@admin — and dropping an RA back onto the wrong one costs
-   * them the handover they had already made.
-   */
-  const [adminReturn, setAdminReturn] = useState<Stage>("setup");
   const [rrData, setRrData] = useState<RRData | null>(null);
-  const [rrParticipant, setRrParticipant] = useState<RRParticipant | null>(null);
-  const [rrIsNew, setRrIsNew] = useState<boolean>(false);
+
+  /**
+   * Who is sitting here, as far as progress and the help button are concerned.
+   *
+   * Was the email typed at check-in. That screen is gone, so it is the study ID
+   * the RA set the station up with — the one identity a station still has.
+   */
+  const stationKey = normalizeKey(participantKey(formData.participantId));
+  const stationLabel = participantLabel(formData);
 
   // Live progress for the researcher dashboard, written on every step change.
   // Held in a ref rather than state: it is reported from inside task callbacks
@@ -248,6 +275,7 @@ function App() {
   const [remote, setRemote] = useState<RemotePublic | null>(null);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [prep, setPrep] = useState<ConversationPrep>({ status: "idle" });
+  const [autoRetry, setAutoRetry] = useState<AutoRetry>(NO_RETRY);
   /**
    * The dyad the video search has already run for, so picking the same person
    * twice does not throw away a copy that is nearly done.
@@ -285,8 +313,13 @@ function App() {
   }, []);
 
   const writeProgress = useCallback(
-    (email: string, patch: Partial<RRProgress>) => {
-      const next = mergeProgress(progressRef.current ?? undefined, email, patch);
+    (patch: Partial<RRProgress>, options: { helpCleared?: boolean } = {}) => {
+      if (!stationKey) return;
+      // A different participant at this station starts a fresh record rather
+      // than inheriting the last one's stage and help flag.
+      const previous =
+        progressRef.current?.key === stationKey ? progressRef.current : undefined;
+      const next = mergeProgress(previous, stationKey, { ...patch, label: stationLabel });
       progressRef.current = next;
       // Progress tracking is a convenience for the researcher, never study data:
       // a failed write is logged and dropped rather than interrupting a session.
@@ -299,31 +332,30 @@ function App() {
         const stageText = next.detail
           ? `${stageLabel(next.stage)} — ${next.detail}`
           : stageLabel(next.stage);
-        void reportStudyProgress(
-          email,
-          stageText,
-          Math.round(overallFraction(next) * 100),
-          isHelpOpen(next)
-        ).catch((err) => console.error("Round Robin progress report failed:", err));
+        void reportStudyProgress({
+          stationKey,
+          label: stationLabel,
+          stage: stageText,
+          percent: Math.round(overallFraction(next) * 100),
+          needsHelp: isHelpOpen(next),
+          helpCleared: options.helpCleared,
+        }).catch((err) => console.error("Round Robin progress report failed:", err));
       }
     },
-    [remoteReady]
+    [remoteReady, stationKey, stationLabel]
   );
 
   const reportProgress = useCallback(
     (stage: StageKey, done: number, total: number, detail: string) => {
-      const email = rrParticipant?.email;
-      if (!email) return;
-      writeProgress(email, { stage, done, total, detail });
+      writeProgress({ stage, done, total, detail });
     },
-    [rrParticipant, writeProgress]
+    [writeProgress]
   );
 
   const handleRequestHelp = () => {
-    const email = rrParticipant?.email;
-    if (!email) return;
+    if (!stationKey) return;
     setHelpPending(true);
-    writeProgress(email, {
+    writeProgress({
       helpRequestedAt: new Date().toISOString(),
       helpResolvedAt: null,
     });
@@ -333,27 +365,47 @@ function App() {
   // erasing the request) keeps the fact that they asked in the progress file —
   // an RA looking back at a session should still be able to see it happened.
   const handleCancelHelp = () => {
-    const email = rrParticipant?.email;
-    if (!email) return;
+    if (!stationKey) return;
     setHelpPending(false);
-    writeProgress(email, { helpResolvedAt: new Date().toISOString() });
+    writeProgress({ helpResolvedAt: new Date().toISOString() }, { helpCleared: true });
   };
 
   // While a help request is outstanding, watch for the researcher clearing it
   // so the participant's "researcher notified" notice goes away on its own.
+  // Two places can clear it — this station's own researcher dashboard (the
+  // shared progress folder) and the Round Robin Control Center — and either
+  // one is enough.
   useEffect(() => {
-    if (!helpPending || !rrParticipant) return;
+    if (!helpPending || !stationKey) return;
     const id = window.setInterval(() => {
       void loadProgress().then((all) => {
-        const mine = all[rrParticipant.email];
+        const mine = all[stationKey];
         if (mine && !isHelpOpen(mine)) {
           progressRef.current = { ...(progressRef.current ?? mine), ...mine };
           setHelpPending(false);
         }
       });
+      if (hasTauri() && remoteReady) {
+        void stationHelpStatus(stationKey)
+          .then((open) => {
+            if (open) return;
+            // Resolved from the Control Center. Record it locally too, so this
+            // station's dashboard stops listing a request nobody is waiting on.
+            const current = progressRef.current;
+            if (current?.key === stationKey && isHelpOpen(current)) {
+              const resolved = { ...current, helpResolvedAt: new Date().toISOString() };
+              progressRef.current = resolved;
+              void saveProgress(resolved).catch((err) =>
+                console.error("Progress save failed:", err)
+              );
+            }
+            setHelpPending(false);
+          })
+          .catch((err) => console.error("Round Robin help check failed:", err));
+      }
     }, 5000);
     return () => window.clearInterval(id);
-  }, [helpPending, rrParticipant]);
+  }, [helpPending, stationKey, remoteReady]);
 
   useEffect(() => {
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -482,13 +534,16 @@ function App() {
   // participant's shoulder ten minutes later.
   const reportStationEvent = useCallback(
     (text: string, needsHelp: boolean) => {
-      const email = rrParticipant?.email;
-      if (!email || !hasTauri() || !remoteReady) return;
-      void reportStudyProgress(email, text, null, needsHelp).catch((err) =>
-        console.error("Round Robin station event failed:", err)
-      );
+      if (!stationKey || !hasTauri() || !remoteReady) return;
+      void reportStudyProgress({
+        stationKey,
+        label: stationLabel,
+        stage: text,
+        percent: null,
+        needsHelp,
+      }).catch((err) => console.error("Round Robin station event failed:", err));
     },
-    [rrParticipant, remoteReady]
+    [stationKey, stationLabel, remoteReady]
   );
 
   const prepareVideo = useCallback(
@@ -566,7 +621,7 @@ function App() {
           if (!recommended) {
             setPrep({
               status: "failed",
-              message: `Nothing is filed under dyad ${dyadId} on the Research Drive yet. If the conversation just ended, the recording room may still be copying it — press "Look again" in a moment.`,
+              message: `Nothing is filed under dyad ${dyadId} on the Research Drive yet. If the conversation just ended, the recording room may still be copying it.`,
               videos: [],
             });
             return;
@@ -612,9 +667,53 @@ function App() {
   }, [stage, formData.dyadId, startConversationSearch]);
 
   /**
-   * The RA finished setting the station up. Next screen is the participant's —
-   * or, from the second round on, straight back into the study, because the
-   * participant is already signed in and sitting there.
+   * On the video screen, a failed search tries again by itself.
+   *
+   * The first retry fires the moment the participant arrives, because the
+   * failure being retried is almost always the one from setup time, when the
+   * conversation was still being recorded. After that, AUTO_RETRY_INTERVAL_MS
+   * between tries, up to AUTO_RETRY_ATTEMPTS. Only then does the screen show
+   * "Try again" — the RA's button, which does one search per press and does
+   * not restart the automatic ones.
+   *
+   * Scheduling and firing are two steps (nextAt, then the timer) so the screen
+   * can count down to the next try from the same number the timer uses.
+   */
+  useEffect(() => {
+    if (selectedTask !== "dyad" || prep.status !== "failed") return;
+    if (autoRetry.attempt >= AUTO_RETRY_ATTEMPTS || autoRetry.nextAt !== null) return;
+    const delay = autoRetry.attempt === 0 ? 0 : AUTO_RETRY_INTERVAL_MS;
+    setAutoRetry({ attempt: autoRetry.attempt, nextAt: Date.now() + delay });
+  }, [selectedTask, prep.status, autoRetry]);
+
+  useEffect(() => {
+    if (autoRetry.nextAt === null) return;
+    const timer = setTimeout(() => {
+      const attempt = autoRetry.attempt + 1;
+      setAutoRetry({ attempt, nextAt: null });
+      reportStationEvent(
+        `Video not filed yet — looking again (${attempt} of ${AUTO_RETRY_ATTEMPTS})`,
+        false
+      );
+      startConversationSearch(formData.dyadId);
+    }, Math.max(0, autoRetry.nextAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [autoRetry, formData.dyadId, startConversationSearch, reportStationEvent]);
+
+  // Leaving the video screen (the video loaded, or the RA picked a file by
+  // hand) cancels a try that has not fired yet.
+  useEffect(() => {
+    if (selectedTask !== "dyad" || prep.status === "ready" || prep.status === "copying") {
+      setAutoRetry((current) =>
+        current.nextAt === null ? current : { attempt: current.attempt, nextAt: null }
+      );
+    }
+  }, [selectedTask, prep.status]);
+
+  /**
+   * The RA finished setting the station up. The next screen is the
+   * participant's first question — every round, including the first, since
+   * the check-in and welcome screens went in 1.5.0.
    *
    * The files are named for the round: ratings_R2.csv, transitions_R2.csv. They
    * used to be ratings.csv and transitions.csv, one pair per folder, which
@@ -639,56 +738,20 @@ function App() {
         formData,
         `${basePath}/${transitionsFileName(formData.round)}`
       );
-      // Round two and later: the participant never left, so the sign-in and
-      // welcome screens would be asking a person who is already sitting there
-      // to identify themselves again.
-      if (rrParticipant) {
-        // Their new conversation has to be found afresh — a new round is a new
-        // dyad. Skipped when the search already ran for this dyad, so a copy
-        // that is nearly done is not thrown away and restarted.
-        if (searchedDyadRef.current !== formData.dyadId) {
-          startConversationSearch(formData.dyadId);
-        }
-        beginRound();
-        return;
+      // Normally the search already ran while the RA filled the form in.
+      // Skipped when it did, so a copy that is nearly done is not thrown away
+      // and restarted.
+      if (searchedDyadRef.current !== formData.dyadId) {
+        startConversationSearch(formData.dyadId);
       }
-      setStage("signin");
+      setAutoRetry(NO_RETRY);
+      beginRound();
     } catch (error) {
       console.error("Error setting up directory:", error);
       setCsvError(
         `Could not create the session folder in ${formData.saveFolder}. Is the Research Drive mounted? (${error})`
       );
     }
-  };
-
-  const handleParticipantSignIn = async (email: string) => {
-    // Both check-in machines share the store file. The snapshot loaded at app
-    // start goes stale the moment the other machine saves a sign-in, and
-    // writing it back would erase that sign-in — so re-load from disk and
-    // merge by email right before saving. A race window remains: two sign-ins
-    // landing between each other's load and save can still drop one, but it
-    // is now milliseconds wide instead of session-long. Alex, 2026-08-10.
-    const onDisk = await loadData();
-    const base = mergeData(onDisk, rrData ?? emptyData());
-    const result = rrSignIn(base, email);
-    if (result.isNew) {
-      persistRr(result.data);
-    } else {
-      // Nothing to save, but keep the fresher merged copy locally.
-      setRrData(result.data);
-    }
-    setRrParticipant(result.participant);
-    setRrIsNew(result.isNew);
-    setStage("welcome");
-
-    writeProgress(result.participant.email, {
-      stage: "checkin",
-      done: 1,
-      total: 1,
-      detail: `Group ${result.participant.group}`,
-      helpRequestedAt: null,
-      helpResolvedAt: null,
-    });
   };
 
   /**
@@ -701,7 +764,20 @@ function App() {
     setSelectedTask("postConversation");
     setTaskOrder(1);
     setStage("study");
-    reportProgress("postconv", 0, 1, `Round ${formData.round} — post-conversation questions`);
+    // A new participant or a new round starts with no help request open —
+    // the Control Center is told to lower any flag left from before.
+    setHelpPending(false);
+    writeProgress(
+      {
+        stage: "postconv",
+        done: 0,
+        total: 1,
+        detail: `Round ${formData.round} — post-conversation questions`,
+        helpRequestedAt: null,
+        helpResolvedAt: null,
+      },
+      { helpCleared: true }
+    );
   };
 
   const handleFormChange = (field: string, value: string) => {
@@ -743,10 +819,9 @@ function App() {
     setTaskOrder(2);
     setSelectedTask("classification");
     setCursorLocked(false);
-    // Eight clips. The sharing page is no longer part of every round, and the
-    // video task reports its own finer progress from here on — this is only
-    // the first tick.
-    reportProgress("video", 0, 8, "Instructions");
+    // The video task reports its own finer progress from here on — this is
+    // only the first tick.
+    reportProgress("video", 0, VIDEOS_PER_SET, "Instructions");
   };
 
   /**
@@ -891,7 +966,7 @@ function App() {
 
       {/* Participant help signal. Hidden during the continuous rating, where
           moving the pointer to a corner would be recorded as a slider value. */}
-      {stage === "study" && rrParticipant && !cursorLocked && (
+      {stage === "study" && stationKey && !cursorLocked && (
         <HelpButton
           onRequestHelp={handleRequestHelp}
           onCancelHelp={handleCancelHelp}
@@ -929,10 +1004,7 @@ function App() {
           onDriveChange={handleDriveChange}
           onChange={handleFormChange}
           onSubmit={() => void handleSetupSubmit()}
-          onDashboard={() => {
-            setAdminReturn("setup");
-            setStage("admin");
-          }}
+          onDashboard={() => setStage("admin")}
           onLeaveMode={() => void handleLeaveMode()}
         />
       ) : stage === "admin" ? (
@@ -940,24 +1012,9 @@ function App() {
           data={rrData ?? { version: 1, groupSize: 5, participants: [], meetings: {} }}
           onChange={persistRr}
           onRefresh={setRrData}
-          onExit={() => setStage(adminReturn)}
+          onExit={() => setStage("setup")}
           onLeaveMode={() => void handleLeaveMode()}
           onError={setCsvError}
-        />
-      ) : stage === "signin" ? (
-        <SignIn
-          onParticipant={handleParticipantSignIn}
-          onAdmin={() => {
-            setAdminReturn("signin");
-            setStage("admin");
-          }}
-        />
-      ) : stage === "welcome" && rrData && rrParticipant ? (
-        <Welcome
-          data={rrData}
-          participant={rrParticipant}
-          isNew={rrIsNew}
-          onContinue={beginRound}
         />
       ) : sessionDone ? (
         <div className="h-screen w-full flex flex-col items-center justify-center px-8">
@@ -996,6 +1053,7 @@ function App() {
                 prep.status === "idle" || prep.status === "finding" ? [video] : prep.videos
               ),
             onRetry: () => startConversationSearch(formData.dyadId),
+            autoRetry: { ...autoRetry, max: AUTO_RETRY_ATTEMPTS },
           }}
           onComplete={handleDyadTaskComplete}
           onCsvError={handleCsvError}

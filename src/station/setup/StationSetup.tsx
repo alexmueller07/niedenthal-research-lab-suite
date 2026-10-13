@@ -883,8 +883,8 @@ export default function StationSetup({
           Start — hand the computer to the participant
         </button>
         <p className="text-gray-500 text-xs text-center mt-3">
-          The next screen asks the participant for their email. Nothing above is
-          shown to them.
+          The next screen is the participant's first set of questions. Nothing
+          above is shown to them.
         </p>
       </div>
     </div>
