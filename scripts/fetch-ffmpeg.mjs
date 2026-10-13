@@ -106,11 +106,29 @@ function extract(archivePath, destDir, kind) {
   execFileSync("tar", ["-xf", archivePath, "-C", destDir], { stdio: "inherit" });
 }
 
-async function download(url) {
-  process.stdout.write(`  fetching ${url}\n`);
-  const res = await fetch(url, { redirect: "follow" });
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
-  return Buffer.from(await res.arrayBuffer());
+/**
+ * Fetches with a few patient retries on 429 and 5xx.
+ *
+ * evermeet.cx (the Mac builds) rate-limits shared GitHub runners: the 1.5.0
+ * release's Mac job failed twice in a row on "429 Too Many Requests" for
+ * ffprobe, seconds after ffmpeg downloaded fine. Waiting is the fix. The
+ * checksum check after download is unchanged, so a retry can never let
+ * different bytes through.
+ */
+async function download(url, attempts = 6) {
+  for (let attempt = 1; ; attempt++) {
+    process.stdout.write(`  fetching ${url}${attempt > 1 ? ` (try ${attempt})` : ""}\n`);
+    const res = await fetch(url, { redirect: "follow" });
+    if (res.ok) return Buffer.from(await res.arrayBuffer());
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || attempt >= attempts) {
+      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
+    }
+    const hinted = Number(res.headers.get("retry-after"));
+    const waitS = Number.isFinite(hinted) && hinted > 0 ? Math.min(hinted, 120) : 15 * attempt;
+    process.stdout.write(`  HTTP ${res.status}; waiting ${waitS}s before trying again\n`);
+    await new Promise((resolve) => setTimeout(resolve, waitS * 1000));
+  }
 }
 
 /** Copies whatever ffmpeg/ffprobe are on PATH. Dev convenience, loudly caveated. */
