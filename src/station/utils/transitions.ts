@@ -21,7 +21,12 @@ import { csvEscape } from "./csv";
 // became multi-round: one file per round instead of one per session, three new
 // columns, and five questionnaires removed. It is the one column that tells an
 // analyst, from the file alone, which version of the study a row came from.
-const SOFTWARE_VERSION = "4.0.0";
+//
+// 4.1.0 on 2026-10-13 (Lab Suite 1.5.0): five clips per round instead of eight,
+// 2 positive / 2 negative / 1 mixed, with a valence_role row per clip. Short-
+// video data either side of 4.1.0 covers different clips and is not pooled
+// without care.
+const SOFTWARE_VERSION = "4.1.0";
 
 /**
  * Appends one long-format row to transitions.csv.

@@ -311,7 +311,7 @@ function Preview() {
       {screen === "watch page" && (
         <VideoWatchPage
           src={srcFor(clip.id)}
-          positionLabel="Video 1 of 8"
+          positionLabel="Video 1 of 5"
           onWatched={(stats) => void writeRow("preview", clip.id, "", "watch", "", stats.plays)}
           onContinue={() => window.alert("Continue")}
         />
@@ -324,7 +324,7 @@ function Preview() {
           emotions={emotions}
           src={srcFor(clip.id)}
           target={screen === "rating page — self" ? "self" : "partner"}
-          positionLabel="Video 1 of 8"
+          positionLabel="Video 1 of 5"
           onSubmit={(result) => {
             const person = screen === "rating page — self" ? "yourself" : "your partner";
             for (const r of result.ratings) {

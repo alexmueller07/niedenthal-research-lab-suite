@@ -13,13 +13,15 @@ import Slider from "./Slider";
 import Instructions from "./Instructions";
 import RatingOverlay from "./RatingOverlay";
 import TransitionScreen from "./TransitionScreen";
+import RetryCountdown, { retriesExhausted } from "./RetryCountdown";
+import type { RetryState } from "./RetryCountdown";
 
 // Stamped into every data row. Bumped to 4.0.0 on 2026-09-19, when the session
 // became multi-round and the block length went from 150 s to 60 s. It is the
 // one column that tells an analyst, from the file alone, which version of the
 // study a row came from — and rows either side of this bump are not comparable
 // block for block.
-const SOFTWARE_VERSION = "4.0.0";
+const SOFTWARE_VERSION = "4.1.0";
 
 /**
  * How long the participant rates one perspective before the video pauses for
@@ -76,6 +78,12 @@ interface DyadTaskMainProps {
     prep: ConversationPrep;
     onUseVideo: (video: DyadVideo) => void;
     onRetry: () => void;
+    /**
+     * The automatic re-searches App runs on this screen. The "Try again"
+     * button only appears once they are spent; until then the panel counts
+     * down to the next one.
+     */
+    autoRetry?: RetryState;
   };
   onComplete?: () => void;
   onCsvError?: (msg: string) => void;
@@ -743,13 +751,17 @@ function DyadTaskMain({
                       The conversation video could not be fetched automatically.
                     </p>
                     <p className="text-red-200 text-sm mb-3">{prep.message}</p>
-                    <button
-                      type="button"
-                      onClick={() => conversation?.onRetry()}
-                      className="px-4 py-2 border border-white text-white hover:bg-gray-800"
-                    >
-                      Try again
-                    </button>
+                    {conversation?.autoRetry && !retriesExhausted(conversation.autoRetry) ? (
+                      <RetryCountdown retry={conversation.autoRetry} />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => conversation?.onRetry()}
+                        className="px-4 py-2 border border-white text-white hover:bg-gray-800"
+                      >
+                        Try again
+                      </button>
+                    )}
                   </div>
                 )}
                 <h1 className="text-white text-2xl mb-8">Select Video File</h1>

@@ -22,7 +22,7 @@ import { useScrollToTop } from "../utils/scroll";
 
 interface VideoWatchPageProps {
   src: string;
-  /** e.g. "Video 3 of 8". */
+  /** e.g. "Video 3 of 5". */
   positionLabel: string;
   onWatched: (stats: WatchStats) => void;
   onContinue: () => void;

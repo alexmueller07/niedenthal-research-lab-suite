@@ -14,6 +14,10 @@
 // invites clicking it repeatedly instead of reading. (It does scroll on click
 // anyway, because a participant who taps an arrow expects *something*.)
 //
+// It is solid, not pulsing. Eddie and Randy, 2026-10-13: the flashing version
+// drew the eye away from the questions; a quiet, steady indicator is enough to
+// say the page continues.
+//
 // Why a poll rather than an IntersectionObserver sentinel: the content of these
 // pages changes height as questions are answered (a race of radio buttons does
 // not, but an "Other — please specify" field does), and a 300 ms poll on one
@@ -97,7 +101,7 @@ export default function ScrollHint({
     <button
       type="button"
       onClick={scrollDown}
-      className={`${position} flex items-center gap-2 px-4 py-2 border border-gray-500 bg-black text-gray-300 text-sm animate-pulse hover:animate-none hover:border-white hover:text-white transition-colors`}
+      className={`${position} flex items-center gap-2 px-4 py-2 border border-gray-500 bg-black text-gray-300 text-sm hover:border-white hover:text-white transition-colors`}
     >
       <span aria-hidden>▼</span>
       <span>{inline ? "More below — scroll down" : "More questions below — scroll down"}</span>

@@ -58,7 +58,7 @@ jobs:
           # listed but not shipped is a black rectangle in the middle of a
           # session, and nothing else in the pipeline would notice.
           clips=$(ls dist/videos/*.mp4 2>/dev/null | wc -l)
-          test "$clips" -eq 40 || { echo "expected 40 stimulus clips in dist, found $clips"; exit 1; }
+          test "$clips" -eq 25 || { echo "expected 25 stimulus clips in dist (5 rounds x 5), found $clips"; exit 1; }
           test ! -f dist/preview.html || { echo "dev-only preview panel leaked into dist"; exit 1; }
           test -f dist/recorder.html && test -f dist/station.html && test -f dist/index.html
 

@@ -6,6 +6,59 @@ to collect real participant data.
 
 ---
 
+## 2026-10-13 — 1.5.0: Randy's and Eddie's feedback from the test sessions
+
+### The participant goes straight from setup to the questions
+
+The **Study Check-In** (email) screen and the **"You're checked in! You have
+met N of your group partners"** screen are gone (Eddie, Randy). The RA presses
+Start and the participant's first screen is the post-conversation questions;
+after those, the conversation-video instructions.
+
+The email had one job left: it was the key the station used for the **Need
+help?** button and for live progress on the Control Center. Removing the screen
+without replacing that would have silently broken the help button. The key is
+now the participant's study ID (`p-<id>`), and the label an RA reads is
+`Green (Left) · P0123 · Dyad 014 · R2`. The station reports to a new Round
+Robin endpoint (`/api/pps/station`) that needs no schedule entry, and polls it
+so a help request resolved from the Control Center clears the participant's
+"Researcher notified" notice too. **Round Robin must be updated with this
+release** — an older server answers 404 and the help button only reaches this
+station's own dashboard.
+
+### The video search tries again by itself
+
+On the video screen, a missing recording is looked for again automatically:
+once immediately (the usual miss is the setup-time search, which ran while the
+conversation was still being recorded), then every 10 seconds, four times in
+all, with a countdown on screen. Only then does **Try again** appear. The
+manual file picker is there throughout. Each try is reported to the Control
+Center.
+
+### Smaller
+
+- "More questions below" no longer flashes; it is a steady indicator.
+- The version is part of the app's name: the launcher reads *Niedenthal Lab
+  Suite v1.5.0*, and every window title ends in the version. The installed
+  name is unchanged on purpose — changing it would move the install folder and
+  break upgrading in place.
+
+### Research-integrity note: five clips per round, not eight
+
+Randy: "Set up 5 videos per condition: 2 clearly positive, 2 clearly negative,
+1 mixed; flag which ones are selected." Each group of eight was cut to five
+**inside the group**, so round N still shows group N and nobody repeats a clip.
+The selection is computed by `scripts/select-clips.py` from the Cowen &
+Keltner norms and is **PROVISIONAL until Ben reviews it** — see
+`docs/station/CLIP-SELECTION.md`. Every clip's role is written to the data file
+(`video_task,valence_role,<clip>`). `softwareVersion` is now **4.1.0**: short-
+video data either side of it covers different clips.
+
+The 15 dropped clips are no longer bundled (installer is smaller). Restoring
+one is a line in `videos.ts` plus `npm run stimuli`.
+
+---
+
 ## 2026-09-24 (later) — "Nothing to enter" has to mean nothing to press
 
 Testing the 1.4.0 build end to end: the station said *"Found by dyad 014 —

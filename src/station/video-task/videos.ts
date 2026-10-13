@@ -1,7 +1,7 @@
 // Stimulus catalog for the video affective-response task (the "TikTok task").
 //
-// Forty clips from the Cowen & Keltner emotional-video set, in five groups of
-// eight. Ben sent the groupings and the emotion words on 2026-09-20; before
+// Twenty-five clips from the Cowen & Keltner emotional-video set, in five
+// groups of five (eight each until 1.5.0). Ben sent the groupings and the emotion words on 2026-09-20; before
 // that everything here was a placeholder — eight demo clips and five sets that
 // all pointed at the same eight, so the random-assignment machinery was real
 // and the content was not.
@@ -37,13 +37,21 @@
 // confounded with order, fatigue and everything else that changes over an
 // afternoon. Rebalancing means editing VIDEO_SETS below and nothing else.
 
+// FIVE PER GROUP — Randy, 2026-10-13: "Set up 5 videos per condition: 2 clearly
+// positive, 2 clearly negative, 1 mixed; flag which ones are selected." Each
+// group of eight was cut to five INSIDE the group, so the round rule and the
+// no-repeats guarantee still hold. The pick is scripts/select-clips.py over
+// the published norms and is PROVISIONAL until Ben reviews it — see
+// docs/station/CLIP-SELECTION.md for the numbers and the three dropped from
+// each group.
+
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 /** Number of emotions probed per clip. Each rating page asks this many questions. */
 export const EMOTIONS_PER_VIDEO = 3;
 
 /** Clips per set. Each participant watches this many clips, rating each twice. */
-export const VIDEOS_PER_SET = 8;
+export const VIDEOS_PER_SET = 5;
 
 /**
  * The emotions this study asks about, and the vocabulary Ben's top-three were
@@ -73,65 +81,57 @@ export interface StimulusVideo {
    * randomized at run time and the drawn order is written to the data file.
    */
   emotions: string[];
+  /**
+   * Why this clip is in its group of five: 2 positive, 2 negative, 1 mixed
+   * (Randy, 2026-10-13). Written to the data file beside the clip id.
+   */
+  valenceRole: ValenceRole;
 }
+
+export type ValenceRole = "positive" | "negative" | "mixed";
 
 /**
  * Every clip the study uses, grouped the way VIDEO_SETS groups them so the two
  * cannot drift apart — the sets below are built from these arrays.
  */
 const GROUP_1: StimulusVideo[] = [
-  { id: "2162", emotions: ["fear", "anxiety", "awe"] },
-  { id: "0900", emotions: ["fear", "anxiety", "amusement"] },
-  { id: "1871", emotions: ["disgust", "amusement", "surprise"] },
-  { id: "0353", emotions: ["surprise", "awe", "anxiety"] },
-  { id: "1919", emotions: ["disgust", "awe", "surprise"] },
-  { id: "0283", emotions: ["amusement", "awe", "surprise"] },
-  { id: "0778", emotions: ["amusement", "surprise", "joy"] },
-  { id: "1010", emotions: ["amusement", "surprise", "joy"] },
+  { id: "0353", emotions: ["surprise", "awe", "anxiety"], valenceRole: "positive" },
+  { id: "1010", emotions: ["amusement", "surprise", "joy"], valenceRole: "positive" },
+  { id: "2162", emotions: ["fear", "anxiety", "awe"], valenceRole: "negative" },
+  { id: "1871", emotions: ["disgust", "amusement", "surprise"], valenceRole: "negative" },
+  { id: "0900", emotions: ["fear", "anxiety", "amusement"], valenceRole: "mixed" },
 ];
 
 const GROUP_2: StimulusVideo[] = [
-  { id: "1422", emotions: ["fear", "anxiety", "awe"] },
-  { id: "0603", emotions: ["anxiety", "fear", "awe"] },
-  { id: "1473", emotions: ["sadness", "sympathy", "awe"] },
-  { id: "1672", emotions: ["amusement", "awkwardness", "disappointment"] },
-  { id: "0970", emotions: ["awe", "anxiety", "surprise"] },
-  { id: "1335", emotions: ["amusement", "disgust", "joy"] },
-  { id: "1077", emotions: ["sympathy", "amusement", "awe"] },
-  { id: "1741", emotions: ["amusement", "joy", "surprise"] },
+  { id: "0970", emotions: ["awe", "anxiety", "surprise"], valenceRole: "positive" },
+  { id: "1741", emotions: ["amusement", "joy", "surprise"], valenceRole: "positive" },
+  { id: "1422", emotions: ["fear", "anxiety", "awe"], valenceRole: "negative" },
+  { id: "1672", emotions: ["amusement", "awkwardness", "disappointment"], valenceRole: "negative" },
+  { id: "1473", emotions: ["sadness", "sympathy", "awe"], valenceRole: "mixed" },
 ];
 
 const GROUP_3: StimulusVideo[] = [
-  { id: "1979", emotions: ["anxiety", "amusement", "fear"] },
-  { id: "1744", emotions: ["amusement", "surprise", "disgust"] },
-  { id: "0607", emotions: ["surprise", "anxiety", "amusement"] },
-  { id: "1148", emotions: ["amusement", "disgust", "awkwardness"] },
-  { id: "1306", emotions: ["amusement", "surprise", "disgust"] },
-  { id: "1430", emotions: ["surprise", "awe", "fear"] },
-  { id: "0341", emotions: ["surprise", "joy", "amusement"] },
-  { id: "1432", emotions: ["joy", "surprise", "sympathy"] },
+  { id: "0341", emotions: ["surprise", "joy", "amusement"], valenceRole: "positive" },
+  { id: "1432", emotions: ["joy", "surprise", "sympathy"], valenceRole: "positive" },
+  { id: "1979", emotions: ["anxiety", "amusement", "fear"], valenceRole: "negative" },
+  { id: "1744", emotions: ["amusement", "surprise", "disgust"], valenceRole: "negative" },
+  { id: "1148", emotions: ["amusement", "disgust", "awkwardness"], valenceRole: "mixed" },
 ];
 
 const GROUP_4: StimulusVideo[] = [
-  { id: "0595", emotions: ["anger", "surprise", "disgust"] },
-  { id: "0443", emotions: ["fear", "anxiety", "surprise"] },
-  { id: "0338", emotions: ["surprise", "anxiety", "amusement"] },
-  { id: "1732", emotions: ["awe", "fear", "anxiety"] },
-  { id: "0336", emotions: ["amusement", "joy", "disappointment"] },
-  { id: "1635", emotions: ["amusement", "surprise", "anxiety"] },
-  { id: "0381", emotions: ["awe", "surprise", "anxiety"] },
-  { id: "0559", emotions: ["amusement", "surprise", "joy"] },
+  { id: "1635", emotions: ["amusement", "surprise", "anxiety"], valenceRole: "positive" },
+  { id: "0381", emotions: ["awe", "surprise", "anxiety"], valenceRole: "positive" },
+  { id: "0595", emotions: ["anger", "surprise", "disgust"], valenceRole: "negative" },
+  { id: "0443", emotions: ["fear", "anxiety", "surprise"], valenceRole: "negative" },
+  { id: "1732", emotions: ["awe", "fear", "anxiety"], valenceRole: "mixed" },
 ];
 
 const GROUP_5: StimulusVideo[] = [
-  { id: "0913", emotions: ["disgust", "sadness", "fear"] },
-  { id: "0436", emotions: ["anxiety", "fear", "awe"] },
-  { id: "0451", emotions: ["surprise", "fear", "amusement"] },
-  { id: "0908", emotions: ["anxiety", "awe", "surprise"] },
-  { id: "0014", emotions: ["sympathy", "joy", "sadness"] },
-  { id: "1017", emotions: ["amusement", "fear", "surprise"] },
-  { id: "0424", emotions: ["amusement", "awe", "surprise"] },
-  { id: "1770", emotions: ["amusement", "surprise", "joy"] },
+  { id: "0014", emotions: ["sympathy", "joy", "sadness"], valenceRole: "positive" },
+  { id: "0424", emotions: ["amusement", "awe", "surprise"], valenceRole: "positive" },
+  { id: "0913", emotions: ["disgust", "sadness", "fear"], valenceRole: "negative" },
+  { id: "0451", emotions: ["surprise", "fear", "amusement"], valenceRole: "negative" },
+  { id: "0436", emotions: ["anxiety", "fear", "awe"], valenceRole: "mixed" },
 ];
 
 const GROUPS = [GROUP_1, GROUP_2, GROUP_3, GROUP_4, GROUP_5];

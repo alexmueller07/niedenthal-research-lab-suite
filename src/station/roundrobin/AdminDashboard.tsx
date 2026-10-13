@@ -94,7 +94,7 @@ export default function AdminDashboard({
   const handleClearHelp = (entry: RRProgress) => {
     const cleared: RRProgress = { ...entry, helpResolvedAt: new Date().toISOString() };
     localEdit(() => {
-      setProgress((prev) => ({ ...prev, [cleared.email]: cleared }));
+      setProgress((prev) => ({ ...prev, [cleared.key]: cleared }));
       void saveProgress(cleared).catch((err) =>
         console.error("Clearing the help flag failed:", err)
       );
@@ -188,15 +188,15 @@ export default function AdminDashboard({
           </div>
           {addNote && <p className="text-green-400 text-sm mt-2">{addNote}</p>}
           <p className="text-gray-400 text-sm mt-3">
-            Participants normally add themselves by signing in with their email on this
-            screen's check-in page. New emails are placed into a random group with an open
-            seat (groups of {data.groupSize}).
+            The participant check-in screen was removed in 1.5.0, so this roster only
+            grows when someone is added here. New emails are placed into a random group
+            with an open seat (groups of {data.groupSize}).
           </p>
         </div>
 
         {groups.length === 0 && (
           <p className="text-white text-xl text-center py-16">
-            No participants yet. They will appear here after checking in with their email.
+            No participants on the group roster. Add them above if the lab is using it.
           </p>
         )}
 
