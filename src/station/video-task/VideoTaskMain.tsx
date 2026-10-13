@@ -16,7 +16,7 @@ import { shuffle } from "../utils/shuffle";
 // Video affective-response task.
 //
 // Restructured to Randy's 2026-08-05 specification. What each participant does
-// now, for each of the eight clips in their set:
+// now, for each of the clips in their set (five since 1.5.0):
 //
 //   1. watch the clip once,
 //   2. an announcement screen naming a perspective, held for three seconds,
@@ -77,7 +77,7 @@ interface VideoTaskMainProps {
    * the same round rate the same clips. See videos.ts `assignSet`.
    *
    * It used to be the dyad ID, hashed into one of five identical placeholder
-   * sets. That yoked a pair but let a participant meet the same eight clips on
+   * sets. That yoked a pair but let a participant meet the same clips on
    * every round of the afternoon.
    */
   round: number;
@@ -177,6 +177,15 @@ export default function VideoTaskMain({
             "",
             "",
             emotionOrders[videoId].join(";")
+          );
+          // Positive / negative / mixed: why this clip is in the set of five.
+          await writeRow(
+            "video_task",
+            "valence_role",
+            videoId,
+            "",
+            "",
+            findVideo(videoId).valenceRole
           );
         }
       } catch (err) {

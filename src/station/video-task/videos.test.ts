@@ -16,9 +16,20 @@ import {
 } from "./videos";
 
 describe("stimulus catalog", () => {
-  it("holds the forty clips Ben grouped", () => {
+  it("holds five clips for each of the five rounds", () => {
+    expect(VIDEOS_PER_SET).toBe(5);
     expect(VIDEO_CATALOG).toHaveLength(ROUNDS_WITH_SETS * VIDEOS_PER_SET);
-    expect(VIDEO_CATALOG).toHaveLength(40);
+    expect(VIDEO_CATALOG).toHaveLength(25);
+  });
+
+  // Randy, 2026-10-13: 2 clearly positive, 2 clearly negative, 1 mixed.
+  it("gives every set two positive, two negative and one mixed clip", () => {
+    for (const set of VIDEO_SETS) {
+      const roles = videosInSet(set).map((v) => v.valenceRole);
+      expect(roles.filter((r) => r === "positive"), set.id).toHaveLength(2);
+      expect(roles.filter((r) => r === "negative"), set.id).toHaveLength(2);
+      expect(roles.filter((r) => r === "mixed"), set.id).toHaveLength(1);
+    }
   });
 
   it("has no duplicate clip ids", () => {
@@ -72,7 +83,7 @@ describe("the clip files themselves", () => {
 });
 
 describe("video sets", () => {
-  it("every set holds eight clips that all exist in the catalog", () => {
+  it("every set holds five clips that all exist in the catalog", () => {
     expect(VIDEO_SETS).toHaveLength(5);
     for (const set of VIDEO_SETS) {
       expect(set.videoIds).toHaveLength(VIDEOS_PER_SET);
@@ -144,9 +155,9 @@ describe("the two halves of the TikTok task", () => {
   //
   // Both halves are drawn from the same `assignSet(round)` inside VideoTaskMain,
   // so what has to hold is that the round alone decides the clip list — ask
-  // twice for the same round and you get the same eight, whatever order they
+  // twice for the same round and you get the same five, whatever order they
   // are then shuffled into.
-  it("gives the rating trials and the sharing page the same eight clips", () => {
+  it("gives the rating trials and the sharing page the same five clips", () => {
     for (let round = 1; round <= ROUNDS_WITH_SETS; round += 1) {
       const trials = assignSet(round).videoIds;
       const sharing = assignSet(round).videoIds;
