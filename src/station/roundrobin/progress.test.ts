@@ -147,7 +147,7 @@ describe("the station's identity without an email", () => {
     expect(
       participantLabel({
         participantId: "0123",
-        participantColor: "Green",
+        participantColor: "green",
         computer: "Left",
         dyadId: "014",
         round: 2,

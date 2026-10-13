@@ -103,7 +103,10 @@ export interface LabelParts {
  * known are left out rather than printed blank.
  */
 export function participantLabel(parts: LabelParts): string {
-  const who = [parts.participantColor, parts.computer ? `(${parts.computer})` : ""]
+  // The setup screen stores colours lower-case; the board reads like a nametag.
+  const colour = parts.participantColor.trim();
+  const named = colour ? colour[0].toUpperCase() + colour.slice(1) : "";
+  const who = [named, parts.computer ? `(${parts.computer})` : ""]
     .filter(Boolean)
     .join(" ");
   return [

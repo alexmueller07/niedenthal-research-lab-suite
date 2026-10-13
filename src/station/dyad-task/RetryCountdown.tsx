@@ -25,7 +25,9 @@ export function retryStatusText(retry: RetryState, now: number): string | null {
   const next = Math.min(retry.attempt + 1, retry.max);
   // Not scheduled yet, or between a search firing and its answer coming back.
   if (retry.nextAt === null) return "Looking again automatically…";
-  const seconds = Math.max(0, Math.ceil((retry.nextAt - now) / 1000));
+  // Rounded, not ceiled: the clock this is measured against ticks every
+  // 250 ms, so a just-scheduled try can read 10.2 s away and would show "11".
+  const seconds = Math.max(0, Math.round((retry.nextAt - now) / 1000));
   return seconds === 0
     ? `Looking again automatically (try ${next} of ${retry.max})…`
     : `Looking again automatically in ${seconds} s (try ${next} of ${retry.max})`;

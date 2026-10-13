@@ -4,9 +4,15 @@ import { retriesExhausted, retryStatusText } from "./RetryCountdown";
 describe("automatic video re-search wording", () => {
   const now = 1_000_000;
 
-  it("counts down to the next try, rounding up", () => {
+  it("counts down to the next try in whole seconds", () => {
     expect(retryStatusText({ attempt: 1, nextAt: now + 9_200, max: 4 }, now)).toBe(
-      "Looking again automatically in 10 s (try 2 of 4)"
+      "Looking again automatically in 9 s (try 2 of 4)"
+    );
+  });
+
+  it("never shows more than the interval for a try scheduled a tick ago", () => {
+    expect(retryStatusText({ attempt: 2, nextAt: now + 10_240, max: 4 }, now)).toBe(
+      "Looking again automatically in 10 s (try 3 of 4)"
     );
   });
 

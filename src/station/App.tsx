@@ -772,7 +772,7 @@ function App() {
         stage: "postconv",
         done: 0,
         total: 1,
-        detail: `Round ${formData.round} — post-conversation questions`,
+        detail: `Round ${formData.round}`,
         helpRequestedAt: null,
         helpResolvedAt: null,
       },
