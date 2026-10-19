@@ -809,7 +809,7 @@ function App() {
       setCsvError(`Write failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     setSelectedTask("dyad");
-    // No block total yet: with one-minute blocks the count comes from the
+    // No block total yet: the block count comes from the
     // recording's own length, which DyadTaskMain learns from the video element
     // and reports from its first block onwards.
     reportProgress("dyad", 0, 0, "Instructions");
