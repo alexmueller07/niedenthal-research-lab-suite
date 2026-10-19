@@ -21,7 +21,8 @@ import type { RetryState } from "./RetryCountdown";
 // one column that tells an analyst, from the file alone, which version of the
 // study a row came from — and rows either side of this bump are not comparable
 // block for block.
-const SOFTWARE_VERSION = "4.1.0";
+// 4.2.0 on 2026-10-19: blocks back to 150 s.
+const SOFTWARE_VERSION = "4.2.0";
 
 /**
  * How long the participant rates one perspective before the video pauses for
@@ -33,8 +34,11 @@ const SOFTWARE_VERSION = "4.1.0";
  * blocks and stop; now it is rated all the way through in however many
  * one-minute blocks the recording holds, which for a standard conversation is
  * about ten write-ups per participant instead of four.
+ *
+ * 2026-10-19: back to 150 s (2.5 minutes). The task still runs to the end of
+ * the recording rather than stopping after four blocks.
  */
-const BLOCK_SECONDS = 60;
+const BLOCK_SECONDS = 150;
 
 /**
  * Blocks a recording of this length will produce. Used for the researcher
@@ -413,7 +417,7 @@ function DyadTaskMain({
 
   // How many blocks this recording works out to, for the dashboard. Read off
   // the element's own metadata rather than asked of anyone: nobody knows how
-  // long a conversation ran, and with one-minute blocks the answer varies from
+  // long a conversation ran, and the block count varies from
   // session to session.
   useEffect(() => {
     const element = videoRef.current;
@@ -526,7 +530,7 @@ function DyadTaskMain({
       setAttemptedSubmit(false);
       setShowToggleScreen(false);
       // The block count comes from the recording's own length rather than a
-      // constant: with 60-second blocks there is no fixed number of them, and a
+      // constant: the blocks run to the end of the video, so there is no fixed number of them, and a
       // dashboard that says "block 6 of 4" is worse than one that says nothing.
       const totalBlocks = Math.max(
         totalBlocksRef.current ?? 0,

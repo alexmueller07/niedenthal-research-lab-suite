@@ -26,7 +26,7 @@ import { csvEscape } from "./csv";
 // 2 positive / 2 negative / 1 mixed, with a valence_role row per clip. Short-
 // video data either side of 4.1.0 covers different clips and is not pooled
 // without care.
-const SOFTWARE_VERSION = "4.1.0";
+const SOFTWARE_VERSION = "4.2.0";
 
 /**
  * Appends one long-format row to transitions.csv.

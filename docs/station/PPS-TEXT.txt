@@ -323,7 +323,7 @@ WHILE THE VIDEO PLAYS
     The video could not be started. Please alert your researcher.
 
 
-WRITING + RATING SCREEN — after every one minute of video, and once more when
+WRITING + RATING SCREEN — after every 2.5 minutes of video, and once more when
 the video runs out.
 
   On the screen that follows the end of the video only:
@@ -668,6 +668,6 @@ Added:
 
 Timing:
 
-    The slider task's blocks are now one minute long instead of two and a half,
-    and the task runs to the end of the recording rather than stopping after
-    four blocks.
+    The slider task's blocks are two and a half minutes long (back from one
+    minute on 2026-10-19), and the task runs to the end of the recording
+    rather than stopping after four blocks.

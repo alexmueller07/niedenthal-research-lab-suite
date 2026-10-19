@@ -6,6 +6,16 @@ to collect real participant data.
 
 ---
 
+## 2026-10-19 — 1.5.1: perspective switches every 2.5 minutes again
+
+`BLOCK_SECONDS` is back to **150** (it was 60 since 1.2.0). The video pauses
+for the writing screen and the perspective flips every 2.5 minutes; the task
+still runs to the end of the recording, so a 10-minute conversation is 4
+blocks and anything past 10:00 gets a fifth. `softwareVersion` is now
+**4.2.0** — rows either side of this are not comparable block for block.
+
+---
+
 ## 2026-10-13 — 1.5.0: Randy's and Eddie's feedback from the test sessions
 
 ### The participant goes straight from setup to the questions
